@@ -89,6 +89,9 @@ minimum) gives 0.156 km/px and zoom 8.97 at the equator. `a = 4000 km` gives 4.1
 
 ### 2.3 Map URLs (for VM captures)
 
+**VM result (V4 contact sheet):** `msencarta://…/style=n` numbers are menu ids (0 Comprehensive, 1 Political,
+2 Tectonic, 5 Earth By Day, 20 The Moon …), not MapStyle ids; the mapping is in `web/src/atlas` (`MENU_STYLES`).
+
 ENCARTA.EXE opens a map view from a `msencarta://` URL (string table at 0x6463cc…0x646450, builder
 FUN_00413e40, parser FUN_00419940):
 

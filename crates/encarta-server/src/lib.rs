@@ -8,6 +8,7 @@ pub mod api;
 pub mod db;
 pub mod error;
 pub mod files;
+pub mod games;
 pub mod media;
 
 use axum::Router;
@@ -54,6 +55,10 @@ pub struct AppState {
     pub search: Option<Arc<encarta_search::SearchIndex>>,
     pub extracted: Option<Arc<media::ExtractedFallback>>,
     pub dict: Option<Arc<api::DictIndex>>,
+    /// The disc's `dswMedia/` tree (Flash interactives), from the media manifest.
+    pub disc_tree: Option<Arc<media::DiscTree>>,
+    /// Font files in `out/fonts/` (none unless a converter step puts the disc fonts there).
+    pub fonts: Vec<String>,
     pub static_dir: Option<PathBuf>,
     pub tours: bool,
     pub atlas: bool,
@@ -130,6 +135,14 @@ impl AppState {
                 }
             }
         });
+        let disc_tree = manifest_uri.as_ref().and_then(|u| match media::DiscTree::load(u) {
+            Ok(t) => Some(Arc::new(t)),
+            Err(e) => {
+                log(format!("warning: disc tree: {e:#}"));
+                None
+            }
+        });
+        let fonts = files::font_files(&out.join("fonts"));
         let static_dir = cfg.static_dir.clone().filter(|d| d.is_dir());
         let st = AppState {
             tours: out.join("tours").is_dir(),
@@ -142,10 +155,12 @@ impl AppState {
             search,
             extracted,
             dict,
+            disc_tree,
+            fonts,
             static_dir,
         };
         log(format!(
-            "data {}: content={} media_manifest={} search={} gazetteer={} tours={} atlas={} extracted_fallback={} static={}",
+            "data {}: content={} media_manifest={} search={} gazetteer={} tours={} atlas={} fonts={} extracted_fallback={} static={}",
             st.out.display(),
             st.content.is_some(),
             st.media_manifest,
@@ -153,6 +168,7 @@ impl AppState {
             st.gazetteer.is_some(),
             st.tours,
             st.atlas,
+            st.fonts.len(),
             st.extracted.is_some(),
             st.static_dir.as_ref().map_or("none".into(), |d| d.display().to_string()),
         ));
@@ -207,6 +223,7 @@ pub fn router(st: Arc<AppState>) -> Router {
         .route("/interactive/{name}", get(api::interactive))
         .route("/dictionary", get(api::dictionaries))
         .route("/dictionary/lookup", get(api::dict_lookup))
+        .route("/dictionary/entry/{id}", get(api::dict_entry_by_id))
         .route("/dictionary/{dict}/{id}", get(api::dict_entry))
         .route("/timeline", get(api::timeline))
         .route("/timeline/meta", get(api::timeline_meta))
@@ -221,12 +238,15 @@ pub fn router(st: Arc<AppState>) -> Router {
         .route("/spell", get(api::spell))
         .route("/atlas/search", get(api::atlas_search))
         .route("/atlas/place/{entity}", get(api::atlas_place))
+        .nest("/games", games::routes())
         .fallback(|uri: axum::extract::OriginalUri| async move { error::ApiError::not_found(format!("no route {}", uri.path())) });
     Router::new()
         .route("/healthz", get(healthz))
         .nest("/api", api)
         .route("/media/file/{*name}", get(media::file))
         .route("/media/{sha}/{variant}", get(media::by_hash))
+        .route("/media/disc/{edition}/{*path}", get(media::disc))
+        .route("/fonts/{name}", get(files::font))
         .route("/atlas/{*path}", get(files::atlas))
         .route("/out/atlas/{*path}", get(files::out_atlas))
         .route("/out/tours/{*path}", get(files::out_tours))

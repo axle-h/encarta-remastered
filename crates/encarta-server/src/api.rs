@@ -51,31 +51,60 @@ pub async fn meta(State(st): St) -> ApiResult<Json<Value>> {
         "extracted_fallback": st.extracted.is_some(),
         "tours": st.tours,
         "atlas": st.atlas,
+        "fonts": st.fonts.iter().map(|f| format!("/fonts/{f}")).collect::<Vec<_>>(),
         "static": st.static_dir.is_some(),
     })))
 }
 
 // ---------------------------------------------------------------- items
 
-const ASSOC_SQL: &str = "SELECT a.target_ref_id AS ref_id, a.grp AS \"group\", a.sec, a.sequence, a.appears, a.par,
-        i.kind, i.media_type, i.title, i.title_html, i.caption_html,
-        f.file_name AS thumb_file, f.width AS thumb_width, f.height AS thumb_height
-    FROM assoc a
-    LEFT JOIN item i ON i.ref_id = a.target_ref_id
-    LEFT JOIN item_file f ON f.rowid = (SELECT rowid FROM item_file WHERE ref_id = a.target_ref_id AND role = 'thumb' ORDER BY ordinal LIMIT 1)
-    WHERE a.ref_id = ?1 AND a.direction = ?2 ORDER BY a.ordinal LIMIT ?3";
+/// One file of an item by DATA role (first by ordinal), as `<p>_file`, `<p>_width`, `<p>_height`.
+fn file_cols(prefix: &str, alias: &str) -> String {
+    format!("{alias}.file_name AS {prefix}_file, {alias}.width AS {prefix}_width, {alias}.height AS {prefix}_height")
+}
+
+fn assoc_sql() -> &'static str {
+    static SQL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    SQL.get_or_init(|| {
+        let one = |role: &str, of: &str| format!("(SELECT rowid FROM item_file WHERE ref_id = {of} AND role = '{role}' ORDER BY ordinal LIMIT 1)");
+        // The picture an item shows at full size: its own `image`, else (audio sets, composites)
+        // the first child that has one.
+        let child_image = "(SELECT f2.rowid FROM item_child ch JOIN item_file f2 ON f2.ref_id = ch.child_ref_id AND f2.role = 'image'
+                             WHERE ch.ref_id = a.target_ref_id ORDER BY ch.ordinal, f2.ordinal LIMIT 1)";
+        format!(
+            "SELECT a.target_ref_id AS ref_id, a.grp AS \"group\", a.sec, a.sequence, a.appears, a.par,
+                    i.kind, i.media_type, i.title, i.title_html, i.caption_html, {}, {}, {}
+             FROM assoc a
+             LEFT JOIN item i ON i.ref_id = a.target_ref_id
+             LEFT JOIN item_file ft ON ft.rowid = {}
+             LEFT JOIN item_file fp ON fp.rowid = {}
+             LEFT JOIN item_file fi ON fi.rowid = COALESCE({}, {child_image})
+             WHERE a.ref_id = ?1 AND a.direction = ?2 ORDER BY a.ordinal LIMIT ?3",
+            file_cols("thumb", "ft"),
+            file_cols("picon", "fp"),
+            file_cols("image", "fi"),
+            one("thumb", "a.target_ref_id"),
+            one("picon", "a.target_ref_id"),
+            one("image", "a.target_ref_id"),
+        )
+    })
+}
+
+/// Moves `<p>_file`/`_width`/`_height` columns into a `FileRef` object `<p>` (null when absent).
+pub(crate) fn take_file_ref(o: &mut Map<String, Value>, p: &str) {
+    let file = o.remove(&format!("{p}_file")).and_then(|f| f.as_str().map(str::to_string));
+    let (w, h) = (o.remove(&format!("{p}_width")), o.remove(&format!("{p}_height")));
+    let v = file.map(|f| json!({ "file_name": f, "url": format!("/media/file/{f}"), "width": w, "height": h }));
+    o.insert(p.into(), v.unwrap_or(Value::Null));
+}
 
 fn assoc_items(c: &Connection, ref_id: i64, direction: &str, limit: i64) -> rusqlite::Result<Vec<Value>> {
-    let mut out = query_objects(c, ASSOC_SQL, params![ref_id, direction, limit])?;
+    let mut out = query_objects(c, assoc_sql(), params![ref_id, direction, limit])?;
     for v in &mut out {
         let o = v.as_object_mut().unwrap();
-        let thumb = o.remove("thumb_file").and_then(|f| f.as_str().map(str::to_string)).map(|f| {
-            json!({ "file_name": f, "url": format!("/media/file/{f}"),
-                    "width": o.remove("thumb_width"), "height": o.remove("thumb_height") })
-        });
-        o.remove("thumb_width");
-        o.remove("thumb_height");
-        o.insert("thumb".into(), thumb.unwrap_or(Value::Null));
+        for p in ["thumb", "picon", "image"] {
+            take_file_ref(o, p);
+        }
     }
     Ok(out)
 }
@@ -102,7 +131,23 @@ fn timeline_event(o: &Map<String, Value>) -> Value {
     m.insert("end".into(), date("end"));
     m.insert("categories".into(), json!(list("categories")));
     m.insert("regions".into(), json!(list("regions")));
+    if let Some(h) = o.get("has_article").and_then(|v| v.as_i64()) {
+        m.insert("has_article".into(), json!(h != 0));
+    }
+    if let Some(t) = o.get("text") {
+        m.insert("text".into(), t.clone());
+    }
     Value::Object(m)
+}
+
+/// `timeline_event` columns plus `has_article` (the event item has a body).
+const TIMELINE_COLS: &str = "t.*, EXISTS(SELECT 1 FROM article a WHERE a.ref_id = t.ref_id) AS has_article";
+
+/// Plain text of an event's body (its paragraphs joined), or None.
+fn event_text(c: &Connection, ref_id: i64) -> rusqlite::Result<Option<String>> {
+    let mut st = c.prepare_cached("SELECT text FROM paragraph WHERE ref_id = ?1 ORDER BY ordinal, para_id")?;
+    let parts: Vec<String> = st.query_map([ref_id], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+    Ok((!parts.is_empty()).then(|| parts.join("\n")))
 }
 
 #[derive(Deserialize, Default)]
@@ -151,7 +196,7 @@ pub async fn item(State(st): St, Path(id): Path<i64>, Query(q): Query<EditionQue
                     "html": r.get::<_, Option<String>>(2)? })))
                 .optional()?;
             o.insert("data_table".into(), table.unwrap_or(Value::Null));
-            let tl = c.prepare_cached("SELECT * FROM timeline_event WHERE ref_id = ?1 LIMIT 1")?.query_row([id], row_object).optional()?;
+            let tl = c.prepare_cached(&format!("SELECT {TIMELINE_COLS} FROM timeline_event t WHERE t.ref_id = ?1 LIMIT 1"))?.query_row([id], row_object).optional()?;
             o.insert("timeline".into(), tl.map(|t| timeline_event(&t)).unwrap_or(Value::Null));
             Ok(Value::Object(o))
         })
@@ -184,21 +229,22 @@ pub async fn article(State(st): St, Path(id): Path<i64>, Query(q): Query<Edition
             let row = c
                 .prepare_cached(
                     "SELECT a.source, a.source_file, a.paragraph_count, a.section_count, a.word_count,
-                            i.title, i.title_html, i.kind, i.in_deluxe, i.in_kids,
+                            i.title, i.title_html, i.kind, i.alt_title_html, i.in_deluxe, i.in_kids,
                             CASE WHEN ?2 THEN a.body_json END, CASE WHEN ?3 THEN a.html END, a.outline_json
                      FROM article a JOIN item i USING (ref_id) WHERE a.ref_id = ?1",
                 )?
                 .query_row(params![id, want_body, want_html], |r| {
                     let mut head = Map::new();
                     head.insert("ref_id".into(), json!(id));
-                    for (i, k) in ["source", "source_file", "paragraph_count", "section_count", "word_count", "title", "title_html", "kind"].iter().enumerate() {
+                    let cols = ["source", "source_file", "paragraph_count", "section_count", "word_count", "title", "title_html", "kind", "alt_title_html"];
+                    for (i, k) in cols.iter().enumerate() {
                         let v = crate::error::value(r.get_ref(i)?, false);
                         if !v.is_null() {
                             head.insert(k.to_string(), v);
                         }
                     }
-                    head.insert("editions".into(), json!(editions(r.get::<_, i64>(8)? != 0, r.get::<_, i64>(9)? != 0)));
-                    Ok((head, r.get::<_, Option<String>>(10)?, r.get::<_, Option<String>>(11)?, r.get::<_, Option<String>>(12)?))
+                    head.insert("editions".into(), json!(editions(r.get::<_, i64>(9)? != 0, r.get::<_, i64>(10)? != 0)));
+                    Ok((head, r.get::<_, Option<String>>(11)?, r.get::<_, Option<String>>(12)?, r.get::<_, Option<String>>(13)?))
                 })
                 .optional()?;
             let Some((head, body, html, outline)) = row else {
@@ -278,21 +324,54 @@ pub async fn quiz(State(st): St, Path(id): Path<i64>, Query(q): Query<EditionQue
     v.map(Json).ok_or_else(|| ApiError::not_found(format!("no quiz {id}")))
 }
 
+/// Files an `.iax` references (manifest `iax_ref`, media.md §2.7), with URLs: under the disc tree
+/// (`/media/disc/…`, so relative loads work) when the file is in `dswMedia/`, else by hash.
+fn iax_refs(c: &Connection, file_name: &str, edition: &str) -> rusqlite::Result<Vec<Value>> {
+    let Some(sha) = crate::media::resolve_sha(c, file_name, edition)? else { return Ok(Vec::new()) };
+    let mut refs = query_objects(
+        c,
+        "SELECT r.element, r.ref, r.resolution, r.member_path, r.sha256, f.kind FROM m.iax_ref r
+         LEFT JOIN m.file f ON f.rowid = (SELECT rowid FROM m.file WHERE sha256 = r.sha256 LIMIT 1)
+         WHERE r.iax_sha256 = ?1 ORDER BY r.element, r.ref",
+        [&sha],
+    )?;
+    for r in &mut refs {
+        let o = r.as_object_mut().unwrap();
+        let path = o.remove("member_path").and_then(|v| v.as_str().map(str::to_string));
+        let sha = o.get("sha256").and_then(|v| v.as_str()).map(str::to_string);
+        let url = match (path, sha) {
+            (Some(p), _) if p.to_ascii_lowercase().starts_with(crate::media::DiscTree::PREFIX) => Some(format!("/media/disc/{edition}/{p}")),
+            (_, Some(s)) => Some(format!("/media/{s}/original")),
+            _ => None,
+        };
+        o.insert("url".into(), json!(url));
+    }
+    Ok(refs)
+}
+
 pub async fn interactive(State(st): St, Path(name): Path<String>, Query(q): Query<EditionQuery>) -> ApiResult<Json<Value>> {
     let ed = q.edition.unwrap_or_else(|| "deluxe".into());
     let key = disc_name(&name);
+    let has_m = st.media_manifest;
     let v = content(&st)?
         .call(move |c| {
-            Ok(c.prepare_cached(
-                "SELECT file_name, edition, package, control_type, title, json FROM interactive WHERE lower(file_name) = ?1
-                 ORDER BY (edition = ?2) DESC LIMIT 1",
-            )?
-            .query_row(params![key, ed], |r| {
-                Ok(json!({ "file_name": r.get::<_, String>(0)?, "edition": r.get::<_, String>(1)?, "package": r.get::<_, Option<String>>(2)?,
-                    "control_type": r.get::<_, Option<String>>(3)?, "title": r.get::<_, Option<String>>(4)?,
-                    "definition": serde_json::from_str::<Value>(&r.get::<_, String>(5)?).unwrap_or(Value::Null) }))
-            })
-            .optional()?)
+            let row = c
+                .prepare_cached(
+                    "SELECT file_name, edition, package, control_type, title, json FROM interactive WHERE lower(file_name) = ?1
+                     ORDER BY (edition = ?2) DESC LIMIT 1",
+                )?
+                .query_row(params![key, ed], |r| {
+                    Ok(json!({ "file_name": r.get::<_, String>(0)?, "edition": r.get::<_, String>(1)?, "package": r.get::<_, Option<String>>(2)?,
+                        "control_type": r.get::<_, Option<String>>(3)?, "title": r.get::<_, Option<String>>(4)?,
+                        "definition": serde_json::from_str::<Value>(&r.get::<_, String>(5)?).unwrap_or(Value::Null) }))
+                })
+                .optional()?;
+            let Some(mut v) = row else { return Ok(None) };
+            if has_m {
+                let edition = v["edition"].as_str().unwrap_or("deluxe").to_string();
+                v["refs"] = json!(iax_refs(c, &key, &edition)?);
+            }
+            Ok(Some(v))
         })
         .await?;
     v.map(Json).ok_or_else(|| ApiError::not_found(format!("no interactive {name}")))
@@ -300,14 +379,28 @@ pub async fn interactive(State(st): St, Path(name): Path<String>, Query(q): Quer
 
 // ---------------------------------------------------------------- dictionary
 
-/// Every dictionary form, lower-cased and sorted, for exact and word-wheel lookups.
+/// Every dictionary form, lower-cased and sorted, for exact and prefix lookups; and the word wheel
+/// (headwords in the reader's order) for `around=`.
 pub struct DictIndex {
     names: Vec<(String, String)>, // (name, kind)
     forms: Vec<(String, u16, u64, u8)>,
     originals: Vec<String>,
+    /// Headwords sorted by [`wheel_key`]: (key, dictionary, ref, index into `originals`).
+    wheel: Vec<(String, u16, u64, u32)>,
 }
 
 const FORM_KINDS: [&str; 5] = ["headword", "inflection", "runon", "phrase", "variant"];
+
+/// Sort key of the word wheel: case and accents folded, hyphens and apostrophes ignored, other
+/// punctuation as spaces. The reference VM lists "pari-mutuel" after "parietal lobe" and
+/// before "paring".
+pub fn wheel_key(form: &str) -> String {
+    let joined: String = form.chars().filter(|c| !matches!(c, '-' | '\'' | '’' | '‘' | '.' | '‐' | '‑')).collect();
+    encarta_search::text::normalize(&joined)
+}
+
+/// One lookup result: (dictionary, kind, ref, form, form kind).
+type Match = (String, String, u64, String, &'static str);
 
 impl DictIndex {
     pub fn load(c: &Connection) -> rusqlite::Result<Self> {
@@ -324,10 +417,14 @@ impl DictIndex {
             let k = FORM_KINDS.iter().position(|x| *x == kind).unwrap_or(0) as u8;
             rows.push((form.to_lowercase(), d as u16, r.get::<_, i64>(2)? as u64, k, form));
         }
-        rows.sort_by(|a, b| a.0.cmp(&b.0).then(a.3.cmp(&b.3)).then(a.1.cmp(&b.1)));
+        rows.sort_by(|a, b| a.0.cmp(&b.0).then(a.3.cmp(&b.3)).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+        let mut wheel: Vec<(String, u16, u64, u32)> =
+            rows.iter().enumerate().filter(|(_, r)| r.3 == 0).map(|(i, r)| (wheel_key(&r.4), r.1, r.2, i as u32)).collect();
+        wheel.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| rows[a.3 as usize].4.cmp(&rows[b.3 as usize].4)).then(a.2.cmp(&b.2)));
+        wheel.dedup_by(|a, b| a.1 == b.1 && a.2 == b.2 && a.0 == b.0);
         let originals = rows.iter().map(|r| r.4.clone()).collect();
         let forms = rows.into_iter().map(|(l, d, r, k, _)| (l, d, r, k)).collect();
-        Ok(DictIndex { names, forms, originals })
+        Ok(DictIndex { names, forms, originals, wheel })
     }
 
     pub fn len(&self) -> usize {
@@ -338,8 +435,18 @@ impl DictIndex {
         self.forms.is_empty()
     }
 
-    /// Matches as (dictionary, kind, ref, form, form kind).
-    fn lookup(&self, q: &str, prefix: bool, dict: Option<&str>, kind: Option<&str>, limit: usize) -> Vec<(String, String, u64, String, &'static str)> {
+    fn wanted(&self, d: u16, dict: Option<&str>, kind: Option<&str>) -> bool {
+        let (name, dkind) = &self.names[d as usize];
+        dict.is_none_or(|x| x.eq_ignore_ascii_case(name)) && kind.is_none_or(|k| k == dkind)
+    }
+
+    fn matched(&self, d: u16, r: u64, form: usize, form_kind: u8) -> Match {
+        let (name, dkind) = &self.names[d as usize];
+        (name.clone(), dkind.clone(), r, self.originals[form].clone(), FORM_KINDS[form_kind as usize])
+    }
+
+    /// Exact (or prefix) matches of `q` among all forms.
+    fn lookup(&self, q: &str, prefix: bool, dict: Option<&str>, kind: Option<&str>, limit: usize) -> Vec<Match> {
         let q = q.trim().to_lowercase();
         if q.is_empty() {
             return Vec::new();
@@ -352,15 +459,24 @@ impl DictIndex {
             if !hit || out.len() >= limit {
                 break;
             }
-            let (name, dkind) = &self.names[f.1 as usize];
-            if dict.is_some_and(|d| !d.eq_ignore_ascii_case(name)) || kind.is_some_and(|k| k != dkind) {
-                continue;
-            }
-            if seen.insert((f.1, f.2)) {
-                out.push((name.clone(), dkind.clone(), f.2, self.originals[start + i].clone(), FORM_KINDS[f.3 as usize]));
+            if self.wanted(f.1, dict, kind) && seen.insert((f.1, f.2)) {
+                out.push(self.matched(f.1, f.2, start + i, f.3));
             }
         }
         out
+    }
+
+    /// The word wheel around `q`: up to `before` headwords that sort before it (in wheel order)
+    /// and up to `after` from its position on.
+    fn around(&self, q: &str, dict: Option<&str>, kind: Option<&str>, before: usize, after: usize) -> (Vec<Match>, Vec<Match>) {
+        let key = wheel_key(q);
+        let pos = self.wheel.partition_point(|w| w.0.as_str() < key.as_str());
+        let take = |w: &(String, u16, u64, u32)| self.matched(w.1, w.2, w.3 as usize, 0);
+        let mut prev: Vec<Match> =
+            self.wheel[..pos].iter().rev().filter(|w| self.wanted(w.1, dict, kind)).take(before).map(take).collect();
+        prev.reverse();
+        let next = self.wheel[pos..].iter().filter(|w| self.wanted(w.1, dict, kind)).take(after).map(take).collect();
+        (prev, next)
     }
 }
 
@@ -384,6 +500,19 @@ pub struct LookupQuery {
     pub kind: Option<String>,
     pub prefix: Option<String>,
     pub limit: Option<usize>,
+    pub around: Option<usize>,
+}
+
+fn lookup_entries(c: &Connection, hits: Vec<Match>) -> rusqlite::Result<Vec<Value>> {
+    let mut st = c.prepare_cached("SELECT headword, summary FROM dict_entry WHERE dictionary = ?1 AND ref_id = ?2")?;
+    let mut out = Vec::new();
+    for (dict, kind, ref_id, form, form_kind) in hits {
+        let (headword, summary): (Option<String>, Option<String>) =
+            st.query_row(params![dict, ref_id as i64], |r| Ok((r.get(0)?, r.get(1)?))).optional()?.unwrap_or((None, None));
+        out.push(json!({ "dictionary": dict, "kind": kind, "ref_id": ref_id, "headword": headword, "summary": summary,
+            "form": form, "form_kind": form_kind, "url": format!("/api/dictionary/{dict}/{ref_id}") }));
+    }
+    Ok(out)
 }
 
 pub async fn dict_lookup(State(st): St, Query(q): Query<LookupQuery>) -> ApiResult<Json<Value>> {
@@ -392,54 +521,62 @@ pub async fn dict_lookup(State(st): St, Query(q): Query<LookupQuery>) -> ApiResu
     };
     let query = q.q.clone().unwrap_or_default();
     let limit = q.limit.unwrap_or(50).clamp(1, 500);
-    let hits = idx.lookup(&query, truthy(&q.prefix).unwrap_or(false), q.dict.as_deref(), q.kind.as_deref(), limit);
-    let entries = content(&st)?
-        .call(move |c| {
-            let mut st = c.prepare_cached("SELECT headword, summary FROM dict_entry WHERE dictionary = ?1 AND ref_id = ?2")?;
-            let mut out = Vec::new();
-            for (dict, kind, ref_id, form, form_kind) in hits {
-                let (headword, summary): (Option<String>, Option<String>) =
-                    st.query_row(params![dict, ref_id as i64], |r| Ok((r.get(0)?, r.get(1)?))).optional()?.unwrap_or((None, None));
-                out.push(json!({ "dictionary": dict, "kind": kind, "ref_id": ref_id, "headword": headword, "summary": summary,
-                    "form": form, "form_kind": form_kind, "url": format!("/api/dictionary/{dict}/{ref_id}") }));
-            }
-            Ok(out)
-        })
+    let (dict, kind) = (q.dict.as_deref(), q.kind.as_deref());
+    let (before, hits) = match q.around {
+        Some(n) => {
+            let (b, a) = idx.around(&query, dict, kind, n.min(500), limit);
+            (Some(b), a)
+        }
+        None => (None, idx.lookup(&query, truthy(&q.prefix).unwrap_or(false), dict, kind, limit)),
+    };
+    let (before, entries) = content(&st)?
+        .call(move |c| Ok((before.map(|b| lookup_entries(c, b)).transpose()?, lookup_entries(c, hits)?)))
         .await?;
-    Ok(Json(json!({ "query": query, "entries": entries })))
+    let mut out = json!({ "query": query, "entries": entries });
+    if let Some(b) = before {
+        out["before"] = json!(b);
+    }
+    Ok(Json(out))
+}
+
+fn entry_json(c: &Connection, has_m: bool, dict: Option<&str>, id: i64) -> anyhow::Result<Value> {
+    let row = c
+        .prepare_cached(
+            "SELECT e.dictionary, d.kind, e.ref_id, e.headword, e.variety, e.summary, e.body_json, e.html
+             FROM dict_entry e LEFT JOIN dictionary d ON d.name = e.dictionary
+             WHERE (?1 IS NULL OR e.dictionary = ?1) AND e.ref_id = ?2 ORDER BY e.dictionary LIMIT 1",
+        )?
+        .query_row(params![dict.map(str::to_ascii_uppercase), id], row_object)
+        .optional()?;
+    let Some(mut o) = row else {
+        return Err(ApiError::not_found(match dict {
+            Some(d) => format!("no entry {d}/{id}"),
+            None => format!("no dictionary entry {id}"),
+        })
+        .into());
+    };
+    let name = o.get("dictionary").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    o.insert("forms".into(), json!(query_objects(c, "SELECT form, kind FROM dict_form WHERE dictionary = ?1 AND ref_id = ?2", params![name, id])?));
+    let mut audio = query_objects(c, "SELECT file_name, audio_ref_id FROM dict_audio WHERE dictionary = ?1 AND ref_id = ?2", params![name, id])?;
+    for a in &mut audio {
+        let o = a.as_object_mut().unwrap();
+        let f = o.get("file_name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        o.insert("url".into(), json!(format!("/media/file/{f}")));
+        o.insert("media".into(), json!(info_for_name(c, has_m, &f, "deluxe")?));
+    }
+    o.insert("audio".into(), json!(audio));
+    Ok(Value::Object(o))
 }
 
 pub async fn dict_entry(State(st): St, Path((dict, id)): Path<(String, i64)>) -> ApiResult<Json<Value>> {
     let has_m = st.media_manifest;
-    let v = content(&st)?
-        .call(move |c| {
-            let row = c
-                .prepare_cached(
-                    "SELECT e.dictionary, d.kind, e.ref_id, e.headword, e.variety, e.summary, e.body_json, e.html
-                     FROM dict_entry e LEFT JOIN dictionary d ON d.name = e.dictionary WHERE e.dictionary = ?1 AND e.ref_id = ?2",
-                )?
-                .query_row(params![dict.to_ascii_uppercase(), id], row_object)
-                .optional()?;
-            let Some(mut o) = row else {
-                return Err(ApiError::not_found(format!("no entry {dict}/{id}")).into());
-            };
-            let name = o.get("dictionary").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            o.insert(
-                "forms".into(),
-                json!(query_objects(c, "SELECT form, kind FROM dict_form WHERE dictionary = ?1 AND ref_id = ?2", params![name, id])?),
-            );
-            let mut audio = query_objects(c, "SELECT file_name, audio_ref_id FROM dict_audio WHERE dictionary = ?1 AND ref_id = ?2", params![name, id])?;
-            for a in &mut audio {
-                let o = a.as_object_mut().unwrap();
-                let f = o.get("file_name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                o.insert("url".into(), json!(format!("/media/file/{f}")));
-                o.insert("media".into(), json!(info_for_name(c, has_m, &f, "deluxe")?));
-            }
-            o.insert("audio".into(), json!(audio));
-            Ok(Value::Object(o))
-        })
-        .await?;
-    Ok(Json(v))
+    Ok(Json(content(&st)?.call(move |c| entry_json(c, has_m, Some(&dict), id)).await?))
+}
+
+/// `GET /api/dictionary/entry/{id}`: ref ids are unique across the dictionaries.
+pub async fn dict_entry_by_id(State(st): St, Path(id): Path<i64>) -> ApiResult<Json<Value>> {
+    let has_m = st.media_manifest;
+    Ok(Json(content(&st)?.call(move |c| entry_json(c, has_m, None, id)).await?))
 }
 
 // ---------------------------------------------------------------- timeline
@@ -470,6 +607,10 @@ pub struct TimelineQuery {
     pub max_importance: Option<i64>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    /// `date` (default) or `importance` (most important first, then by date).
+    pub order: Option<String>,
+    /// Include each event's body text.
+    pub text: Option<String>,
 }
 
 fn mask_of(c: &Connection, table: &str, spec: &Option<String>) -> ApiResult<i64> {
@@ -490,6 +631,12 @@ fn mask_of(c: &Connection, table: &str, spec: &Option<String>) -> ApiResult<i64>
 }
 
 pub async fn timeline(State(st): St, Query(q): Query<TimelineQuery>) -> ApiResult<Json<Value>> {
+    let order = match q.order.as_deref().unwrap_or("date") {
+        "date" => "start_year, start_month, start_day, seq",
+        "importance" => "importance DESC, start_year, start_month, start_day, seq",
+        o => return Err(ApiError::bad_request(format!("unknown order {o:?} (date, importance)"))),
+    };
+    let with_text = truthy(&q.text).unwrap_or(false);
     let v = content(&st)?
         .call(move |c| {
             let cat = mask_of(c, "timeline_category", &q.category)?;
@@ -503,10 +650,19 @@ pub async fn timeline(State(st): St, Query(q): Query<TimelineQuery>) -> ApiResul
             let limit = q.limit.unwrap_or(500).clamp(1, 20_000);
             let offset = q.offset.unwrap_or(0).max(0);
             let mut st = c.prepare_cached(&format!(
-                "SELECT * FROM timeline_event {filter} ORDER BY start_year, start_month, start_day, seq LIMIT ?8 OFFSET ?9"
+                "SELECT {TIMELINE_COLS} FROM timeline_event t {filter} ORDER BY {order} LIMIT ?8 OFFSET ?9"
             ))?;
             let rows = st.query_map(params![q.from, q.to, cat, reg, like, q.min_importance, q.max_importance, limit, offset], row_object)?;
-            let events: Vec<Value> = rows.map(|r| r.map(|o| timeline_event(&o))).collect::<rusqlite::Result<_>>()?;
+            let mut rows: Vec<Map<String, Value>> = rows.collect::<rusqlite::Result<_>>()?;
+            if with_text {
+                for o in &mut rows {
+                    if let Some(id) = o.get("ref_id").and_then(|v| v.as_i64())
+                        && let Some(t) = event_text(c, id)? {
+                            o.insert("text".into(), json!(t));
+                        }
+                }
+            }
+            let events: Vec<Value> = rows.iter().map(timeline_event).collect();
             Ok(json!({ "total": total, "offset": offset, "events": events }))
         })
         .await?;
@@ -687,7 +843,7 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Sen
     Ok(tokio::task::spawn_blocking(f).await.map_err(anyhow::Error::from)??)
 }
 
-pub async fn search(State(st): St, Query(q): Query<SearchQuery>) -> ApiResult<Json<encarta_search::SearchResponse>> {
+pub async fn search(State(st): St, Query(q): Query<SearchQuery>) -> ApiResult<Json<Value>> {
     let idx = search_index(&st)?;
     let req = SearchRequest {
         q: q.q.unwrap_or_default(),
@@ -697,7 +853,42 @@ pub async fn search(State(st): St, Query(q): Query<SearchQuery>) -> ApiResult<Js
         offset: q.offset.unwrap_or(0).min(10_000),
         snippets: truthy(&q.snippets).unwrap_or(true),
     };
-    Ok(Json(blocking(move || idx.search(&req)).await?))
+    let res = blocking(move || idx.search(&req)).await?;
+    let mut out = serde_json::to_value(&res).map_err(anyhow::Error::from)?;
+    // Hits get the item's media type and thumbnail from the content database (not in the index).
+    if let Some(db) = st.content.clone() {
+        let refs: Vec<i64> = res.hits.iter().filter(|h| h.dictionary.is_none()).map(|h| h.ref_id as i64).collect();
+        let extra = db
+            .call(move |c| {
+                let mut st = c.prepare_cached(&format!(
+                    "SELECT i.media_type, {} FROM item i
+                     LEFT JOIN item_file ft ON ft.rowid = (SELECT rowid FROM item_file WHERE ref_id = i.ref_id AND role = 'thumb' ORDER BY ordinal LIMIT 1)
+                     WHERE i.ref_id = ?1",
+                    file_cols("thumb", "ft")
+                ))?;
+                let mut m = std::collections::HashMap::new();
+                for id in refs {
+                    if let Some(o) = st.query_row([id], row_object).optional()? {
+                        m.insert(id, o);
+                    }
+                }
+                Ok(m)
+            })
+            .await?;
+        if let Some(hits) = out.get_mut("hits").and_then(|h| h.as_array_mut()) {
+            for h in hits {
+                let Some(id) = h.get("ref_id").and_then(|v| v.as_i64()) else { continue };
+                let Some(mut o) = extra.get(&id).cloned() else { continue };
+                take_file_ref(&mut o, "thumb");
+                let hm = h.as_object_mut().unwrap();
+                if let Some(t) = o.remove("media_type") {
+                    hm.insert("media_type".into(), t);
+                }
+                hm.insert("thumb".into(), o.remove("thumb").unwrap_or(Value::Null));
+            }
+        }
+    }
+    Ok(Json(out))
 }
 
 pub async fn suggest(State(st): St, Query(q): Query<SearchQuery>) -> ApiResult<Json<Value>> {

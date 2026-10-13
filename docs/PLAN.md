@@ -86,6 +86,9 @@ soundfont, wide-picture placement, word-wheel words before the typed one, Favori
 MapLibre globe and map: every raster look (terrain, satellite, night, moon, tectonic, climate,
 population), the vector map with Encarta styling and labels, place search, links between places and
 articles, statistics overlays, Geography Quiz.
+**Done** except the Geography Quiz (Step 7) ([atlas-client.md](atlas-client.md)): `<Atlas />` in `web/src/atlas/`.
+Open: a Miller flat projection, P/m from the VM (V4 suggests ~3,200, not 2,400), per-style interactive classes,
+highlight tint, cell seams in highlights.
 
 ## Step 6 — 3D virtual tours (full interactivity)
 three.js runtime: scene loading, first-person walking with collision and gravity, flickering lights,

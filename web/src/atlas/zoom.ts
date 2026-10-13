@@ -24,6 +24,20 @@ export function altitudeForZoom(zoom: number, pOverM = DEFAULT_P_OVER_M): number
   return (EARTH_CIRCUMFERENCE_KM * pOverM) / (TILE * FACTOR * 2 ** zoom);
 }
 
+/**
+ * The flat (Miller) view draws `P / (5·m·a)` pixels per km, half the globe's `P / (2.5·m·a)`
+ * (mad-styling.md §2.1), so the same altitude is one zoom level further out on the flat map.
+ */
+export const FLAT_ZOOM_OFFSET = -1;
+
+export function zoomForView(altitudeKm: number, flat: boolean, pOverM = DEFAULT_P_OVER_M): number {
+  return zoomForAltitude(altitudeKm, pOverM) + (flat ? FLAT_ZOOM_OFFSET : 0);
+}
+
+export function altitudeForView(zoom: number, flat: boolean, pOverM = DEFAULT_P_OVER_M): number {
+  return altitudeForZoom(zoom - (flat ? FLAT_ZOOM_OFFSET : 0), pOverM);
+}
+
 /** Encarta keeps `floor(altitude)` and compares that integer with its rule ranges (mad-styling.md §2.1). */
 export function encartaAltitude(zoom: number, pOverM = DEFAULT_P_OVER_M): number {
   return Math.floor(altitudeForZoom(zoom, pOverM));

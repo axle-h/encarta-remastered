@@ -79,7 +79,7 @@ export function buildStyle(raw: StyleSpecification, o: BuildOptions): StyleSpeci
     const at = before ? layers.findIndex((l) => l.id === before) : layers.length;
     layers.splice(at < 0 ? layers.length : at, 0, stat);
   }
-  layers.push(...hitLayers(raw));
+  layers.push(...hitLayers(raw, [...defaultVisibleClasses(raw)]));
   style.layers = layers;
   return style;
 }

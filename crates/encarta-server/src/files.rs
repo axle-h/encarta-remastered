@@ -288,6 +288,30 @@ pub async fn out_tours(State(st): State<Arc<AppState>>, UrlPath(rel): UrlPath<St
     serve_tree(&req, &st.out.join("tours"), &rel, DATA_CACHE).await.unwrap_or_else(|| StatusCode::NOT_FOUND.into_response())
 }
 
+/// Font files (`.ttf`, `.otf`, `.woff`, `.woff2`) directly in `dir`, sorted; empty when missing.
+pub fn font_files(dir: &Path) -> Vec<String> {
+    let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut v: Vec<String> = rd
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| matches!(ext(Path::new(n)).to_ascii_lowercase().as_str(), "ttf" | "otf" | "woff" | "woff2"))
+        .collect();
+    v.sort();
+    v
+}
+
+/// `/fonts/{name}`: a font of `out/fonts/` (the disc's MS Reference fonts, when a converter step
+/// copies them there; the web client names them first in its font stacks).
+pub async fn font(State(st): State<Arc<AppState>>, UrlPath(name): UrlPath<String>, req: Request) -> Response {
+    let req = Req::from(req);
+    if !st.fonts.iter().any(|f| f.eq_ignore_ascii_case(&name)) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let real = st.fonts.iter().find(|f| f.eq_ignore_ascii_case(&name)).cloned().unwrap_or(name);
+    serve_tree(&req, &st.out.join("fonts"), &real, DATA_CACHE).await.unwrap_or_else(|| StatusCode::NOT_FOUND.into_response())
+}
+
 /// `/assets/{*path}`: hashed build assets, cached forever.
 pub async fn assets(State(st): State<Arc<AppState>>, UrlPath(rel): UrlPath<String>, req: Request) -> Response {
     let req = Req::from(req);

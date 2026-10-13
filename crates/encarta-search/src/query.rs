@@ -11,7 +11,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use tantivy::collector::{Collector, Count, SegmentCollector, TopDocs};
 use tantivy::columnar::ColumnValues;
-use tantivy::query::{BooleanQuery, BoostQuery, ConstScoreQuery, Occur, PhraseQuery, Query, QueryParser, TermQuery, TermSetQuery};
+use tantivy::query::{
+    BooleanQuery, BoostQuery, ConstScoreQuery, Occur, PhrasePrefixQuery, PhraseQuery, Query, QueryParser, RegexQuery, TermQuery, TermSetQuery,
+};
 use tantivy::schema::{IndexRecordOption, Value};
 use tantivy::snippet::SnippetGenerator;
 use tantivy::tokenizer::TokenStream;
@@ -217,6 +219,46 @@ fn anchor_prefix(kind: &str) -> &'static str {
 /// Added to the text score when the whole query equals a title or whole-title alias.
 const EXACT_TITLE_SCORE: f32 = 30.0;
 
+/// Added when a title (or whole-title alias) starts with the query, its last word typed in part
+/// ("french rev" → "French Revolution").
+const PREFIX_TITLE_SCORE: f32 = 20.0;
+
+/// Most indexed terms a partly typed last word expands to, per field (the most frequent win).
+const PREFIX_EXPANSIONS: usize = 24;
+
+/// The query split for prefix matching: the words before the last, and the last word as typed
+/// (plain: lower-case, accent-folded, not stemmed) when it is to be read as a prefix.
+#[derive(Debug, PartialEq)]
+pub struct QuerySplit {
+    pub head: String,
+    pub last: String,
+    pub prefix: Option<String>,
+}
+
+/// The last word is a prefix unless the query ends with white space or a quote, or the word is a
+/// single character.
+pub fn split_query(q: &str) -> QuerySplit {
+    let t = q.trim_start();
+    let ends_open = !t.is_empty() && !t.ends_with(char::is_whitespace) && !t.ends_with('"');
+    let cut = t.trim_end().rfind(char::is_whitespace).map_or(0, |i| i + 1);
+    let (head, last) = t.trim_end().split_at(cut);
+    let plain = normalize(last);
+    let prefix = (ends_open && !last.contains(['"', ':', '*']) && plain.chars().count() >= 2 && !plain.contains(' ')).then_some(plain);
+    QuerySplit { head: head.trim().to_string(), last: last.to_string(), prefix }
+}
+
+/// Escapes ASCII punctuation for a tantivy regex.
+fn regex_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    for c in s.chars() {
+        if c.is_ascii_punctuation() {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
 fn const_q(q: Box<dyn Query>) -> Box<dyn Query> {
     Box::new(ConstScoreQuery::new(q, 0.0))
 }
@@ -278,17 +320,64 @@ impl SearchIndex {
         Some(Box::new(BoostQuery::new(Box::new(p), boost)))
     }
 
-    /// The text part of the item query (no filters).
-    fn item_text_query(&self, q: &str, conjunction: bool) -> Box<dyn Query> {
-        let f = &self.f;
-        let mut parser = QueryParser::for_index(&self.index, vec![f.title, f.aliases, f.headings, f.body]);
-        parser.set_field_boost(f.title, 4.0);
-        parser.set_field_boost(f.aliases, 2.5);
-        parser.set_field_boost(f.headings, 1.5);
+    /// The indexed terms of `field` that start with `prefix`, most frequent first (at most
+    /// [`PREFIX_EXPANSIONS`]).
+    fn expand_prefix(&self, searcher: &tantivy::Searcher, field: tantivy::schema::Field, prefix: &str) -> Vec<Term> {
+        let mut df: HashMap<Vec<u8>, u64> = HashMap::new();
+        for seg in searcher.segment_readers() {
+            let Ok(inv) = seg.inverted_index(field) else { continue };
+            let Ok(mut st) = inv.terms().range().ge(prefix.as_bytes()).into_stream() else { continue };
+            let mut scanned = 0;
+            while st.advance() && scanned < 20_000 {
+                if !st.key().starts_with(prefix.as_bytes()) {
+                    break;
+                }
+                scanned += 1;
+                *df.entry(st.key().to_vec()).or_default() += st.value().doc_freq as u64;
+            }
+        }
+        let mut v: Vec<(Vec<u8>, u64)> = df.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        v.truncate(PREFIX_EXPANSIONS);
+        v.into_iter().filter_map(|(k, _)| String::from_utf8(k).ok()).map(|t| Term::from_field_text(field, &t)).collect()
+    }
+
+    /// Words of `q` over `fields` (with boosts): every word must match in conjunction mode, any
+    /// word otherwise; a partly typed last word ([`split_query`]) also matches the indexed terms
+    /// it starts.
+    fn words_query(&self, searcher: &tantivy::Searcher, fields: &[(tantivy::schema::Field, f32)], q: &str, conjunction: bool) -> Box<dyn Query> {
+        let mut parser = QueryParser::for_index(&self.index, fields.iter().map(|f| f.0).collect());
+        for (f, b) in fields {
+            parser.set_field_boost(*f, *b);
+        }
         if conjunction {
             parser.set_conjunction_by_default();
         }
-        let (parsed, _errors) = parser.parse_query_lenient(q);
+        let split = split_query(q);
+        let Some(prefix) = split.prefix else {
+            return parser.parse_query_lenient(q).0;
+        };
+        let occur = if conjunction { Occur::Must } else { Occur::Should };
+        let mut clauses: Vec<(Occur, Box<dyn Query>)> = Vec::new();
+        if !split.head.is_empty() {
+            clauses.push((occur, parser.parse_query_lenient(&split.head).0));
+        }
+        let mut last: Vec<(Occur, Box<dyn Query>)> = vec![(Occur::Should, parser.parse_query_lenient(&split.last).0)];
+        for (f, b) in fields {
+            for t in self.expand_prefix(searcher, *f, &prefix) {
+                let tq = TermQuery::new(t, IndexRecordOption::WithFreqs);
+                last.push((Occur::Should, Box::new(BoostQuery::new(Box::new(tq), *b))));
+            }
+        }
+        clauses.push((occur, Box::new(BooleanQuery::new(last))));
+        Box::new(BooleanQuery::new(clauses))
+    }
+
+    /// The text part of the item query (no filters).
+    fn item_text_query(&self, searcher: &tantivy::Searcher, q: &str, conjunction: bool) -> Box<dyn Query> {
+        let f = &self.f;
+        let fields = [(f.title, 4.0), (f.aliases, 2.5), (f.headings, 1.5), (f.body, 1.0)];
+        let parsed = self.words_query(searcher, &fields, q, conjunction);
         let mut clauses: Vec<(Occur, Box<dyn Query>)> = vec![(Occur::Must, parsed)];
         let key = normalize(q);
         if !key.is_empty() {
@@ -296,7 +385,19 @@ impl SearchIndex {
             // A constant: BM25 on this multi-valued key field would punish items with many aliases.
             clauses.push((Occur::Should, Box::new(ConstScoreQuery::new(Box::new(exact), EXACT_TITLE_SCORE))));
         }
-        if let Some(p) = self.phrase(f.title, q, 0, 4.0) {
+        let split = split_query(q);
+        if split.prefix.is_some() && !key.is_empty() {
+            if let Ok(starts) = RegexQuery::from_pattern(&format!("{}.+", regex_escape(&key)), f.title_key) {
+                clauses.push((Occur::Should, Box::new(ConstScoreQuery::new(Box::new(starts), PREFIX_TITLE_SCORE))));
+            }
+            let mut terms = self.terms(f.title, &split.head);
+            if !terms.is_empty() {
+                terms.push(Term::from_field_text(f.title, split.prefix.as_deref().unwrap_or("")));
+                let mut pp = PhrasePrefixQuery::new(terms);
+                pp.set_max_expansions(PREFIX_EXPANSIONS as u32);
+                clauses.push((Occur::Should, Box::new(BoostQuery::new(Box::new(pp), 4.0))));
+            }
+        } else if let Some(p) = self.phrase(f.title, q, 0, 4.0) {
             clauses.push((Occur::Should, p));
         }
         if let Some(p) = self.phrase(f.body, q, 1, 1.5) {
@@ -346,7 +447,7 @@ impl SearchIndex {
         let mut mode = "all";
         let mut result = None;
         for conjunction in [true, false] {
-            let text = self.item_text_query(q, conjunction);
+            let text = self.item_text_query(&searcher, q, conjunction);
             let mut unfiltered = vec![self.doc_type(DOC_ITEM), (Occur::Must, text.box_clone())];
             let facet_query = BooleanQuery::new(std::mem::take(&mut unfiltered));
             let facets = searcher.search(&facet_query, &FacetCounter)?;
@@ -423,9 +524,7 @@ impl SearchIndex {
         hits: &mut [Hit],
     ) -> Result<()> {
         let f = &self.f;
-        let mut parser = QueryParser::for_index(&self.index, vec![f.para_text]);
-        parser.set_field_boost(f.para_text, 1.0);
-        let (para_text, _) = parser.parse_query_lenient(q);
+        let para_text = self.words_query(searcher, &[(f.para_text, 1.0)], q, false);
         let mut text_clauses: Vec<(Occur, Box<dyn Query>)> = vec![(Occur::Must, para_text)];
         if let Some(p) = self.phrase(f.para_text, q, 1, 2.0) {
             text_clauses.push((Occur::Should, p));
@@ -442,16 +541,23 @@ impl SearchIndex {
             ]);
             searcher.search(&pq, &BestPerRef)?
         };
-        // Hits whose title is exactly the query get their opening text, not a deep link.
+        // Hits whose title is the query (or starts with it, the last word typed in part) get
+        // their opening text, not a deep link.
         let key = normalize(q);
         let all_refs: Vec<Term> = hits.iter().map(|h| Term::from_field_u64(f.ref_id, h.ref_id)).collect();
         let exact: std::collections::HashSet<u64> = if key.is_empty() {
             Default::default()
         } else {
+            let mut title: Vec<(Occur, Box<dyn Query>)> =
+                vec![(Occur::Should, Box::new(TermQuery::new(Term::from_field_text(f.title_key, &key), IndexRecordOption::Basic)))];
+            if split_query(q).prefix.is_some()
+                && let Ok(starts) = RegexQuery::from_pattern(&format!("{}.+", regex_escape(&key)), f.title_key) {
+                    title.push((Occur::Should, Box::new(starts)));
+                }
             let eq = BooleanQuery::new(vec![
                 self.doc_type(DOC_ITEM),
                 (Occur::Must, const_q(Box::new(TermSetQuery::new(all_refs)))),
-                (Occur::Must, Box::new(TermQuery::new(Term::from_field_text(f.title_key, &key), IndexRecordOption::Basic))),
+                (Occur::Must, Box::new(BooleanQuery::new(title))),
             ]);
             searcher.search(&eq, &BestPerRef)?.into_keys().collect()
         };
@@ -489,7 +595,7 @@ impl SearchIndex {
     /// Score explanation of the item document `ref_id` for query `q` (debugging aid).
     pub fn explain(&self, q: &str, ref_id: u64) -> Result<String> {
         let searcher = self.reader.searcher();
-        let query = BooleanQuery::new(vec![self.doc_type(DOC_ITEM), (Occur::Must, self.item_text_query(q, true))]);
+        let query = BooleanQuery::new(vec![self.doc_type(DOC_ITEM), (Occur::Must, self.item_text_query(&searcher, q, true))]);
         let find = BooleanQuery::new(vec![
             self.doc_type(DOC_ITEM),
             (Occur::Must, Box::new(TermQuery::new(Term::from_field_u64(self.f.ref_id, ref_id), IndexRecordOption::Basic))),
@@ -532,4 +638,24 @@ fn top_collector(limit: usize, offset: usize) -> impl Collector<Fruit = Vec<(Sco
             None => score,
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn splits_the_last_word_as_a_prefix() {
+        assert_eq!(
+            split_query("French Rev"),
+            QuerySplit { head: "French".into(), last: "Rev".into(), prefix: Some("rev".into()) }
+        );
+        assert_eq!(split_query("zébr").prefix.as_deref(), Some("zebr"));
+        // A finished word (trailing space), a quoted phrase or a single letter stays a word.
+        assert_eq!(split_query("french rev ").prefix, None);
+        assert_eq!(split_query("\"french rev\"").prefix, None);
+        assert_eq!(split_query("french r").prefix, None);
+        assert_eq!(split_query("").prefix, None);
+        assert_eq!(regex_escape("a.b c"), "a\\.b c");
+    }
 }

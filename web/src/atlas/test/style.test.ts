@@ -14,7 +14,7 @@ describe("buildStyle", () => {
     expect(s.glyphs).toBe("http://h/out/atlas/glyphs/{fontstack}/{range}.pbf");
     const ids = s.layers.map((l) => l.id);
     expect(ids.indexOf("encarta-stat-fill")).toBe(ids.indexOf("line-lines-6") - 1);
-    expect(ids.at(-1)).toBe("encarta-hit-lines-earth-detail");
+    expect(ids.at(-1)).toBe("encarta-hit-areas-earth-detail");
     expect(get(s, "encarta-stat-fill").layout.visibility).toBe("none");
   });
   it("applies label size and no-labels", () => {

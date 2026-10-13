@@ -73,22 +73,38 @@ export function vectorSources(style: StyleSpecification): string[] {
     .map(([id]) => id);
 }
 
-const NAMED: FilterSpecification = [
-  "all",
-  ["has", "name"],
-  ["!=", ["get", "name"], ""],
-  ["!", ["to-boolean", ["coalesce", ["get", "anonymous"], false]]],
-  // Membership areas (one per organisation, covering its member states) are not places; Encarta's
-  // click menu does not list them (V11).
-  ["!=", ["get", "class_name"], "International organization"],
-];
+/** Five-letter prefixes of thematic area classes that cover the world (languages, religions, climate …). */
+export const THEME_PREFIXES = ["LANG ", "REL -", "CLI -", "ECO -", "Ecore", "TECT ", "Time ", "Dayli", "World"];
+
+function namedFilter(drawn: readonly number[]): FilterSpecification {
+  return [
+    "all",
+    ["has", "name"],
+    ["!=", ["get", "name"], ""],
+    ["!", ["to-boolean", ["coalesce", ["get", "anonymous"], false]]],
+    // Membership areas (one per organisation, covering its member states) are not places; Encarta's
+    // click menu does not list them (V11).
+    ["!=", ["get", "class_name"], "International organization"],
+    // World-wide thematic areas only where the style draws them: elsewhere they are not in Encarta's
+    // menu, and at low zooms their huge polygons made the invisible layer freeze the page.
+    [
+      "any",
+      ["!", ["in", ["slice", ["coalesce", ["get", "class_name"], ""], 0, 5], ["literal", THEME_PREFIXES]]],
+      ["in", ["get", "class"], ["literal", [...drawn]]],
+    ],
+  ] as FilterSpecification;
+}
 
 /**
- * Invisible layers for hit-testing: every named feature of the `areas` and `lines` layers, so a click
- * can list everything under the cursor, as Encarta's pop-up menu does (V11 shot), including label-only
- * areas that no layer draws (regions, basins). MapLibre queries layers by geometry, not by opacity.
+ * Invisible layers for hit-testing: the named features of the `areas` layer, so a click can list
+ * everything under the cursor, as Encarta's pop-up menu does (V11 shot), including label-only areas
+ * that no layer draws (regions, basins). MapLibre queries layers by geometry, not by opacity. Lines
+ * are hit-tested on their drawn layers only: an invisible 7-px line layer over every named line
+ * stalled the page at world zooms.
+ * `drawn` = class rows the style shows by default.
  */
-export function hitLayers(style: StyleSpecification): LayerSpecification[] {
+export function hitLayers(style: StyleSpecification, drawn: readonly number[] = []): LayerSpecification[] {
+  const filter = namedFilter(drawn);
   const out: LayerSpecification[] = [];
   for (const source of vectorSources(style)) {
     out.push({
@@ -96,16 +112,8 @@ export function hitLayers(style: StyleSpecification): LayerSpecification[] {
       type: "fill",
       source,
       "source-layer": "areas",
-      filter: NAMED,
+      filter,
       paint: { "fill-opacity": 0, "fill-color": "#000" },
-    });
-    out.push({
-      id: `${HIT_PREFIX}lines-${source}`,
-      type: "line",
-      source,
-      "source-layer": "lines",
-      filter: NAMED,
-      paint: { "line-opacity": 0, "line-width": 7 },
     });
   }
   return out;

@@ -42,3 +42,11 @@ describe("msencarta:// map URLs", () => {
     expect(parseMsEncartaUrl("https://example.org")).toBeNull();
   });
 });
+
+describe("flat view scale (mad-styling.md §2.1: half the globe's pixels per km)", () => {
+  it("is one zoom level further out at the same altitude", async () => {
+    const { zoomForView, altitudeForView } = await import("../zoom");
+    expect(zoomForView(3000, true)).toBeCloseTo(zoomForView(3000, false) - 1, 9);
+    expect(altitudeForView(zoomForView(1234, true), true)).toBeCloseTo(1234, 6);
+  });
+});

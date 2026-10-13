@@ -35,7 +35,7 @@ import { HIT_PREFIX, vectorSources, type ClassOverrides } from "./layers";
 import { LOOK_PROTOCOL, bakedLooks, createLookProtocol } from "./recolour";
 import { colourValues, DEFAULT_RAMP, statRamp } from "./stats";
 import { buildStyle, defaultVisibleClasses, styleMeta, type Projection, type StyleMeta } from "./style";
-import { altitudeForZoom, formatAltitude, maxZoomAt, parseMsEncartaUrl, zoomForAltitude, DEFAULT_P_OVER_M } from "./zoom";
+import { altitudeForView, altitudeForZoom, formatAltitude, maxZoomAt, parseMsEncartaUrl, zoomForView, DEFAULT_P_OVER_M, FLAT_ZOOM_OFFSET } from "./zoom";
 import { LocatorGlobe } from "./ui/LocatorGlobe";
 import { CustomizerPanel, LegendPanel, Panel } from "./ui/Panels";
 import { PlaceMenu } from "./ui/PlaceMenu";
@@ -270,7 +270,8 @@ export function Atlas({
     const m = live.current.meta;
     if (!map || !m) return;
     const c = map.getCenter();
-    map.setMinZoom(m.minzoom);
+    // The flat map shows the style's top altitude one zoom further out (FLAT_ZOOM_OFFSET).
+    map.setMinZoom(Math.max(0, m.minzoom + (live.current.projection === "flat" ? FLAT_ZOOM_OFFSET : 0)));
     map.setMaxZoom(maxZoomAt(c.lng, c.lat, m.maxzoom, m.minRects));
   }, []);
 
@@ -278,7 +279,7 @@ export function Atlas({
     const map = mapRef.current;
     const s = map?.getStyle();
     if (!map || !s) return [];
-    const ids = s.layers.filter((l) => l.id.startsWith(HIT_PREFIX) || l.type === "symbol").map((l) => l.id);
+    const ids = s.layers.filter((l) => l.id.startsWith(HIT_PREFIX) || l.type === "symbol" || l.type === "line").map((l) => l.id);
     return map.queryRenderedFeatures(
       [
         [point.x - pad, point.y - pad],
@@ -300,7 +301,7 @@ export function Atlas({
     if (!map) return;
     const c = map.project(map.getCenter());
     const hits = rankHits(hitsAt(c, 1));
-    const alt = altitudeForZoom(map.getZoom(), live.current.pOverM);
+    const alt = altitudeForView(map.getZoom(), live.current.projection === "flat", live.current.pOverM);
     const t = viewTitle(hits, alt, live.current.body);
     setTitle((prev) => (prev.title === t.title && prev.subtitle === t.subtitle && prev.entity === t.entity ? prev : t));
     const e = live.current.entry;
@@ -324,13 +325,13 @@ export function Atlas({
     registerProtocols();
     let map = mapRef.current;
     if (!map) {
-      const z = initial.altitudeKm ? zoomForAltitude(initial.altitudeKm, pOverM) : 2;
+      const z = initial.altitudeKm ? zoomForView(initial.altitudeKm, projection === "flat", pOverM) : 2;
       map = new maplibregl.Map({
         container: container.current,
         style: built,
         center: [initial.lon ?? 10, initial.lat ?? 30],
-        zoom: Math.min(Math.max(z, meta.minzoom), meta.maxzoom),
-        minZoom: meta.minzoom,
+        zoom: Math.min(Math.max(z, meta.minzoom + (projection === "flat" ? FLAT_ZOOM_OFFSET : 0)), meta.maxzoom),
+        minZoom: 0,
         maxZoom: 22,
         transformRequest: makeTransformRequest(ep),
         attributionControl: false,
@@ -396,7 +397,7 @@ export function Atlas({
         const c = map.getCenter();
         setZoom(map.getZoom());
         setCenter({ lat: c.lat, lon: c.lng });
-        const alt = altitudeForZoom(map.getZoom(), live.current.pOverM);
+        const alt = altitudeForView(map.getZoom(), live.current.projection === "flat", live.current.pOverM);
         if (alt >= 14000) setOutline(null);
         else {
           const { clientWidth: w, clientHeight: h } = map.getContainer();
@@ -493,10 +494,17 @@ export function Atlas({
     };
   }, [units, mapReady]);
 
-  // Globe ↔ flat without reloading the style.
+  // Globe ↔ flat without reloading the style, keeping the altitude (so the flat map zooms out by one).
+  const lastProjection = useRef(projection);
   useEffect(() => {
-    if (mapReady && styleReady(mapReady)) mapReady.setProjection({ type: projection === "globe" ? "globe" : "mercator" });
-  }, [projection, mapReady]);
+    const map = mapReady;
+    if (!map || lastProjection.current === projection) return;
+    lastProjection.current = projection;
+    live.current.projection = projection;
+    if (styleReady(map)) map.setProjection({ type: projection === "globe" ? "globe" : "mercator" });
+    updateZoomLimits();
+    map.jumpTo({ zoom: map.getZoom() + (projection === "flat" ? FLAT_ZOOM_OFFSET : -FLAT_ZOOM_OFFSET) });
+  }, [projection, mapReady, updateZoomLimits]);
 
   // Statistics → feature-state.
   useEffect(() => {
@@ -520,24 +528,27 @@ export function Atlas({
   useEffect(() => {
     const map = mapReady;
     if (!map || panel !== "legend") return;
+    // querySourceFeatures (features of the loaded tiles) instead of a whole-view queryRenderedFeatures,
+    // which takes seconds over large fills on the globe.
     const collect = () => {
-      const ids = map
-        .getStyle()
-        .layers.filter((l) => l.type !== "background" && l.type !== "raster" && !l.id.startsWith(HIT_PREFIX))
-        .map((l) => l.id);
       const out = new Set<number>();
-      for (const f of map.queryRenderedFeatures({ layers: ids })) {
-        const c = f.properties?.class;
-        if (typeof c === "number") out.add(c);
+      for (const source of sourcesOf(live.current.raw)) {
+        if (!map.getSource(source)) continue;
+        for (const sourceLayer of ENTITY_LAYERS) {
+          for (const f of map.querySourceFeatures(source, { sourceLayer })) {
+            const c = f.properties?.class;
+            if (typeof c === "number") out.add(c);
+          }
+        }
       }
-      setInView(out);
+      setInView((prev) => (prev && prev.size === out.size && [...out].every((c) => prev.has(c)) ? prev : out));
     };
     collect();
     map.on("idle", collect);
     return () => {
       map.off("idle", collect);
     };
-  }, [mapReady, panel]);
+  }, [mapReady, panel, sourcesOf]);
 
   // The title place's article ("Read Article").
   useEffect(() => {
@@ -577,7 +588,7 @@ export function Atlas({
         );
         return;
       }
-      const z = zoomForAltitude(altitudeKm || 200, live.current.pOverM);
+      const z = zoomForView(altitudeKm || 200, live.current.projection === "flat", live.current.pOverM);
       map.setMaxZoom(maxz);
       map.flyTo({ center: [lon, lat], zoom: Math.min(Math.max(z, m.minzoom), maxz), duration: 1400, essential: true });
     },
@@ -625,7 +636,7 @@ export function Atlas({
       setSelected(h.entity);
       getPlace(h.entity, ep)
         .then((d) => goToPlace(d.place))
-        .catch(() => menu && flyTo(menu.lngLat[1], menu.lngLat[0], altitudeForZoom(zoom + 1, pOverM)));
+        .catch(() => menu && flyTo(menu.lngLat[1], menu.lngLat[0], altitudeForView(zoom + 1, projection === "flat", pOverM)));
     },
     [ep, goToPlace, flyTo, menu, zoom, pOverM],
   );
@@ -667,7 +678,7 @@ export function Atlas({
   // --- render -----------------------------------------------------------------------------
   const maxz = meta ? maxZoomAt(center.lon, center.lat, meta.maxzoom, meta.minRects) : 9;
   const minz = meta?.minzoom ?? 0;
-  const altitude = altitudeForZoom(zoom, pOverM);
+  const altitude = altitudeForView(zoom, projection === "flat", pOverM);
   const lookOf = meta?.raster && palettes ? palettes[meta.raster.toUpperCase()] : undefined;
   const lookName = lookOverride ?? meta?.look;
 

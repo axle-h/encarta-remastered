@@ -1,4 +1,4 @@
-import { createReadStream, statSync } from "node:fs";
+import { createReadStream, readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, resolve, sep } from "node:path";
 import react from "@vitejs/plugin-react";
 import type { Plugin, ProxyOptions } from "vite";
@@ -74,13 +74,41 @@ function spaRoutes(): Plugin {
   };
 }
 
+/**
+ * Ruffle (Flash emulator for the `.iax` interactives) is self-hosted from the pinned npm package:
+ * its loader fetches the wasm core next to `ruffle.js`, so the package's files are served under
+ * `/ruffle/` (dev) and copied to `dist/ruffle/` (build) unchanged, licences included.
+ */
+const ruffleDir = resolve(__dirname, "node_modules/@ruffle-rs/ruffle");
+const ruffleFiles = () => readdirSync(ruffleDir).filter((f) => !f.endsWith(".map") && f !== "package.json" && f !== "README.md");
+const ruffleMime: Record<string, string> = { ".js": "text/javascript", ".wasm": "application/wasm" };
+
+function ruffle(): Plugin {
+  return {
+    name: "encarta-ruffle",
+    configureServer(devServer) {
+      devServer.middlewares.use("/ruffle", (req, res, next) => {
+        const name = decodeURIComponent((req.url ?? "/").split("?")[0] ?? "/").replace(/^\//, "");
+        if (!ruffleFiles().includes(name)) return next();
+        const file = resolve(ruffleDir, name);
+        res.setHeader("Content-Type", ruffleMime[extname(file)] ?? "text/plain; charset=utf-8");
+        res.setHeader("Content-Length", String(statSync(file).size));
+        createReadStream(file).pipe(res);
+      });
+    },
+    generateBundle() {
+      for (const f of ruffleFiles()) this.emitFile({ type: "asset", fileName: `ruffle/${f}`, source: readFileSync(resolve(ruffleDir, f)) });
+    },
+  };
+}
+
 const proxied: Record<string, ProxyOptions> = {};
 for (const path of ["/api", "/media", "/healthz", ...(serveOutLocally ? [] : ["/out"])]) {
   proxied[path] = { target: server, changeOrigin: false };
 }
 
 export default defineConfig({
-  plugins: [react(), spaRoutes(), serveOut()],
+  plugins: [react(), spaRoutes(), serveOut(), ruffle()],
   server: { port: 5173, strictPort: false, proxy: proxied },
   preview: { proxy: proxied },
   build: {

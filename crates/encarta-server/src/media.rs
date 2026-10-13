@@ -367,3 +367,68 @@ pub async fn by_hash(State(st): State<Arc<AppState>>, UrlPath((sha, variant)): U
     let mime = mime_for_ext(ext_of(&path)).unwrap_or("application/octet-stream");
     serve_path(req, st.out.join("media").join(&path), mime, Some(format!("\"{sha}-{variant}\"")), false).await
 }
+
+/// The disc's `dswMedia/` folders by path (Flash interactives load their player, skins and media
+/// by relative URL): lower-case member path → sha256, per edition (Kids containers are `EE/KIDS/…`).
+pub struct DiscTree {
+    paths: HashMap<(bool, String), String>,
+}
+
+impl DiscTree {
+    pub const PREFIX: &'static str = "dswmedia/";
+
+    pub fn load(manifest_uri: &str) -> rusqlite::Result<Self> {
+        let c = Connection::open_with_flags(manifest_uri, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI)?;
+        let mut st = c.prepare("SELECT container, member_path, sha256 FROM file WHERE member_path LIKE 'dswMedia/%'")?;
+        let mut paths = HashMap::new();
+        let mut rows = st.query([])?;
+        while let Some(r) = rows.next()? {
+            let container: String = r.get(0)?;
+            let path: String = r.get(1)?;
+            paths.entry((container.starts_with("EE/KIDS/"), path.to_ascii_lowercase())).or_insert(r.get(2)?);
+        }
+        Ok(DiscTree { paths })
+    }
+
+    pub fn len(&self) -> usize {
+        self.paths.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.paths.is_empty()
+    }
+
+    /// sha256 of `dswMedia/…` (any case), preferring the edition's copy.
+    pub fn find(&self, path: &str, kids: bool) -> Option<&str> {
+        let p = path.trim_start_matches('/').replace('\\', "/").to_ascii_lowercase();
+        [kids, !kids].into_iter().find_map(|k| self.paths.get(&(k, p.clone()))).map(String::as_str)
+    }
+}
+
+/// `GET /media/disc/{edition}/{*path}`: a file of the disc's `dswMedia/` tree by path, so that a
+/// Flash player loads its siblings with relative URLs. An `.iax` that is not in the tree (they
+/// live in `baggage/`) is resolved by name.
+pub async fn disc(State(st): State<Arc<AppState>>, UrlPath((edition, path)): UrlPath<(String, String)>, req: Request) -> ApiResult<Response> {
+    let (Some(db), Some(tree)) = (&st.media, st.disc_tree.clone()) else {
+        return Err(ApiError::not_found("no media manifest"));
+    };
+    let kids = edition == "kids";
+    let sha = tree.find(&path, kids).map(str::to_string);
+    let name = disc_name(&path);
+    let ed = if kids { "kids" } else { "deluxe" }.to_string();
+    let row = db
+        .call(move |c| {
+            let sha = match sha {
+                Some(s) => Some(s),
+                None if name.ends_with(".iax") => resolve_sha(c, &name, &ed)?,
+                None => None,
+            };
+            let Some(sha) = sha else { return Ok(None) };
+            Ok(media_info(c, &sha)?.and_then(|i| i.variants.get("original").map(|v| (i.sha256.clone(), v.path.clone(), v.mime))))
+        })
+        .await?;
+    let Some((sha, p, mime)) = row else {
+        return Err(ApiError::not_found(format!("no disc file {path}")));
+    };
+    serve_path(req, st.out.join("media").join(p), mime, Some(format!("\"{sha}-original\"")), false).await
+}
