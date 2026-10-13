@@ -7,7 +7,7 @@ import { Html } from "../components/Html";
 import { useDocumentTitle } from "../components/useDocumentTitle";
 import { itemHref } from "../content/links";
 import { MediaStage } from "../media/MediaViewer";
-import { mediaClass, tourIdFor } from "../media/pick";
+import { mediaClass, tourIdFor, uniqueByRef } from "../media/pick";
 import { KidsArticle } from "../kids/KidsArticle";
 import { BrowseContent } from "./BrowsePage";
 import { formatEventDate } from "./timelineDates";
@@ -65,8 +65,8 @@ function ItemView({ item, kids }: { item: Item; kids: boolean }) {
         <div className="itempage-appears">
           <h2>Appears in</h2>
           <ul>
-            {item.appears_in!.slice(0, 50).map((a) => (
-              <li key={`${a.ref_id}-${a.group}`}>
+            {uniqueByRef(item.appears_in!).slice(0, 60).map((a) => (
+              <li key={a.ref_id}>
                 <Link to={itemHref(a.ref_id, null, kids)}>{a.title ?? a.ref_id}</Link>
               </li>
             ))}

@@ -23,7 +23,7 @@ export function appUrlHref(url: string): string | null {
   }
   const id = parts.get("id") ?? parts.get("refid");
   const view = (parts.get("view") ?? "").toLowerCase();
-  if (view.includes("map") || view.includes("atlas")) return "/atlas";
+  if (view.includes("map") || view.includes("atlas")) return `/atlas?url=${encodeURIComponent(url)}`;
   if (id && /^\d+$/.test(id)) return `/item/${id}`;
   return null;
 }

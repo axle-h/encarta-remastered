@@ -821,3 +821,44 @@
     max-width: 320px;
   }
 }
+
+/* MIDI player */
+.enc-midi-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.enc-midi-bar input[type="range"] {
+  flex: 1;
+  min-width: 40px;
+  accent-color: var(--orange);
+}
+
+.enc-midi-play {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #b8560a;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 30%, #ffc46e, var(--orange) 60%, #c95c00);
+  color: #fff;
+  cursor: pointer;
+}
+
+.enc-midi-stop {
+  width: 9px;
+  height: 9px;
+  background: #fff;
+}
+
+.enc-midi-time {
+  flex: none;
+  font: 11px var(--sans);
+  color: var(--muted);
+}

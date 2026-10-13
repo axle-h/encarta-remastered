@@ -61,7 +61,9 @@ export function placeEvents(
   const placed: Placed[] = [];
   const hidden: TimelineEvent[] = [];
   for (const ev of order) {
-    const x = ((ev.start.year - from) / span) * width;
+    // Labels stay inside the band: events that began before the window start at its left edge,
+    // and labels near the right edge are pulled in.
+    const x = Math.max(0, Math.min(width - labelWidth, ((ev.start.year - from) / span) * width));
     const a = x;
     const b = x + labelWidth;
     let lane = -1;

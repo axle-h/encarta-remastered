@@ -6,7 +6,7 @@ import { useApi } from "../api/useApi";
 import { Html } from "../components/Html";
 import { Icon } from "../components/Icons";
 import { ArticleInline } from "../article/ArticleInline";
-import { fileUrl, galleryImage, largeImage, mediaClass, tourIdFor } from "./pick";
+import { fileUrl, galleryImage, largeImage, mediaClass, tourIdFor, uniqueByRef } from "./pick";
 import { AudioPlayer, VideoPlayer } from "./Players";
 import { itemHref } from "../content/links";
 
@@ -150,7 +150,7 @@ function MediaViewer({
 }
 
 function AppearsIn({ item, kids }: { item: Item; kids: boolean }) {
-  const articles = (item.appears_in ?? []).filter((a) => a.kind === "article" || a.group === "article");
+  const articles = uniqueByRef((item.appears_in ?? []).filter((a) => a.kind === "article"));
   if (articles.length === 0) return null;
   return (
     <p className="mv-appears">
@@ -173,7 +173,7 @@ export function MediaStage({ item, kids }: { item: Item; kids: boolean }) {
     case "video":
       return <VideoPlayer item={item} autoPlay />;
     case "audio": {
-      const pic = galleryImage(item);
+      const pic = item.kind === "audio-set" ? undefined : galleryImage(item);
       return (
         <div className="mv-audio">
           {pic && <img src={fileUrl(pic)} alt="" />}

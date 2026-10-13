@@ -73,8 +73,8 @@
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: safe center;
+  justify-content: safe center;
   padding: 16px;
   overflow: auto;
   max-height: 62vh;
@@ -136,6 +136,14 @@
   max-width: 100%;
   max-height: 40vh;
   height: auto;
+}
+
+.enc-audio-pic {
+  display: block;
+  max-width: 100%;
+  max-height: 40vh;
+  height: auto;
+  margin: 0 auto 10px;
 }
 
 .mv-audio .enc-audio,
@@ -767,6 +775,7 @@
   content: ".";
 }
 
+.dict-html .enc-d-syntax-coding,
 .dict-html .enc-d-subject-area,
 .dict-html .enc-d-style-level {
   font-style: italic;
@@ -838,13 +847,32 @@
   display: none;
 }
 
-.dict-html .enc-d-article .enc-d-headword {
-  font-weight: bold;
+.dict-html .enc-d-article > .enc-d-headword {
+  display: none;
 }
 
 .dict-html .enc-d-article .enc-d-pos {
   display: inline;
-  font-style: italic;
+  text-transform: uppercase;
+  font-size: 0.82em;
+  margin: 0 0.25em;
+}
+
+.dict-html .enc-d-article .enc-d-trans {
+  margin: 0 0.2em;
+}
+
+.dict-html .enc-d-article .enc-d-trans .enc-d-link {
+  color: inherit;
+}
+
+.dict-html .enc-d-article .enc-d-trans .enc-d-link:hover {
+  color: var(--link);
+  text-decoration: underline;
+}
+
+.dict-html .enc-d-article .enc-d-inf {
+  margin-left: 0.25em;
 }
 
 .dict-html .enc-d-article .enc-d-num {
@@ -1252,4 +1280,15 @@
     border-left: 0;
     border-top: 1px solid var(--line);
   }
+}
+
+/* Atlas route (the map component comes from src/atlas/) */
+.atlas-route {
+  position: relative;
+  height: calc(100vh - 64px);
+}
+
+.atlas-route-map {
+  position: absolute;
+  inset: 0;
 }

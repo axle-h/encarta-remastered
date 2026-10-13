@@ -2,8 +2,8 @@
  * Encarta's pop-up menu on a click (V11 shot): every place under the cursor with its symbol; each
  * opens a submenu with its articles and media (P2MTBL links) and "go to".
  */
-import { useEffect, useState } from "react";
-import { getPlaceLinks, linkLabel, type Endpoints, type PlaceLink } from "../data";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { getPlaceLinks, linkLabel, sortLinks, type Endpoints, type PlaceLink } from "../data";
 import type { HitPlace } from "../hit";
 import { SpriteIcon } from "./Sprite";
 
@@ -32,7 +32,7 @@ export function PlaceMenu({ ep, x, y, hits, onHover, onGoTo, onOpen, onClose }: 
     for (const h of hits) {
       setLinks((m) => ({ ...m, [h.entity]: "loading" }));
       getPlaceLinks(h.entity, ep, ac.signal)
-        .then((l) => setLinks((m) => ({ ...m, [h.entity]: l })))
+        .then((l) => setLinks((m) => ({ ...m, [h.entity]: sortLinks(l) })))
         .catch(() => !ac.signal.aborted && setLinks((m) => ({ ...m, [h.entity]: "error" })));
     }
     return () => ac.abort();
@@ -44,8 +44,22 @@ export function PlaceMenu({ ep, x, y, hits, onHover, onGoTo, onOpen, onClose }: 
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Keep the menu inside the map: open upwards / leftwards near the bottom / right edge.
+  const el = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: x, top: y });
+  useLayoutEffect(() => {
+    const box = el.current;
+    const parent = box?.parentElement;
+    if (!box || !parent) return;
+    const W = parent.clientWidth;
+    const H = parent.clientHeight;
+    const w = box.offsetWidth;
+    const h = box.offsetHeight;
+    setPos({ left: x + w > W ? Math.max(0, x - w) : x, top: y + h > H ? Math.max(0, Math.min(y - h, H - h)) : y });
+  }, [x, y, hits, openEntity, links]);
+
   return (
-    <div className="enc-atlas-menu" style={{ left: x, top: y }} role="menu" onMouseLeave={() => onHover(null)}>
+    <div className="enc-atlas-menu" ref={el} style={pos} role="menu" onMouseLeave={() => onHover(null)}>
       {hits.map((h) => {
         const l = links[h.entity];
         const list = Array.isArray(l) ? l : [];

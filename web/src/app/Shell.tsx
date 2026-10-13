@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "../components/Icons";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { SearchBox } from "../components/SearchBox";
 import { useHistoryButtons } from "./history";
 
@@ -20,7 +21,9 @@ function FeaturesMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const location = useLocation();
-  useEffect(() => setOpen(false), [location.pathname]);
+  useEffect(() => {
+    setOpen(false);
+  }, [location.pathname]);
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {
@@ -37,7 +40,7 @@ function FeaturesMenu() {
   return (
     <div className="features" ref={ref}>
       <button type="button" className="features-btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
-        Feat<u>u</u>res <Icon name="chevron" size={12} />
+        <span>Feat<u>u</u>res</span> <Icon name="chevron" size={12} />
       </button>
       {open && (
         <ul className="features-menu" role="menu">
@@ -86,7 +89,9 @@ export function Shell({ children }: { children: ReactNode }) {
           <SearchBox />
         </div>
       </header>
-      <main className="page">{children}</main>
+      <main className="page">
+        <ErrorBoundary key={location.pathname}>{children}</ErrorBoundary>
+      </main>
     </div>
   );
 }

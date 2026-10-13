@@ -22,13 +22,32 @@ function Panel({ title, children, more, tone = "orange" }: { title: string; chil
 interface FactEntry {
   name: Inline[];
   value: Inline[];
+  quick?: boolean;
+  entries?: FactEntry[];
+}
+
+/**
+ * Entries for the Quick Facts box: a facts table's entries, or for a Facts and Figures table
+ * (sections of entries) the entries marked `quick`, each followed by its continuation values.
+ */
+export function quickEntries(json: unknown): FactEntry[] {
+  const j = json as { entries?: FactEntry[]; sections?: { entries?: FactEntry[] }[] } | undefined;
+  if (j?.entries) return j.entries;
+  const out: FactEntry[] = [];
+  for (const sec of j?.sections ?? []) {
+    for (const e of sec.entries ?? []) {
+      if (!e.quick) continue;
+      out.push(e);
+      for (const sub of e.entries ?? []) out.push({ name: [], value: sub.value });
+    }
+  }
+  return out;
 }
 
 /** Quick Facts: the first entries of a facts table, "More" opens the whole table. */
 export function QuickFacts({ table, sequence, kids }: { table: DataTable & { ref_id?: number }; sequence?: AssocItem[]; kids: boolean }) {
   const viewer = useMediaViewer();
-  const json = table.json as { entries?: FactEntry[] } | undefined;
-  const entries = json?.entries ?? [];
+  const entries = quickEntries(table.json);
   // Group continuation rows (empty name) with their entry, then show the first five entries.
   const groups: FactEntry[][] = [];
   for (const e of entries) {
@@ -56,9 +75,11 @@ export function QuickFacts({ table, sequence, kids }: { table: DataTable & { ref
               <dt>
                 <Inlines c={g[0]!.name} opts={{ kids }} />
               </dt>
-              <dd>
-                <Inlines c={g[0]!.value} opts={{ kids }} />
-              </dd>
+              {g.map((e, j) => (
+                <dd key={j}>
+                  <Inlines c={e.value} opts={{ kids }} />
+                </dd>
+              ))}
             </div>
           ))}
         </dl>
@@ -70,9 +91,10 @@ export function QuickFacts({ table, sequence, kids }: { table: DataTable & { ref
 export function AtlasPanel({ map }: { map: AssocItem }) {
   const item = useApi((s) => api.item(map.ref_id, s), [map.ref_id]);
   const pic = galleryImage(item.data);
+  const to = item.data?.geocode ? `/atlas/place/${item.data.geocode}` : "/atlas";
   return (
-    <Panel title="World Atlas" tone="gray" more={<Link to="/atlas" className="enc-panel-link">Full Map</Link>}>
-      <Link to="/atlas" className="enc-atlas-thumb">
+    <Panel title="World Atlas" tone="gray" more={<Link to={to} className="enc-panel-link">Full Map</Link>}>
+      <Link to={to} className="enc-atlas-thumb">
         {pic ? <img src={fileUrl(pic)} alt={map.title ?? "Map"} width={pic.width} height={pic.height} /> : <span>{map.title}</span>}
       </Link>
     </Panel>

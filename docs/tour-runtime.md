@@ -29,6 +29,9 @@ npm test                    # vitest: unit tests, plus integration tests over ou
 npm run build               # tsc --noEmit + vite build
 ```
 
+In dev, `/out` is proxied to the Rust server (`ENCARTA_SERVER`, default http://127.0.0.1:8080);
+`ENCARTA_DEV_OUT=1` makes Vite serve `../out` itself. In the app, tours open at `/tours/{id}`.
+
 In development, Vite serves the converter output `../out` under `/out/` (a middleware in
 `vite.config.ts`); the Rust server (Step 3) replaces it. Regenerate the tours with
 `cargo run --release -p encarta-convert -- tours`. The dev page `web/tours.html` has a tour

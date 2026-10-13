@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { NavButtons } from "../app/Shell";
 import { SearchBox } from "../components/SearchBox";
 
 /** Encarta Kids: its own bright chrome, search limited to the Kids edition, links stay in /kids. */
 export function KidsShell({ children }: { children: ReactNode }) {
+  const location = useLocation();
   return (
     <div className="shell kids-shell">
       <header className="kids-bar">
@@ -22,7 +24,9 @@ export function KidsShell({ children }: { children: ReactNode }) {
           <span className="kids-logo-big">kids</span>
         </Link>
       </header>
-      <main className="page kids-page">{children}</main>
+      <main className="page kids-page">
+        <ErrorBoundary key={location.pathname}>{children}</ErrorBoundary>
+      </main>
     </div>
   );
 }

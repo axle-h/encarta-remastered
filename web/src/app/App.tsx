@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ComponentType } from "react";
-import { Navigate, Outlet, Route, Routes, useParams } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArticleMediaPage, MediaBrowserPage } from "../pages/MediaBrowserPage";
 import { AtlasPlaceholder } from "../pages/AtlasPlaceholder";
 import { BrowsePage } from "../pages/BrowsePage";
@@ -16,22 +16,48 @@ import { MediaViewerProvider } from "../media/MediaViewer";
 import { Shell } from "./Shell";
 
 // The atlas (plan Step 5) lives in src/atlas/ and is owned separately; load it when present.
+interface AtlasModuleProps {
+  initialPlace?: { entity?: number; lat?: number; lon?: number; altitudeKm?: number } | string;
+  onOpenArticle?: (refId: number) => void;
+  className?: string;
+}
 const atlasModules = import.meta.glob("../atlas/index.tsx");
 const atlasLoader = atlasModules["../atlas/index.tsx"];
 const AtlasLazy = atlasLoader
   ? lazy(async () => {
-      const m = (await atlasLoader()) as { Atlas?: ComponentType; default?: ComponentType };
-      return { default: m.Atlas ?? m.default ?? AtlasPlaceholder };
+      const m = (await atlasLoader()) as { Atlas?: ComponentType<AtlasModuleProps> };
+      return { default: m.Atlas ?? (AtlasPlaceholder as ComponentType<AtlasModuleProps>) };
     })
   : null;
+
+/** The atlas's starting view from the route: `/atlas/place/{gid}`, `?url=msencarta://…`, `?lat&lon&alt`. */
+export function atlasInitialPlace(splat: string, search: URLSearchParams): AtlasModuleProps["initialPlace"] {
+  const m = /^place\/(\d+)/.exec(splat);
+  if (m) return { entity: Number(m[1]) };
+  const url = search.get("url");
+  if (url) return url;
+  const num = (k: string) => (search.has(k) ? Number(search.get(k)) : undefined);
+  if (search.has("lat") || search.has("lon")) return { lat: num("lat"), lon: num("lon"), altitudeKm: num("alt") };
+  return undefined;
+}
 
 const TourViewLazy = lazy(async () => ({ default: (await import("../pages/TourView")).TourView }));
 
 function AtlasRoute() {
+  const splat = useParams()["*"] ?? "";
+  const [search] = useSearchParams();
+  const navigate = useNavigate();
   if (!AtlasLazy) return <AtlasPlaceholder />;
   return (
     <Suspense fallback={<div className="enc-loading"><div className="enc-spinner" /></div>}>
-      <AtlasLazy />
+      <div className="atlas-route">
+        <AtlasLazy
+          key={splat + search.toString()}
+          className="atlas-route-map"
+          initialPlace={atlasInitialPlace(splat, search)}
+          onOpenArticle={(refId) => navigate(`/item/${refId}`)}
+        />
+      </div>
     </Suspense>
   );
 }

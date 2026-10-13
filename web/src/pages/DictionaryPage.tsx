@@ -7,6 +7,7 @@ import { SpeakerButton, pronunciationSrc } from "../article/Pronunciation";
 import { Html } from "../components/Html";
 import { Icon } from "../components/Icons";
 import { useDocumentTitle } from "../components/useDocumentTitle";
+import { expandGrammarCodes } from "./dictCodes";
 
 type Tab = "dictionary" | "thesaurus" | "bilingual";
 
@@ -43,7 +44,9 @@ export function DictionaryPage({ tab: routeTab, kids = false }: { tab: Tab; kids
   const dict = tab === "bilingual" ? pair : TAB_DICT[tab];
   const q = search.get("q") ?? "";
   const [draft, setDraft] = useState(q);
-  useEffect(() => setDraft(q), [q]);
+  useEffect(() => {
+    setDraft(q);
+  }, [q]);
   useDocumentTitle(`${TAB_LABEL[tab]}${q ? `: ${q}` : ""}`);
 
   const pre = kids ? "/kids" : "";
@@ -58,7 +61,9 @@ export function DictionaryPage({ tab: routeTab, kids = false }: { tab: Tab; kids
 
   // Word wheel: forms starting with the typed text.
   const [wheelQ, setWheelQ] = useState(q);
-  useEffect(() => setWheelQ(q), [q]);
+  useEffect(() => {
+    setWheelQ(q);
+  }, [q]);
   useEffect(() => {
     const t = window.setTimeout(() => setWheelQ(draft.trim()), 150);
     return () => window.clearTimeout(t);
@@ -182,7 +187,12 @@ function EntryView({ dict, id, fallbackWord, kids }: { dict: string; id: number;
     }
   }, [res.error, fallbackWord, dict, navigate, pre]);
 
-  useEffect(() => box.current?.scrollTo(0, 0), [id]);
+  useEffect(() => {
+    box.current?.scrollTo(0, 0);
+  }, [id]);
+  useEffect(() => {
+    if (box.current) expandGrammarCodes(box.current);
+  }, [res.data]);
 
   if (res.error) return <p className="enc-muted">This entry is not available.</p>;
   const e: DictEntry | undefined = res.data;

@@ -25,6 +25,8 @@ export interface HitPlace {
 }
 
 const COUNTRY = /^(Sovereign|CountryRegion)/;
+/** Plain graticule lines (named "15°" …): not places; the named circles and the dateline stay. */
+const GRID = /^Graticule - [\d.]+ deg/;
 const WORLD = /^(World|Ocean|Continent)$/;
 
 function kindOf(f: QueriedFeature): HitPlace["kind"] {
@@ -39,7 +41,14 @@ function areaRank(className: string): number {
   return 0;
 }
 
-export function rankHits(features: readonly QueriedFeature[], iconOf?: (f: QueriedFeature) => string | undefined): HitPlace[] {
+/** Hit-only classes that Encarta's menu leaves out unless the style draws them (V11: no time zones in Political). */
+export const THEME_ONLY = /^(Time zone|Daylight time bag|Statistical region - no|LANG - |REL - |ECO|CLIM)/;
+
+export function rankHits(
+  features: readonly QueriedFeature[],
+  iconOf?: (f: QueriedFeature) => string | undefined,
+  drawn?: ReadonlySet<number>,
+): HitPlace[] {
   const seen = new Map<number, HitPlace>();
   const order: HitPlace[] = [];
   for (const f of features) {
@@ -47,6 +56,8 @@ export function rankHits(features: readonly QueriedFeature[], iconOf?: (f: Queri
     const entity = typeof f.id === "number" ? f.id : Number(f.id);
     const name = typeof p.name === "string" ? p.name : "";
     if (!Number.isFinite(entity) || !name || p.anonymous === true || p.anonymous === 1) continue;
+    if (p.class_name === "International organization" || GRID.test(String(p.class_name ?? ""))) continue;
+    if (drawn && typeof p.class_name === "string" && THEME_ONLY.test(p.class_name) && !(typeof p.class === "number" && drawn.has(p.class))) continue;
     const kind = kindOf(f);
     const prev = seen.get(entity);
     if (prev) {
@@ -83,9 +94,27 @@ export function hoverClassesAt(style: StyleSpecification, zoom: number): Set<num
   return out;
 }
 
-/** The place Encarta highlights under the cursor: the first hit whose class has a highlight pen. */
+const WATER = /^(Lake|Inland sea|Reservoir|Lake\/river)/;
+
+function hoverRank(h: HitPlace): number {
+  if (h.kind !== "area") return 0;
+  if (WATER.test(h.className)) return 1;
+  if (COUNTRY.test(h.className)) return 2;
+  return 3;
+}
+
+/**
+ * The place highlighted under the cursor: a hit whose class has a highlight pen. Encarta highlights
+ * the country under the mouse (V11: France in Political), a lake over its country (Lake Geneva), so
+ * lines and water come first, then countries, then other areas (basins, regions).
+ */
 export function hoverTarget(hits: readonly HitPlace[], hoverable: ReadonlySet<number>): HitPlace | undefined {
-  return hits.find((h) => h.classId !== null && hoverable.has(h.classId));
+  let best: HitPlace | undefined;
+  for (const h of hits) {
+    if (h.classId === null || !hoverable.has(h.classId)) continue;
+    if (!best || hoverRank(h) < hoverRank(best)) best = h;
+  }
+  return best;
 }
 
 /** Title over the map ("Germany | Europe", or "World" from far out): the country under the centre and its continent. */
@@ -95,6 +124,9 @@ export function viewTitle(hits: readonly HitPlace[], altitudeKm: number, body: "
   const country = hits.find((h) => /^Sovereign/.test(h.className)) ?? hits.find((h) => /^CountryRegion/.test(h.className));
   const continent = hits.find((h) => h.className === "Continent");
   const water = hits.find((h) => /^(Ocean|Water label - major|Sea|Inland sea)$/.test(h.className));
+  // Below 2,000 km (band 6) Encarta names the first-level division and its country (V9: "Wien | Austria").
+  const admin = altitudeKm < 2000 ? hits.find((h) => /^Admin ?1/.test(h.className)) : undefined;
+  if (admin && country) return { title: admin.name, subtitle: country.name, entity: admin.entity };
   const main = country ?? water ?? continent;
   if (!main) return { title: "World" };
   const subtitle = main === continent ? undefined : continent?.name;

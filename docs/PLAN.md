@@ -79,6 +79,8 @@ Home, article reader (our renderer for the content schema: quick-verify links, s
 pronunciations, media galleries, outlines), media browser, video with captions, dictionary,
 thesaurus and translation, search with autocomplete, timeline, interactives (`.iax` + Ruffle),
 Encarta Kids mode.
+**Mostly done** ([web-client.md](web-client.md)): React 18 SPA in `web/`. Open: Ruffle for interactives, a MIDI
+soundfont, wide-picture placement, word-wheel words before the typed one, Favorites and dictionary Copy/Print.
 
 ## Step 5 — Atlas
 MapLibre globe and map: every raster look (terrain, satellite, night, moon, tectonic, climate,

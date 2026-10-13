@@ -78,6 +78,9 @@ const NAMED: FilterSpecification = [
   ["has", "name"],
   ["!=", ["get", "name"], ""],
   ["!", ["to-boolean", ["coalesce", ["get", "anonymous"], false]]],
+  // Membership areas (one per organisation, covering its member states) are not places; Encarta's
+  // click menu does not list them (V11).
+  ["!=", ["get", "class_name"], "International organization"],
 ];
 
 /**
@@ -118,7 +121,13 @@ export function statLayer(source: string): LayerSpecification {
     type: "fill",
     source,
     "source-layer": "areas",
-    filter: ["in", ["get", "class_name"], ["literal", ["Sovereign", "Sovereign - dependency", "Sovereign - disputed"]]],
+    // Countries are `Sovereign` areas in the bands that draw borders and `CountryRegion - <colour>`
+    // areas (the Political fills) in all bands; both carry the country's entity id.
+    filter: [
+      "any",
+      ["in", ["get", "class_name"], ["literal", ["Sovereign", "Sovereign - dependency", "Sovereign - disputed"]]],
+      ["==", ["index-of", "CountryRegion", ["coalesce", ["get", "class_name"], ""]], 0],
+    ],
     layout: { visibility: "none" },
     paint: {
       "fill-antialias": false,

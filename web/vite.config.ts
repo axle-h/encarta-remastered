@@ -57,18 +57,36 @@ function serveOut(): Plugin {
   };
 }
 
+/**
+ * Vite's dev server would answer `/tours` and `/atlas` with the `tours.html` / `atlas.html` dev
+ * pages; the SPA owns those routes (the Rust server's index.html fallback does the same in production).
+ */
+function spaRoutes(): Plugin {
+  return {
+    name: "encarta-spa-routes",
+    configureServer(devServer) {
+      devServer.middlewares.use((req, _res, next) => {
+        const path = (req.url ?? "").split("?")[0] ?? "";
+        if (/^\/(tours|atlas)\/?$/.test(path)) req.url = "/index.html";
+        next();
+      });
+    },
+  };
+}
+
 const proxied: Record<string, ProxyOptions> = {};
 for (const path of ["/api", "/media", "/healthz", ...(serveOutLocally ? [] : ["/out"])]) {
   proxied[path] = { target: server, changeOrigin: false };
 }
 
 export default defineConfig({
-  plugins: [react(), serveOut()],
+  plugins: [react(), spaRoutes(), serveOut()],
   server: { port: 5173, strictPort: false, proxy: proxied },
   preview: { proxy: proxied },
   build: {
     target: "es2022",
-    chunkSizeWarningLimit: 1024,
+    // The lazily loaded atlas chunk (MapLibre) is about 1.1 MB.
+    chunkSizeWarningLimit: 1400,
     rollupOptions: {
       input: {
         index: resolve(__dirname, "index.html"),

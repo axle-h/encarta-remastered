@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { Item } from "../api/types";
 import { useApi } from "../api/useApi";
-import { audioSources, captionTracks, fileByRole, posterUrl, videoSources } from "./pick";
+import { MidiPlayer } from "./MidiPlayer";
+import { audioSources, captionTracks, fileByRole, hasAudio, isMidi, originalUrl, posterUrl, videoSources } from "./pick";
 
 /** An audio player; captions from the item's `cc` track are shown under it as they play. */
 export function AudioPlayer({ item, autoPlay = false, compact = false }: { item: Item; autoPlay?: boolean; compact?: boolean }) {
@@ -29,6 +30,13 @@ export function AudioPlayer({ item, autoPlay = false, compact = false }: { item:
     return () => el.textTracks.removeEventListener("addtrack", onAdd);
   }, [item.ref_id]);
 
+  if (audio && isMidi(audio)) {
+    return (
+      <div className={`enc-audio${compact ? " compact" : ""}`}>
+        <MidiPlayer src={originalUrl(audio)} captions={compact ? undefined : tracks[0]?.src} />
+      </div>
+    );
+  }
   if (sources.length === 0) {
     return <AudioSet item={item} autoPlay={autoPlay} compact={compact} />;
   }
@@ -47,23 +55,30 @@ export function AudioPlayer({ item, autoPlay = false, compact = false }: { item:
   );
 }
 
-/** An audio set (`audionested`): its children are the audio items; play the first, list the rest. */
+/**
+ * An audio set (`audionested`): its children are a picture and one or more audio items. Plays the
+ * first audio child and lists the others.
+ */
 function AudioSet({ item, autoPlay, compact }: { item: Item; autoPlay: boolean; compact: boolean }) {
-  const kids = (item.children ?? []).filter((c) => c.kind === "media" || c.item_kind === "audio");
+  const ids = (item.children ?? []).map((c) => c.ref_id);
+  const kids = useApi(ids.length ? (s) => Promise.all(ids.map((id) => api.item(id, s))) : null, [ids.join(",")]);
   const [idx, setIdx] = useState(0);
-  const child = kids[idx];
-  const loaded = useApi(child ? (s) => api.item(child.ref_id, s) : null, [child?.ref_id]);
-  if (!child) return <p className="enc-muted">No playable audio.</p>;
-  if (!loaded.data) return <div className="enc-audio loading" />;
-  const hasAudio = audioSources(fileByRole(loaded.data, "audio")).length > 0;
+  if (ids.length === 0) return <p className="enc-muted">No playable audio.</p>;
+  if (!kids.data) return <div className="enc-audio loading" />;
+  const tracks = kids.data.filter((k) => hasAudio(k));
+  const cur = tracks[Math.min(idx, tracks.length - 1)];
+  if (!cur) return <p className="enc-muted">Audio not available.</p>;
+  const picItem = kids.data.find((k) => !tracks.includes(k) && fileByRole(k, "image", "picon"));
+  const pic = picItem ? fileByRole(picItem, "image", "picon") : undefined;
   return (
     <div className="enc-audio-set">
-      {hasAudio ? <AudioPlayer item={loaded.data} autoPlay={autoPlay} compact={compact} /> : <p className="enc-muted">Audio not available.</p>}
-      {kids.length > 1 && (
+      {!compact && pic && <img className="enc-audio-pic" src={pic.url} alt="" width={pic.width} height={pic.height} />}
+      <AudioPlayer key={cur.ref_id} item={cur} autoPlay={autoPlay} compact={compact} />
+      {tracks.length > 1 && (
         <ol className="enc-audio-tracks">
-          {kids.map((k, i) => (
+          {tracks.map((k, i) => (
             <li key={k.ref_id}>
-              <button type="button" className={i === idx ? "current" : ""} onClick={() => setIdx(i)}>
+              <button type="button" className={k === cur ? "current" : ""} onClick={() => setIdx(i)}>
                 {k.title || `Part ${i + 1}`}
               </button>
             </li>

@@ -64,6 +64,23 @@ export function audioSources(f: ItemFile | undefined): Source[] {
   return f ? sourcesOf(f.media, AUDIO_ORDER, f) : [];
 }
 
+/** True when the audio file is MIDI (played by our synth, media.md §2: kept, no derivatives). */
+export function isMidi(f: ItemFile | undefined): boolean {
+  if (!f) return false;
+  return f.media?.format === "midi" || /\.midi?$/i.test(f.file_name);
+}
+
+/** URL of a file's original bytes. */
+export function originalUrl(f: ItemFile): string {
+  return f.media?.variants.original?.url ?? `${fileUrl(f)}?original=1`;
+}
+
+/** Whether the item has something to play: a converted audio source or a MIDI file. */
+export function hasAudio(item: Item | undefined): boolean {
+  const f = fileByRole(item, "audio");
+  return isMidi(f) || audioSources(f).length > 0;
+}
+
 export function videoSources(f: ItemFile | undefined): Source[] {
   return f ? sourcesOf(f.media, VIDEO_ORDER, f) : [];
 }
@@ -107,4 +124,10 @@ export function mediaClass(item: { kind?: string; media_type?: string; group?: s
 /** The 3D tour id (`out/tours/<id>`) of a tour content id, given the tours index. */
 export function tourIdFor(contentId: number, tours: { id: string; contentId: number }[] | undefined): string | undefined {
   return tours?.find((t) => t.contentId === contentId)?.id;
+}
+
+/** Associations without repeats of the same item (the server lists one row per association). */
+export function uniqueByRef<T extends { ref_id: number }>(list: T[]): T[] {
+  const seen = new Set<number>();
+  return list.filter((x) => (seen.has(x.ref_id) ? false : (seen.add(x.ref_id), true)));
 }

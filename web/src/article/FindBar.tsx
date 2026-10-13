@@ -35,7 +35,9 @@ export function FindBar({ root, onClose }: { root: RefObject<HTMLElement>; onClo
   const [cur, setCur] = useState(0);
   const input = useRef<HTMLInputElement>(null);
 
-  useEffect(() => input.current?.focus(), []);
+  useEffect(() => {
+    input.current?.focus();
+  }, []);
 
   useEffect(() => {
     const r = root.current && q.length > 1 ? findRanges(root.current, q) : [];

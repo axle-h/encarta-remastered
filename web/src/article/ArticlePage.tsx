@@ -135,11 +135,11 @@ function ArticleView({ article: a, kids }: { article: Article; kids: boolean }) 
             <>
               <button type="button" className="art-tool" disabled={outline} onClick={showOutline}>
                 <span className="art-tool-icon"><Icon name="outline" size={12} /></span>
-                Show <u>O</u>utline
+                <span>Show <u>O</u>utline</span>
               </button>
               <button type="button" className="art-tool" disabled={collapsed.size === 0} onClick={showFull}>
                 <span className="art-tool-icon"><Icon name="article" size={12} /></span>
-                Show <u>F</u>ull Article
+                <span>Show <u>F</u>ull Article</span>
               </button>
             </>
           )}
@@ -150,7 +150,7 @@ function ArticleView({ article: a, kids }: { article: Article; kids: boolean }) 
           {m.sequence.length > 0 && (
             <Link className="art-allmedia" to={`${kids ? "/kids" : ""}/item/${a.ref_id}/media`}>
               <span className="art-tool-icon"><Icon name="grid" size={12} /></span>
-              Show All <u>M</u>edia
+              <span>Show All <u>M</u>edia</span>
             </Link>
           )}
           {findOpen && <FindBar root={textRef} onClose={() => setFindOpen(false)} />}

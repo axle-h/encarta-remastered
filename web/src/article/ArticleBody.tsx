@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, Fragment, useContext, type ReactNode } from "react";
 import type { AssocItem, DataTable } from "../api/types";
 import { Html } from "../components/Html";
 import { Icon } from "../components/Icons";
@@ -50,12 +50,12 @@ function Blocks({ blocks }: { blocks: Block[] }) {
         if (r.placement === "hidden" || r.placement === "right") return null;
         if (r.placement === "inline")
           return (
-            <>
+            <Fragment key={i}>
               {r.items.map((m) => {
                 const tb = ctx.tables.get(m.ref);
                 return tb ? <InlineTable key={m.ref} table={tb} /> : null;
               })}
-            </>
+            </Fragment>
           );
         if (!ctx.mediaColumn) return null;
         return <MediaBox key={i} items={r.items.map((m) => ctx.assoc.get(m.ref) ?? { ref_id: m.ref, group: m.group })} />;

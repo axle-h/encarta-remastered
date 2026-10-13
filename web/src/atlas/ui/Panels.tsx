@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { StyleSpecification } from "maplibre-gl";
 import type { Look } from "../data";
 import { classGroups, classShown, setShown, type ClassGroup } from "../groups";
@@ -64,6 +64,7 @@ export function LegendPanel({
   look,
   lookName,
   stats,
+  inView,
   onClose,
 }: {
   style: StyleSpecification;
@@ -72,10 +73,14 @@ export function LegendPanel({
   look: Look | undefined;
   lookName: string | undefined;
   stats: boolean;
+  /** Class rows with a feature drawn in the current view (null while unknown). */
+  inView: ReadonlySet<number> | null;
   onClose: () => void;
 }) {
+  const [onlyInView, setOnlyInView] = useState(true);
   const rounded = Math.round(zoom * 4) / 4;
-  const entries = useMemo(() => legendEntries(style, rounded, overrides, { stats }), [style, rounded, overrides, stats]);
+  const all = useMemo(() => legendEntries(style, rounded, overrides, { stats }), [style, rounded, overrides, stats]);
+  const entries = onlyInView && inView ? all.filter((e) => e.classes.some((c) => inView.has(c))) : all;
   const ramp = look?.legend?.filter((c, i, a) => a.indexOf(c) === i) ?? [];
   return (
     <Panel title="Map Legend" onClose={onClose} className="enc-atlas-legend">
@@ -86,6 +91,10 @@ export function LegendPanel({
           ))}
         </div>
       )}
+      <label className="enc-atlas-check">
+        <input type="checkbox" checked={onlyInView} onChange={(e) => setOnlyInView(e.target.checked)} />
+        Only what is on the map now ({entries.length} of {all.length})
+      </label>
       {entries.length === 0 && <p className="enc-atlas-note">No map features at this altitude.</p>}
       <ul>
         {entries.map((e) => (
@@ -93,9 +102,7 @@ export function LegendPanel({
             <span className="enc-atlas-legend__sym">
               <Swatch e={e} />
             </span>
-            <span className="enc-atlas-legend__name" style={e.text && e.kind === "label" ? { color: undefined } : undefined}>
-              {e.name}
-            </span>
+            <span className="enc-atlas-legend__name">{e.name}</span>
           </li>
         ))}
       </ul>

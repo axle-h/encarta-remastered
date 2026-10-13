@@ -97,59 +97,67 @@
   background: radial-gradient(ellipse at 0 0, #ffe1b5, #fff 45%);
 }
 
-/* Kids home */
+/* Kids home: the disc's 1024×600 background with the category buttons on its panels */
 .kids-home {
   min-height: calc(100vh - 82px);
-  background: #f7f3e2 center / cover no-repeat;
-  padding: 28px 16px 40px;
+  background: #fff;
+  overflow-x: auto;
+}
+
+.kids-home-stage {
+  position: relative;
+  margin: 0 auto;
+  width: 1024px;
+  height: 600px;
+  background: 0 0 / 1024px 600px no-repeat;
 }
 
 .kids-home-title {
-  max-width: 900px;
-  margin: 0 auto 18px;
-  font: bold 26px var(--ui);
-  color: var(--kids-orange);
-  text-shadow: 0 2px 0 #fff;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }
 
 .kids-cats {
   list-style: none;
-  margin: 0 auto;
+  margin: 0;
   padding: 0;
-  max-width: 900px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 16px;
+}
+
+.kids-cat-slot {
+  position: absolute;
 }
 
 .kids-cat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 10px;
+  position: relative;
+  display: block;
+  color: var(--kids-blue);
+  font: bold 15px var(--ui);
+}
+
+.kids-cat-art,
+.kids-cat-over {
+  display: block;
+}
+
+.kids-cat-over {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+
+.kids-cat:hover .kids-cat-over,
+.kids-cat:focus-visible .kids-cat-over {
+  opacity: 1;
+}
+
+.kids-cat:not(.has-art) {
+  padding: 30px 20px;
   border: 3px solid var(--kids-orange);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.92);
-  color: var(--kids-blue);
-  font: bold 15px var(--ui);
-  text-align: center;
-}
-
-.kids-cat:hover {
-  background: #fff6e5;
-  transform: translateY(-2px);
-}
-
-.kids-cat img {
-  max-width: 100%;
-  height: auto;
-}
-
-.kids-cat-blank {
-  display: block;
-  width: 100%;
-  height: 60px;
 }
 
 /* Kids article */

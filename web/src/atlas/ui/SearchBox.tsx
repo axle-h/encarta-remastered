@@ -18,9 +18,12 @@ export function SearchBox({ ep, body, onPick, delay = 180 }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const picked = useRef<string | null>(null);
 
   useEffect(() => {
     const text = q.trim();
+    if (text === picked.current) return; // the box shows the place just picked
+    picked.current = null;
     if (text.length < 2) {
       setHits([]);
       setError(null);
@@ -63,6 +66,7 @@ export function SearchBox({ ep, body, onPick, delay = 180 }: Props) {
   const pick = (h: PlaceHit | undefined) => {
     if (!h) return;
     setOpen(false);
+    picked.current = h.name;
     setQ(h.name);
     onPick(h);
   };

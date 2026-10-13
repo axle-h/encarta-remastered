@@ -47,7 +47,7 @@ export function absolute(path: string, ep: Endpoints): string {
 export function resolveDataUrl(url: string, ep: Endpoints): string {
   if (url.startsWith("pmtiles://")) {
     const rest = url.slice("pmtiles://".length);
-    return ABSOLUTE.test(rest) ? url : `pmtiles://${resolveDataUrl(rest, ep)}`;
+    return `pmtiles://${resolveDataUrl(rest, ep)}`;
   }
   if (ABSOLUTE.test(url)) {
     // The server rewrites style URLs to `<request origin>/atlas/…`. Behind the Vite dev proxy that origin
@@ -104,27 +104,42 @@ export class AtlasApiError extends Error {
 
 const jsonCache = new Map<string, Promise<unknown>>();
 
-export async function fetchJson<T>(url: string, signal?: AbortSignal, cache = true): Promise<T> {
-  if (cache && jsonCache.has(url)) return jsonCache.get(url) as Promise<T>;
-  const p = (async () => {
-    const r = await fetch(url, { signal, headers: { accept: "application/json" } });
-    if (!r.ok) {
-      let msg = `${r.status} ${r.statusText}`;
-      try {
-        const body = (await r.json()) as { error?: string };
-        if (body?.error) msg = body.error;
-      } catch {
-        /* not JSON */
-      }
-      throw new AtlasApiError(r.status, url, msg);
+async function fetchOnce<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const r = await fetch(url, { signal, headers: { accept: "application/json" } });
+  if (!r.ok) {
+    let msg = `${r.status} ${r.statusText}`;
+    try {
+      const body = (await r.json()) as { error?: string };
+      if (body?.error) msg = body.error;
+    } catch {
+      /* not JSON */
     }
-    return (await r.json()) as T;
-  })();
-  if (cache) {
+    throw new AtlasApiError(r.status, url, msg);
+  }
+  return (await r.json()) as T;
+}
+
+/** Abort only this caller's wait, not the shared (cached) request. */
+function withSignal<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return p;
+  if (signal.aborted) return Promise.reject(new DOMException("aborted", "AbortError"));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new DOMException("aborted", "AbortError"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    p.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
+/** JSON GET. Cached responses are shared, so one caller aborting does not fail the others. */
+export function fetchJson<T>(url: string, signal?: AbortSignal, cache = true): Promise<T> {
+  if (!cache) return fetchOnce<T>(url, signal);
+  let p = jsonCache.get(url) as Promise<T> | undefined;
+  if (!p) {
+    p = fetchOnce<T>(url);
     jsonCache.set(url, p);
     p.catch(() => jsonCache.delete(url));
   }
-  return p;
+  return withSignal(p, signal);
 }
 
 export function loadStyleIndex(ep: Endpoints, signal?: AbortSignal): Promise<StyleIndexEntry[]> {
@@ -230,11 +245,18 @@ const KIND_LABELS: Record<string, string> = {
   music: "Music",
 };
 
-/** Menu text of a link: its item title, with the kind when the title alone is ambiguous. */
+/** Menu text of a link: its item title; photos and music say what they are unless the title does. */
 export function linkLabel(l: PlaceLink): string {
   const kind = KIND_LABELS[l.kind_label] ?? (l.kind_label.startsWith("photo:") ? `Photo (${l.kind_label.slice(6)})` : "Media");
   if (!l.title) return kind;
-  return l.kind_label === "article" ? l.title : `${l.title} — ${kind}`;
+  const tagged = l.kind_label.startsWith("photo:") || l.kind_label === "music";
+  if (!tagged || l.title.toLowerCase().includes(kind.split(" ")[0]!.toLowerCase())) return l.title;
+  return `${l.title} — ${kind}`;
+}
+
+/** Articles first, then the rest in P2MTBL order. */
+export function sortLinks(links: readonly PlaceLink[]): PlaceLink[] {
+  return [...links].sort((a, b) => Number(b.kind_label === "article") - Number(a.kind_label === "article") || (a.ordinal ?? 0) - (b.ordinal ?? 0));
 }
 
 // ---------------------------------------------------------------------------------------------
