@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Encarta 3D Tours (dev)</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f4f4f2;
+        --fg: #1d1d1b;
+        --muted: #6b6b66;
+        --panel: #ffffff;
+        --line: #d8d8d2;
+        --accent: #2d5d8a;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #161615;
+          --fg: #e8e8e4;
+          --muted: #9a9a94;
+          --panel: #20201e;
+          --line: #353532;
+          --accent: #7fb0dd;
+        }
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.4 system-ui, sans-serif; }
+      header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+      header h1 { font-size: 15px; margin: 0 8px 0 0; }
+      label { display: inline-flex; gap: 4px; align-items: center; }
+      select, input[type="text"], button { font: inherit; }
+      main { display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; align-items: flex-start; }
+      #stage { background: #000; flex: none; max-width: 100%; }
+      #stage.fill { width: calc(100vw - 380px); height: calc(100vh - 90px); min-width: 320px; min-height: 240px; }
+      aside { width: 320px; max-width: 100%; display: flex; flex-direction: column; gap: 12px; }
+      section { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+      section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 6px; }
+      #sitemap { background: #2a2a28; display: block; width: 100%; height: auto; border-radius: 4px; }
+      #pos, #stats { font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; margin: 0; }
+      #log { font-family: ui-monospace, monospace; font-size: 11px; height: 180px; overflow: auto; white-space: pre-wrap; margin: 0; }
+      #cmdform { display: flex; gap: 6px; }
+      #cmd { flex: 1; min-width: 0; }
+      #cmdout { font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted); word-break: break-all; }
+      .hint { color: var(--muted); font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>3D Virtual Tours</h1>
+      <label>Tour <select id="tour"></select></label>
+      <label>Size
+        <select id="size">
+          <option value="640x480">640 × 480</option>
+          <option value="800x600">800 × 600</option>
+          <option value="1024x768">1024 × 768</option>
+          <option value="fill">Fill</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="labels" checked /> Show labels and hot spots</label>
+      <label>Ground
+        <select id="ground">
+          <option value="">per device (snap)</option>
+          <option value="snap">snap</option>
+          <option value="gravity">gravity</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="pvs" checked /> PVS</label>
+      <label>FOV axis
+        <select id="fov">
+          <option value="horizontal">horizontal</option>
+          <option value="vertical">vertical</option>
+        </select>
+      </label>
+    </header>
+    <main>
+      <div id="stage"></div>
+      <aside>
+        <section>
+          <h2>Site map</h2>
+          <canvas id="sitemap" width="200" height="200"></canvas>
+          <p id="floor" class="hint"></p>
+        </section>
+        <section>
+          <h2>Position</h2>
+          <pre id="pos">–</pre>
+          <pre id="stats"></pre>
+        </section>
+        <section>
+          <h2>Command</h2>
+          <form id="cmdform"><input id="cmd" type="text" placeholder="camera.pos?" autocomplete="off" /><button>Do</button></form>
+          <div id="cmdout"></div>
+          <p class="hint">Arrows walk and turn, PgUp/PgDn look up and down, Home levels the view, drag in the view to move.</p>
+        </section>
+        <section>
+          <h2>Events</h2>
+          <pre id="log"></pre>
+        </section>
+      </aside>
+    </main>
+    <script type="module" src="/src/tours/dev/main.ts"></script>
+  </body>
+</html>

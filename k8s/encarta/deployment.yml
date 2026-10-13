@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: encarta
+  namespace: encarta
+  labels:
+    app: encarta
+spec:
+  replicas: 1
+  # Recreate, since the `local-path` volume is ReadWriteOnce and a rollout has nothing to gain from
+  # two pods: the server is stateless, and a restart is a second or two.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: encarta
+  template:
+    metadata:
+      labels:
+        app: encarta
+    spec:
+      # Otherwise Kubernetes injects `ENCARTA_PORT=tcp://…` and friends for the `encarta` Service,
+      # into the same `ENCARTA_` namespace the server reads its configuration from.
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: data
+            readOnly: true
+        # The root filesystem is read-only; this is somewhere to write if a library insists.
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+      containers:
+        - name: encarta
+          image: ghcr.io/axle-h/encarta-remastered:latest
+          imagePullPolicy: Always
+          # The image's defaults, spelled out so the mount below and the server agree.
+          env:
+            - name: ENCARTA_OUT
+              value: /data
+            - name: ENCARTA_STATIC
+              value: /app/web
+            - name: ENCARTA_LISTEN
+              value: 0.0.0.0:8080
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: data
+              mountPath: /data
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              # No CPU limit: a CFS quota shows up as slow pages, not as a resource error. The sqlite
+              # and tantivy files are mmapped; their page cache is reclaimable, so this is headroom.
+              memory: 1Gi
+          # `/healthz` is 200 once the content database is open.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 3
+          # Lets traefik drop the pod from its endpoints before it stops accepting connections.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 3

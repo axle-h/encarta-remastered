@@ -7,3 +7,12 @@ description = "Readers for Encarta 2009 data formats (clean-room, from observed 
 [dependencies]
 lzxd = "0.2"
 anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+encoding_rs = "0.8"
+memmap2 = "0.9"
+rayon = "1"
+quick-xml = "0.42"
+sha2 = "0.11"
+flate2 = "1"
+png = "0.18"

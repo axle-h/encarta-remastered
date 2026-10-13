@@ -1,7 +1,10 @@
 # Atlas (Virtual Globe), gazetteer side files, and 3D Virtual Tours
 
-Status: **triaged.** The container layer is solved for every format below. The MAD payload codec has been
-identified from the decompilation but has not been re-implemented yet.
+Status: **superseded triage notes.** The full specifications now live in [mad.md](mad.md) (MAD codec, INDX,
+rasters, projection, geometry, gazetteer), [mad-styling.md](mad-styling.md) (styling, in progress),
+[tours-3d.md](tours-3d.md) (3D tours, decoded) and [msworld.md](msworld.md) (SDB, Geo Quiz, media catalog).
+Where this file disagrees with those, they win. Known corrections: the raster projection is an octahedral
+square map; `rom.x` has no Frame; the glTF conversion needs no V flip; the Acropolis water ripple is used.
 
 Evidence comes from hex inspection plus Ghidra output for MOBB200.DLL in
 `analysis/decompiled/ghidra/MOBB200/`. Helper scripts used during triage (not part of the repo) did the following:
@@ -20,6 +23,8 @@ the 3D walkmap and point-cloud files.
 ---
 
 ## 1. MAD files: Encarta World Atlas database
+
+> Superseded by [mad.md](mad.md); kept for history.
 
 | File | Size | Version string | Sections |
 |---|---|---|---|
@@ -177,12 +182,15 @@ feasible because the codec functions are small (about 300 lines). The schema sem
 
 ## 2. Atlas side files
 
+> SDB, D*.TXT and the media catalog are decoded: see [msworld.md](msworld.md). SDB item columns are
+> country, value, decimal places, two unknown columns, year and note. D*PLACES type 0/1/2 = country (SDB id) / city / continent.
+
 | File | What it is | Structure | Target / effort |
 |---|---|---|---|
 | **EE/ENCARTA/MSWORLD.SDB** (1.6 MB, CRLF text, cp1252) | "EVGSDB" = Virtual Globe **statistics database**, used by the "Atlas Statistical" map style (STATISTICAL LOOK) | `// Section` headers. `Signature` (EVGSDB), `Revision` (18051300), `Countries` (193 rows `id<TAB>name`), `Indicator Category List` (12 bit-flag categories), `Qualifier List` (10), `Unit List` (575: id, unit, alt unit, factor, offset; e.g. °C→°F 1.8/17.78), then **363 x** (`Indicator Package List`: id, name, category, unit, ?, source) + `Items For The Above Indicator List` (count; rows `country_id value qualifier unit year ? note`) | JSON/SQLite. **S** (½ day). The country ids are the same ids used by the `dfg` flags. |
 | **D1..D4.TXT** (35 B each) | Geography Quiz difficulty presets | e.g. D1: `20` questions / `5 4 3 2 0` points per attempt / `0 0 0` / `.70 .20 .10` question-type mix. Format strings in ENCARTA.EXE: `%d %d %d %d %d`, `%s %s %s` | JSON. **S** |
 | **D1..D4PLACES.TXT** (74–689 rows) | Quiz question pools per difficulty | `type group entity 0`. type 0/1/2. group = 265 or 27082..47610. entity up to 10039884. These are **MAD entity references**, so resolving them needs EntityCenter/GeoObj decoding (or a manual mapping) | **S** to parse. Resolution depends on MAD (§1). |
-| **CONTENT/MSWORLD.EIT** → `dfg/*.dfg` (191) | **Country flags**, 64x64 8-bit BMPs with a pure green (0,255,0) key background. Named by SDB country id (9 = Angola, 100 = Guinea, 101 = Guyana, which matches the SDB) | Standard BMP | PNG with alpha (key out green). **S** |
+| **CONTENT/MSWORLD.EIT** → `dfg/*.dfg` (191) | **Country flags**, 64x64 8-bit BMPs with a pure green key background, (0,254,0) in practice (key any pixel that is pure green in RGB555); flags 223 and 253 have no key pixels. Named by SDB country id (9 = Angola, 100 = Guinea, 101 = Guyana, which matches the SDB) | Standard BMP | PNG with alpha (key out green). **S** |
 | MSWORLD.EIT → `dtn/*.dtn` (3587) | **Media thumbnails** for map pushpins / "Media Maps" (photos), 64x64 8-bit BMPs. Named by 5-hex media id or `T<id>A` | Standard BMP | WebP/PNG. **S** |
 | MSWORLD.EIT → `map/map.dat` (5.4 KB) | HTML/CSS/JScript fragment for the map pane UI (MapStyles/Legend/MapMaker/MediaMaps buttons; `MapObject.Zoom(...)`, `msref:pid=vg99&cmd=article&id=`) | Text | UX reference only. **S** |
 | **EE/ENCARTA/MSWORLD.ITR** (2.9 MB, 2001) | ITOLITLS store of InfoTech **full-text (`$FX*FTI`) and word-wheel (`$WW*KIndex`) indexes**: Main, Titles, Images, Audio, Video, MapTreks, WldTours, Stats, … plus `$WW$CTCATALOG`. Already unpacked to `extracted/eit/EE/ENCARTA/MSWORLD.ITR/` | Container solved. The BTREE/DATA/PROPERTY formats inside are MS IT search internals | **Do not convert.** Rebuild search from the content (e.g. tantivy/SQLite FTS). No binary references the `.itr` name directly, so it may be legacy. |
@@ -191,6 +199,8 @@ feasible because the codec functions are small (about 300 lines). The schema sem
 ---
 
 ## 3. 3D Virtual Tours: CONTENT/WORLD/7015/*.EIT (7 tours)
+
+> Superseded by [tours-3d.md](tours-3d.md); kept for history.
 
 | Tour | Id | Main mesh | Notes |
 |---|---|---|---|

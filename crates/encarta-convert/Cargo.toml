@@ -1,0 +1,27 @@
+[package]
+name = "encarta-convert"
+version = "0.1.0"
+edition = "2024"
+description = "One-time converter from the Encarta 2009 disc to modern formats in out/"
+
+[dependencies]
+encarta-formats = { path = "../encarta-formats" }
+encarta-search = { path = "../encarta-search" }
+anyhow = "1"
+# content
+rusqlite = { version = "0.37", features = ["bundled"] }
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+encoding_rs = "0.8"
+# tours
+png = "0.18"
+gif = "0.14"
+# media
+sha2 = "0.11"
+walkdir = "2"
+image = { version = "0.25", default-features = false, features = ["bmp", "gif", "png", "jpeg", "ico"] }
+# atlas
+webp = { version = "0.3", default-features = false }
+flate2 = "1"
+ab_glyph = "0.2"

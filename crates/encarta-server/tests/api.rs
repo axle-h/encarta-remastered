@@ -1,0 +1,314 @@
+//! API, media and static-file tests against the synthetic tree in `common`, served from a
+//! read-only copy of `out/`.
+
+mod common;
+
+use axum::body::Body;
+use axum::http::{Request, header};
+use common::*;
+use encarta_server::Config;
+
+struct Ro(Fixture);
+
+impl Drop for Ro {
+    fn drop(&mut self) {
+        self.0.set_read_only(false);
+    }
+}
+
+fn fixture() -> Ro {
+    let f = Fixture::build();
+    f.set_read_only(true);
+    Ro(f)
+}
+
+#[tokio::test]
+async fn content_endpoints() {
+    let f = fixture();
+    let app = app(&f.0.config());
+
+    let r = get(&app, "/healthz").await;
+    assert_eq!(r.status(), 200);
+
+    let (s, meta) = json(&app, "/api/meta").await;
+    assert_eq!(s, 200);
+    assert_eq!(meta["media_manifest"], true, "{meta}");
+    assert!(meta["search"]["item_docs"].as_u64().unwrap() >= 5);
+
+    let (s, item) = json(&app, &format!("/api/item/{PHOTO}")).await;
+    assert_eq!(s, 200);
+    assert_eq!(item["title"], "Plains Zebra Herd");
+    assert_eq!(item["editions"], serde_json::json!(["deluxe"]));
+    assert_eq!(item["files"][1]["url"], "/media/file/zz000001.jpg");
+    assert_eq!(item["files"][1]["media"]["variants"]["webp"]["url"], format!("/media/{SHA_JPG}/webp"));
+    assert_eq!(item["appears_in"][0]["ref_id"], ZEBRA);
+
+    let (s, item) = json(&app, &format!("/api/item/{ZEBRA}")).await;
+    assert_eq!(s, 200);
+    assert_eq!(item["meta"]["note"], "synthetic");
+    assert_eq!(item["has_article"], true);
+    assert_eq!(item["media"][0]["thumb"]["url"], "/media/file/zz000001.jtn");
+    assert_eq!(item["children"][0]["title"], "Plains Zebra Herd");
+    assert_eq!(json(&app, "/api/item/999999").await.0, 404);
+
+    let (s, a) = json(&app, &format!("/api/article/{ZEBRA}")).await;
+    assert_eq!(s, 200);
+    assert_eq!(a["body"][1]["title"], "STRIPES");
+    assert!(a["html"].as_str().unwrap().starts_with("<article"));
+    assert_eq!(a["sections"][1]["number"], "II");
+    assert_eq!(a["related_editions"], "DLX,STE");
+    assert_eq!(a["related"][0]["ref"], HORSE);
+    assert_eq!(a["tables"][0]["kind"], "facts");
+    assert_eq!(a["tables"][0]["json"]["entries"][0]["value"][0], "Perissodactyla");
+    let (_, a) = json(&app, &format!("/api/article/{ZEBRA}?edition=kids&body=0&html=0")).await;
+    assert_eq!(a["related_editions"], "KDC");
+    assert!(a.get("body").is_none() && a.get("html").is_none());
+    assert_eq!(json(&app, &format!("/api/article/{PHOTO}")).await.0, 404);
+
+    let (s, p) = json(&app, "/api/place/42").await;
+    assert_eq!(s, 200);
+    assert_eq!(p["links"][0]["title"], "Zebra");
+    assert_eq!(json(&app, "/api/quiz/7").await.1["quiz"]["q"], 1);
+    assert_eq!(json(&app, "/api/interactive/ZZ.IAX").await.1["definition"]["@id"], "zz");
+
+    let (s, e) = json(&app, "/api/nope").await;
+    assert_eq!(s, 404);
+    assert_eq!(e["error"], "no route /api/nope");
+}
+
+#[tokio::test]
+async fn dictionary_timeline_mindmaze_stats() {
+    let f = fixture();
+    let app = app(&f.0.config());
+
+    let (_, d) = json(&app, "/api/dictionary").await;
+    assert_eq!(d["dictionaries"].as_array().unwrap().len(), 2);
+    let (_, l) = json(&app, "/api/dictionary/lookup?q=Zebras").await;
+    assert_eq!(l["entries"][0]["headword"], "zebra");
+    assert_eq!(l["entries"][0]["form_kind"], "inflection");
+    let (_, l) = json(&app, "/api/dictionary/lookup?q=zeb&prefix=1&dict=DICTA").await;
+    let heads: Vec<_> = l["entries"].as_array().unwrap().iter().map(|e| e["headword"].as_str().unwrap()).collect();
+    assert_eq!(heads, vec!["zebra", "zebu"]);
+    let (_, l) = json(&app, "/api/dictionary/lookup?q=zebra&kind=bilingual").await;
+    assert_eq!(l["entries"][0]["dictionary"], "ENG_FRA");
+    let (s, e) = json(&app, "/api/dictionary/DICTA/9001").await;
+    assert_eq!(s, 200);
+    assert_eq!(e["summary"], "striped wild horse");
+    assert_eq!(e["audio"][0]["url"], "/media/file/zz000009.wav");
+    assert_eq!(e["forms"].as_array().unwrap().len(), 2);
+
+    let (_, m) = json(&app, "/api/timeline/meta").await;
+    assert_eq!(m["count"], 2);
+    let (_, t) = json(&app, "/api/timeline?from=1800&to=1900").await;
+    assert_eq!(t["total"], 1);
+    assert_eq!(t["events"][0]["start"]["year"], 1890);
+    assert_eq!(t["events"][0]["regions"][0], "Africa");
+    let (_, t) = json(&app, "/api/timeline?category=Political%20History").await;
+    assert_eq!(t["events"][0]["title"], "A Treaty");
+    assert_eq!(t["events"][0]["start"]["circa"], true);
+    let (_, t) = json(&app, "/api/timeline?region=1,2&from=-100&to=-45").await;
+    assert_eq!(t["total"], 1);
+    assert_eq!(json(&app, "/api/timeline?category=Nope").await.0, 400);
+
+    let (_, mm) = json(&app, "/api/mindmaze").await;
+    assert_eq!(mm["total"], 2);
+    let (_, q) = json(&app, "/api/mindmaze/questions?level=2").await;
+    assert_eq!(q["questions"][0]["answers"][0]["correct"], true);
+    let (_, q1) = json(&app, "/api/mindmaze/questions?limit=2&seed=5").await;
+    let (_, q2) = json(&app, "/api/mindmaze/questions?limit=2&seed=5").await;
+    assert_eq!(q1, q2);
+    assert_eq!(json(&app, "/api/mindmaze/question/1").await.1["clue"], "Striped horse of Africa.");
+
+    let (_, s) = json(&app, "/api/stats").await;
+    assert_eq!(s["indicators"][0]["unit"]["unit"], "head");
+    let (_, i) = json(&app, "/api/stats/indicator/1").await;
+    assert_eq!(i["values"][0]["country"], "Tanzania");
+    let (_, c) = json(&app, "/api/stats/country/1").await;
+    assert_eq!(c["values"][0]["indicator"], "Zebra population");
+
+    let (_, g) = json(&app, "/api/atlas/search?q=nairo").await;
+    assert_eq!(g["places"][0]["entity"], 42);
+    assert_eq!(g["places"].as_array().unwrap().len(), 2);
+    let (_, g) = json(&app, "/api/atlas/place/42").await;
+    assert_eq!(g["links"][0]["title"], "Zebra");
+    assert_eq!(g["place"]["classes"][1], 2);
+}
+
+#[tokio::test]
+async fn search_suggest_spell() {
+    let f = fixture();
+    let app = app(&f.0.config());
+
+    let (s, r) = json(&app, "/api/search?q=zebra").await;
+    assert_eq!(s, 200);
+    assert_eq!(r["hits"][0]["ref_id"], ZEBRA, "{r}");
+    assert_eq!(r["hits"][0]["url"], "/item/100"); // exact title: no deep link
+    assert!(r["facets"]["kind"]["article"].as_u64().unwrap() >= 1);
+    let (_, r) = json(&app, "/api/search?q=biting%20flies").await;
+    assert_eq!(r["hits"][0]["url"], "/item/100#p2");
+    assert_eq!(r["hits"][0]["para"]["section_title"], "STRIPES");
+    assert!(r["hits"][0]["snippet_html"].as_str().unwrap().contains("<b>biting</b>"));
+    let (_, r) = json(&app, "/api/search?q=zebra&kind=media").await;
+    assert!(r["hits"].as_array().unwrap().iter().all(|h| h["category"] == "media"));
+    assert!(r["hits"].as_array().unwrap().iter().any(|h| h["ref_id"] == PHOTO), "{r}");
+    let (_, r) = json(&app, "/api/search?q=zebra&edition=kids").await;
+    assert_eq!(r["hits"][0]["ref_id"], KIDS);
+    let (_, r) = json(&app, "/api/search?q=zebra&kind=dictionary").await;
+    assert_eq!(r["hits"][0]["url"], "/dictionary/DICTA/9001");
+    let (_, r) = json(&app, "/api/search?q=zebra%20xylophone").await;
+    assert_eq!(r["mode"], "any");
+    let (_, r) = json(&app, "/api/search?q=strpes").await;
+    assert_eq!(r["did_you_mean"], "stripes");
+
+    let (_, s) = json(&app, "/api/suggest?q=ze").await;
+    assert_eq!(s["suggestions"][0]["ref_id"], ZEBRA, "{s}");
+    let (_, s) = json(&app, "/api/suggest?q=equus").await;
+    assert_eq!(s["suggestions"][0]["display"], "Equus quagga");
+    assert_eq!(s["suggestions"][0]["title"], "Zebra");
+    let (_, s) = json(&app, "/api/suggest?q=zebras&edition=kids").await;
+    assert_eq!(s["suggestions"][0]["ref_id"], KIDS);
+
+    let (_, sp) = json(&app, "/api/spell?q=zebr").await;
+    assert_eq!(sp["corrected"], "zebra");
+    let (_, sp) = json(&app, "/api/spell?q=horse").await;
+    assert!(sp["corrected"].is_null());
+}
+
+fn range(uri: &str, r: &str) -> Request<Body> {
+    Request::get(uri).header(header::RANGE, r).body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn media_and_ranges() {
+    let f = fixture();
+    let app = app(&f.0.config());
+    let full = jpeg(5000);
+
+    let res = get(&app, "/media/file/zz000001.jpg").await;
+    assert_eq!(res.status(), 200);
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "image/jpeg");
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "public, max-age=31536000, immutable");
+    assert_eq!(res.headers()[header::CONTENT_LENGTH], "5000");
+    let etag = res.headers()[header::ETAG].to_str().unwrap().to_string();
+    assert_eq!(bytes(res).await, full);
+
+    let res = send(&app, range("/media/file/zz000001.jpg", "bytes=100-199")).await;
+    assert_eq!(res.status(), 206);
+    assert_eq!(res.headers()[header::CONTENT_RANGE], "bytes 100-199/5000");
+    assert_eq!(bytes(res).await, &full[100..200]);
+    // Suffix range, open range, and an end past the file: clamped, not 416.
+    let res = send(&app, range("/media/file/zz000001.jpg", "bytes=-10")).await;
+    assert_eq!(res.headers()[header::CONTENT_RANGE], "bytes 4990-4999/5000");
+    let res = send(&app, range("/media/file/ZZ000001.JPG", "bytes=4000-16383")).await;
+    assert_eq!(res.status(), 206);
+    assert_eq!(res.headers()[header::CONTENT_RANGE], "bytes 4000-4999/5000");
+    assert_eq!(bytes(res).await, &full[4000..]);
+    let res = send(&app, range("/media/file/zz000001.jpg", "bytes=6000-")).await;
+    assert_eq!(res.status(), 416);
+    assert_eq!(res.headers()[header::CONTENT_RANGE], "bytes */5000");
+
+    let res = send(&app, Request::get("/media/file/zz000001.jpg").header(header::IF_NONE_MATCH, &etag).body(Body::empty()).unwrap()).await;
+    assert_eq!(res.status(), 304);
+    let res = send(&app, Request::head("/media/file/zz000001.jpg").body(Body::empty()).unwrap()).await;
+    assert_eq!(res.status(), 200);
+    assert_eq!(res.headers()[header::CONTENT_LENGTH], "5000");
+    assert!(bytes(res).await.is_empty());
+
+    // Accept negotiation picks the smaller WebP; original=1 opts out.
+    let neg = Request::get("/media/file/zz000001.jpg").header(header::ACCEPT, "image/avif,image/webp,*/*").body(Body::empty()).unwrap();
+    let res = send(&app, neg).await;
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "image/webp");
+    assert_eq!(res.headers()[header::VARY], "Accept");
+    let neg = Request::get("/media/file/zz000001.jpg?original=1").header(header::ACCEPT, "image/webp").body(Body::empty()).unwrap();
+    assert_eq!(send(&app, neg).await.headers()[header::CONTENT_TYPE], "image/jpeg");
+
+    // Paths with folders resolve by their last segment; content-addressed variants.
+    assert_eq!(get(&app, "/media/file/loose/dir/zz000001.jtn").await.status(), 200);
+    let res = get(&app, &format!("/media/{SHA_JPG}/webp")).await;
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "image/webp");
+    assert_eq!(bytes(res).await.len(), 16);
+    assert_eq!(get(&app, &format!("/media/{SHA_JPG}/avif")).await.status(), 404);
+    assert_eq!(get(&app, "/media/nothex/original").await.status(), 404);
+    assert_eq!(get(&app, "/media/file/missing.jpg").await.status(), 404);
+}
+
+#[tokio::test]
+async fn static_trees_and_spa() {
+    let f = fixture();
+    let app = app(&f.0.config());
+
+    // Styles: root-relative URLs made absolute for the client's origin.
+    let req = Request::get("/atlas/styles/default.json")
+        .header(header::HOST, "encarta.example")
+        .header("x-forwarded-proto", "https")
+        .body(Body::empty())
+        .unwrap();
+    let style: serde_json::Value = serde_json::from_slice(&bytes(send(&app, req).await).await).unwrap();
+    assert_eq!(style["sprite"], "https://encarta.example/atlas/sprites/sprite");
+    assert_eq!(style["sources"]["earth"]["url"], "pmtiles://https://encarta.example/atlas/vector/earth.pmtiles");
+    // PMTiles reads 16 KiB from a 1000-byte archive: 206 with the clamped range.
+    let res = send(&app, range("/atlas/vector/earth.pmtiles", "bytes=0-16383")).await;
+    assert_eq!(res.status(), 206);
+    assert_eq!(res.headers()[header::CONTENT_RANGE], "bytes 0-999/1000");
+    assert_eq!(bytes(res).await.len(), 1000);
+    let res = send(&app, range("/out/atlas/vector/earth.pmtiles", "bytes=10-19")).await;
+    assert_eq!(bytes(res).await, (10..20u8).collect::<Vec<_>>());
+    // A client route under /atlas/ gets the SPA.
+    let res = get(&app, "/atlas/place/42").await;
+    assert_eq!(res.status(), 200);
+    assert!(String::from_utf8(bytes(res).await).unwrap().contains("<div id=root>"));
+
+    assert_eq!(json(&app, "/out/tours/0001/scene.json").await.1["id"], "0001");
+    assert_eq!(get(&app, "/out/tours/nope.json").await.status(), 404);
+    assert_eq!(get(&app, "/out/content.sqlite").await.status(), 404);
+    assert_eq!(get(&app, "/out/tours/../content.sqlite").await.status(), 404);
+
+    let res = get(&app, "/assets/app-1a2b3c.js").await;
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "public, max-age=31536000, immutable");
+    assert_eq!(get(&app, "/assets/missing.js").await.status(), 404);
+    let res = get(&app, "/favicon.svg").await;
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "no-cache");
+    for p in ["/", "/item/100", "/dictionary/DICTA/9001"] {
+        let res = get(&app, p).await;
+        assert_eq!(res.status(), 200, "{p}");
+        assert_eq!(res.headers()[header::CONTENT_TYPE], "text/html; charset=utf-8");
+        assert_eq!(res.headers()[header::CACHE_CONTROL], "no-cache");
+    }
+    // Compression for JSON, never for ranges.
+    let req = Request::get("/api/stats").header(header::ACCEPT_ENCODING, "gzip").body(Body::empty()).unwrap();
+    let req2 = Request::get(format!("/api/article/{ZEBRA}")).header(header::ACCEPT_ENCODING, "br").body(Body::empty()).unwrap();
+    assert_eq!(send(&app, req2).await.headers()[header::CONTENT_ENCODING], "br");
+    let _ = send(&app, req).await;
+    let req = Request::get("/atlas/vector/earth.pmtiles").header(header::ACCEPT_ENCODING, "gzip").header(header::RANGE, "bytes=0-9").body(Body::empty()).unwrap();
+    assert!(send(&app, req).await.headers().get(header::CONTENT_ENCODING).is_none());
+}
+
+#[tokio::test]
+async fn empty_data_dir_still_serves_health_and_spa() {
+    let dir = tempfile::tempdir().unwrap();
+    let web = dir.path().join("web");
+    spa(&web);
+    let mut cfg = Config::new(dir.path().join("data"));
+    cfg.static_dir = Some(web);
+    let app = app(&cfg);
+    assert_eq!(get(&app, "/healthz").await.status(), 200);
+    assert_eq!(get(&app, "/item/1").await.status(), 200);
+    assert_eq!(json(&app, "/api/item/1").await.0, 503);
+    assert_eq!(json(&app, "/api/search?q=x").await.0, 503);
+    assert_eq!(json(&app, "/api/meta").await.0, 200);
+    assert_eq!(get(&app, "/media/file/x.jpg").await.status(), 404);
+    assert_eq!(get(&app, "/out/atlas/x.pmtiles").await.status(), 404);
+    // Without a SPA either: health still fine, others 404.
+    let app = common::app(&Config::new(dir.path().join("nothing")));
+    assert_eq!(get(&app, "/healthz").await.status(), 200);
+    assert_eq!(get(&app, "/").await.status(), 404);
+}
+
+#[tokio::test]
+async fn media_manifest_without_content_db() {
+    let f = Fixture::build();
+    std::fs::remove_file(f.out.join("content.sqlite")).unwrap();
+    let app = app(&f.config());
+    assert_eq!(get(&app, "/media/file/zz000001.jpg").await.status(), 200);
+    assert_eq!(json(&app, "/api/item/100").await.0, 503);
+}

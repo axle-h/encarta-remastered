@@ -1,0 +1,77 @@
+# Place-to-media table: `P2MTBL.DAT`
+
+Status: **fully decoded structurally** (every byte accounted for). The meaning of the link-kind codes is inferred from the
+linked items' titles; four kinds are only partly identified. Source: observation of the file and cross-references to
+`catalog2/{content,data}.ecn`, the PFX titles, `MSWORLD.SDB` and `MSWORLD.ITR $WW$CTCATALOG`.
+Reader: `encarta_formats::p2m`. Dump: `smallfmt p2m <P2MTBL.DAT>`.
+
+Location: `EE/ENCARTA/P2MTBL.DAT` (227,124 B). `EE/KIDS/P2MTBL.DAT` is byte-identical. Read by the atlas component
+(`AREF/COMPNTS/ATCONT.DLL`, `CP2MObject`). All integers are little-endian u32.
+
+**What it is:** for each atlas place (a country, city, region, physical feature …) the list of Encarta items attached to
+it: its article(s), the flag and anthem, "Facts and Figures", music clips and "Media Maps" photos. Despite the old
+"place-to-map" reading of the name, the keys are places and the values are content ids ("place to media").
+
+## Layout
+
+```
+header   u32 a = 8          (meaning unknown; constant)
+         u32 b = 1          (meaning unknown; probably a version)
+         7 × { u32 blockOffset, u32 keyLimit }
+         u32 0              (terminator)
+blocks   7 × block, contiguous from 0x44 to end of file
+block    u32 blockLength     (bytes, including these 8 header bytes)
+         u32 placeCount
+         placeCount × place
+place    u32 placeId
+         u32 linkCount
+         linkCount × { u32 kind, u32 contentId }
+```
+
+- The block directory is a one-level B-tree index: `keyLimit` is the **first place id of the next block** (exclusive
+  upper bound); for the last block it is the last id + 1. Blocks are ≤ 0x8000 bytes (32 KB pages that are not padded).
+- Block offsets: 0x44, 0x802C, 0x10024, 0x18024, 0x2001C, 0x28014, 0x3000C. Each block ends exactly where the next
+  begins, and the last ends at the file size.
+- Place ids ascend strictly across the whole file. Totals: **12,253 places, 16,122 links**, no duplicate links.
+  Links within a place are not sorted by kind.
+- The number of directory entries is derived from the first block offset ((0x44 − 12) / 8 = 7). The header word `8` may
+  be a capacity (7 entries + terminator); this is unconfirmed and does not affect parsing.
+
+## Place ids
+
+The atlas's own entity ids (one id space shared with the rest of the atlas):
+- All **193 `MSWORLD.SDB` country ids** occur (3 = Afghanistan, 2 = Antigua and Barbuda, 12 = Australia); these are also
+  the `dfg/<id>.dfg` flag names and the `L` field of the catalog records (`msworld.md`).
+- The entity column of `D*PLACES.TXT` (`msworld.md`) uses the same ids (cities such as 3359 = Beijing).
+- Range 1 … 161,482,423; 10,590 places have a single link.
+
+## Link kinds
+
+| kind | count | content ids | meaning (inferred) |
+|---|---|---|---|
+| 8 | 9,436 | 761/762 (8,087), 631 (1,260), 174, 461, 701 | **article** about the place (title = place name) |
+| 1 | 190 | 461 | "*Country*: Flag and Anthem" media item (country places) |
+| 14 | 189 | 461 (usually kind-1 id + 1: 142 of 189) | flag-related media (one is titled "Afghan Flag"); probably the flag image |
+| 15 | 193 | 461 (usually kind-1 id + 2: 145 of 189) | untitled companion of kind 1; probably the anthem audio (unconfirmed) |
+| 2 | 193 | 631 | "*Country* Facts and Figures" |
+| 12 | 329 | 631 | music clip ("Burundi: The Mbira", "France: The Quadrille") |
+| 5 | 98 | 631 | Media Maps photo, general landmark ("Aral Sea", "Fabled White Cliffs of Dover") |
+| 37 = 5 + 1·32 | 505 | 631 | Media Maps photo, economy ("Fishing in Bahrain", "Making Rum") |
+| 69 = 5 + 2·32 | 774 | 631 | Media Maps photo, landscape and climate ("Mountainous Armenia") |
+| 101 = 5 + 3·32 | 716 | 631 | Media Maps photo, people and culture ("Children of American Samoa") |
+| 133 = 5 + 4·32 | 1,237 | 631 | Media Maps photo, architecture and settlements ("Sod House", "Hilltop Castle in Cyprus") |
+| 165 = 5 + 5·32 | 325 | 631 | Media Maps photo, animals ("Red Knot", "Lesser Indian Mongoose") |
+| 13 | 171 | 631, none titled in PFX | unknown (keys are contiguous 10,211,925…; perhaps panoramas or tours) |
+| 16 | 1,766 | 631; 1,135 of them have bodies in `content.ecn` | unknown (text items attached to places; perhaps sidebars or web links) |
+
+The photo kinds look like `5 | (theme << 5)` with theme 0–5. The theme labels above are ours, read off the titles; the
+on-screen labels need the reference VM. The photo ids are the keys of `MSWORLD.ITR $WW$CTCATALOG` (3,819 of its keys
+appear here), which supplies their credit lines and file names.
+
+## Validation (whole file)
+- Every block parses to exactly its length; `keyLimit` matches; ids ascend.
+- Kind 8: 7,445 of 9,436 ids are in `content.ecn` (the rest are 631/174 items that live in `data.ecn` or not at all).
+- **Needs checking later (not decompiler work):** kinds 13 and 16 once DATA*.AKC records are readable; kinds 14/15 in the VM.
+
+## Modern target
+SQLite `place_link(place_id, kind, content_id)` plus a kind-label table.

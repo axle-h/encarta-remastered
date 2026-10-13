@@ -1,0 +1,14 @@
+# An allow-list: the build context is the workspace manifests, the crates' source and the `web/`
+# project, and nothing else. `out/`, `extracted/`, `vendor/`, `vm/`, `fixtures/` and `analysis/` hold
+# Microsoft material or derivatives of it and must never reach an image, so they are never sent.
+*
+!Cargo.toml
+!Cargo.lock
+!crates/
+!web/
+
+# Host build outputs. `web/dist` is built by stage 1, never taken from the host, where it could be
+# from a different checkout.
+**/target/
+**/node_modules/
+web/dist/

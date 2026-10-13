@@ -1,0 +1,132 @@
+# Builds the image from a bare checkout, smoke-tests the running container against an empty data
+# directory, and on main pushes it to ghcr.io for `k8s/` to pull. No data is involved at any point:
+# the converter's output is Microsoft material and is never in git or in the image.
+name: container
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same ref makes the older build irrelevant.
+concurrency:
+  group: container-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # Lets GITHUB_TOKEN push to ghcr.io whatever the repository default; making the package public is a
+  # one-off in its settings (see `k8s/README.md`).
+  packages: write
+
+# The image `k8s/encarta/deployment.yml` pulls.
+env:
+  IMAGE: ghcr.io/axle-h/encarta-remastered
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      # A `docker-container` builder, which the GHA cache requires.
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Work out what we are building
+        id: build_info
+        env:
+          REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          {
+            echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "revision=$REVISION"
+          } >> "$GITHUB_OUTPUT"
+
+      # `type=gha` caches layers, not BuildKit cache mounts, so an invalidated cargo stage builds cold.
+      - name: Build the image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          load: true          # into the runner's docker, so the smoke test below can run it
+          tags: encarta:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Consumed in the last stage only, so they never invalidate the build stages.
+          build-args: |
+            SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
+            GIT_REVISION=${{ steps.build_info.outputs.revision }}
+            BUILD_DATE=${{ steps.build_info.outputs.date }}
+
+      # An empty, read-only /data, as a fresh volume would be: the server must come up without data.
+      - name: Start the container
+        run: |
+          mkdir -p ci-data
+          docker run -d --name encarta-ci -p 8080:8080 -v "$PWD/ci-data:/data:ro" encarta:ci
+
+      - name: It serves /healthz and the SPA
+        run: |
+          set -euo pipefail
+
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/healthz >/dev/null 2>&1; then break; fi
+            if [ "$i" = 30 ]; then echo "::error::/healthz never came up"; exit 1; fi
+            sleep 2
+          done
+          curl -fsS http://localhost:8080/healthz; echo
+
+          # The SPA's index.html, from the image's /app/web.
+          index=$(curl -fsS http://localhost:8080/)
+          case "$index" in
+            *'<script'*) echo "/ serves the SPA" ;;
+            *) echo "::error::/ did not serve the SPA's index.html"; printf '%s\n' "$index" | head -20; exit 1 ;;
+          esac
+
+          # A client-side route that is not a file falls back to the same index.html.
+          route=$(curl -fsS http://localhost:8080/item/1)
+          [ "$route" = "$index" ] \
+            || { echo "::error::/item/1 did not fall back to index.html"; exit 1; }
+
+          # And the hashed bundle it references is there too.
+          asset=$(printf '%s' "$index" | grep -o '/assets/[^"]*\.js' | head -n1)
+          [ -n "$asset" ] || { echo "::error::index.html references no /assets/*.js"; exit 1; }
+          curl -fsS -o /dev/null "http://localhost:8080$asset"
+          echo "$asset is served"
+
+      # Publish: runs only after the smoke test passed, and only on main, since a fork PR's token is
+      # read-only whatever `permissions:` asks for.
+      - name: Log in to ghcr.io
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        # Through the environment, since `${{ }}` in `run:` is substituted into the script text.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+
+      # Pushes the exact image the smoke test ran. `latest` is what `k8s/` pulls; the commit tag is
+      # the one to pin or roll back to.
+      - name: Push it
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          docker tag encarta:ci "$IMAGE:latest"
+          docker tag encarta:ci "$IMAGE:$GITHUB_SHA"
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:$GITHUB_SHA"
+          echo "### Pushed \`$IMAGE:$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+          echo '```shell' >> "$GITHUB_STEP_SUMMARY"
+          echo "kubectl -n encarta set image deploy/encarta encarta=$IMAGE:$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Container logs
+        if: always()
+        run: docker logs encarta-ci 2>&1 | tail -100
+
+      - name: Stop it
+        if: always()
+        run: docker rm -f encarta-ci >/dev/null 2>&1 || true

@@ -1,0 +1,5 @@
+# Applied on its own, before `encarta/`: everything in there is namespaced into it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: encarta

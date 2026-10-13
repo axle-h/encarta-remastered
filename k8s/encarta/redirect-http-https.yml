@@ -1,0 +1,11 @@
+# The ingress names this as `encarta-redirect-http-https@kubernetescrd`, which traefik resolves by
+# namespace, so it only works in `encarta`.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-http-https
+  namespace: encarta
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true

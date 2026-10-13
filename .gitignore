@@ -43,3 +43,10 @@
 *.pmtiles
 *.sqlite
 *.db
+
+# Web client build output and dependencies
+node_modules/
+/web/dist
+
+# The public hostname, read by k8s/apply.sh; it must never be committed
+/k8s/host.local

@@ -1,0 +1,794 @@
+//! JSON API handlers (`/api/…`). Shapes are documented in docs/api.md.
+
+use crate::AppState;
+use crate::db::Db;
+use crate::error::{ApiError, ApiResult, editions, query_objects, row_object};
+use crate::media::{disc_name, info_for_name};
+use axum::Json;
+use axum::extract::{Path, Query, State};
+use encarta_search::SearchRequest;
+use rusqlite::{Connection, OptionalExtension, params};
+use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
+use serde_json::{Map, Value, json};
+use std::sync::Arc;
+
+type St = State<Arc<AppState>>;
+
+fn content(st: &AppState) -> ApiResult<&Db> {
+    st.content.as_ref().ok_or_else(|| ApiError::unavailable("content database not available"))
+}
+
+fn raw(s: Option<String>) -> Option<Box<RawValue>> {
+    s.and_then(|s| RawValue::from_string(s).ok())
+}
+
+fn truthy(v: &Option<String>) -> Option<bool> {
+    v.as_deref().map(|s| !matches!(s, "0" | "false" | "no" | "off"))
+}
+
+// ---------------------------------------------------------------- meta
+
+pub async fn meta(State(st): St) -> ApiResult<Json<Value>> {
+    let content = match &st.content {
+        Some(db) => {
+            let rows = db.call(|c| Ok(query_objects(c, "SELECT key, value FROM meta", [])?)).await?;
+            let mut m = Map::new();
+            for r in rows {
+                if let (Some(k), Some(v)) = (r.get("key").and_then(|v| v.as_str()), r.get("value")) {
+                    m.insert(k.to_string(), v.clone());
+                }
+            }
+            Value::Object(m)
+        }
+        None => Value::Null,
+    };
+    Ok(Json(json!({
+        "server": concat!("encarta-server ", env!("CARGO_PKG_VERSION")),
+        "content": content,
+        "search": st.search.as_ref().map(|s| s.meta.clone()),
+        "media_manifest": st.media_manifest,
+        "extracted_fallback": st.extracted.is_some(),
+        "tours": st.tours,
+        "atlas": st.atlas,
+        "static": st.static_dir.is_some(),
+    })))
+}
+
+// ---------------------------------------------------------------- items
+
+const ASSOC_SQL: &str = "SELECT a.target_ref_id AS ref_id, a.grp AS \"group\", a.sec, a.sequence, a.appears, a.par,
+        i.kind, i.media_type, i.title, i.title_html, i.caption_html,
+        f.file_name AS thumb_file, f.width AS thumb_width, f.height AS thumb_height
+    FROM assoc a
+    LEFT JOIN item i ON i.ref_id = a.target_ref_id
+    LEFT JOIN item_file f ON f.rowid = (SELECT rowid FROM item_file WHERE ref_id = a.target_ref_id AND role = 'thumb' ORDER BY ordinal LIMIT 1)
+    WHERE a.ref_id = ?1 AND a.direction = ?2 ORDER BY a.ordinal LIMIT ?3";
+
+fn assoc_items(c: &Connection, ref_id: i64, direction: &str, limit: i64) -> rusqlite::Result<Vec<Value>> {
+    let mut out = query_objects(c, ASSOC_SQL, params![ref_id, direction, limit])?;
+    for v in &mut out {
+        let o = v.as_object_mut().unwrap();
+        let thumb = o.remove("thumb_file").and_then(|f| f.as_str().map(str::to_string)).map(|f| {
+            json!({ "file_name": f, "url": format!("/media/file/{f}"),
+                    "width": o.remove("thumb_width"), "height": o.remove("thumb_height") })
+        });
+        o.remove("thumb_width");
+        o.remove("thumb_height");
+        o.insert("thumb".into(), thumb.unwrap_or(Value::Null));
+    }
+    Ok(out)
+}
+
+fn timeline_event(o: &Map<String, Value>) -> Value {
+    let date = |p: &str| {
+        let y = o.get(&format!("{p}_year")).cloned().unwrap_or(Value::Null);
+        if y.is_null() {
+            return Value::Null;
+        }
+        json!({ "year": y, "month": o.get(&format!("{p}_month")), "day": o.get(&format!("{p}_day")),
+                "circa": o.get(&format!("{p}_circa")).and_then(|v| v.as_i64()).is_some_and(|v| v != 0) })
+    };
+    let list = |k: &str| -> Vec<String> {
+        o.get(k).and_then(|v| v.as_str()).map(|s| s.split(", ").filter(|x| !x.is_empty()).map(str::to_string).collect()).unwrap_or_default()
+    };
+    let mut m = Map::new();
+    for k in ["seq", "ref_id", "kind", "source_table", "title", "title_html", "span", "importance", "category_mask", "region_mask"] {
+        if let Some(v) = o.get(k) {
+            m.insert(k.into(), v.clone());
+        }
+    }
+    m.insert("start".into(), date("start"));
+    m.insert("end".into(), date("end"));
+    m.insert("categories".into(), json!(list("categories")));
+    m.insert("regions".into(), json!(list("regions")));
+    Value::Object(m)
+}
+
+#[derive(Deserialize, Default)]
+pub struct EditionQuery {
+    pub edition: Option<String>,
+    pub body: Option<String>,
+    pub html: Option<String>,
+}
+
+pub async fn item(State(st): St, Path(id): Path<i64>, Query(q): Query<EditionQuery>) -> ApiResult<Json<Value>> {
+    let has_m = st.media_manifest;
+    let edition = q.edition.unwrap_or_else(|| "deluxe".into());
+    let v = content(&st)?
+        .call(move |c| {
+            let Some(mut o) = c.prepare_cached("SELECT * FROM item WHERE ref_id = ?1")?.query_row([id], row_object).optional()? else {
+                return Err(ApiError::not_found(format!("no item {id}")).into());
+            };
+            let d = o.get("in_deluxe").and_then(|v| v.as_i64()).unwrap_or(0) != 0;
+            let k = o.get("in_kids").and_then(|v| v.as_i64()).unwrap_or(0) != 0;
+            o.insert("editions".into(), json!(editions(d, k)));
+            let has_article: bool = c.prepare_cached("SELECT EXISTS(SELECT 1 FROM article WHERE ref_id = ?1)")?.query_row([id], |r| r.get(0))?;
+            o.insert("has_article".into(), json!(has_article));
+            let mut files = query_objects(c, "SELECT role, file_name, width, height, src_ref_id, disc FROM item_file WHERE ref_id = ?1 ORDER BY ordinal", [id])?;
+            for f in &mut files {
+                let o = f.as_object_mut().unwrap();
+                let name = o.get("file_name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                o.insert("url".into(), json!(format!("/media/file/{name}")));
+                o.insert("media".into(), json!(info_for_name(c, has_m, &name, &edition)?));
+            }
+            o.insert("files".into(), json!(files));
+            o.insert(
+                "children".into(),
+                json!(query_objects(
+                    c,
+                    "SELECT ch.kind, ch.child_ref_id AS ref_id, ch.sequence, i.title, i.kind AS item_kind
+                     FROM item_child ch LEFT JOIN item i ON i.ref_id = ch.child_ref_id WHERE ch.ref_id = ?1 ORDER BY ch.ordinal",
+                    [id]
+                )?),
+            );
+            o.insert("media".into(), json!(assoc_items(c, id, "forward", 1000)?));
+            o.insert("appears_in".into(), json!(assoc_items(c, id, "reverse", 500)?));
+            let table = c
+                .prepare_cached("SELECT kind, json, html FROM data_table WHERE ref_id = ?1")?
+                .query_row([id], |r| Ok(json!({ "kind": r.get::<_, Option<String>>(0)?,
+                    "json": serde_json::from_str::<Value>(&r.get::<_, String>(1)?).unwrap_or(Value::Null),
+                    "html": r.get::<_, Option<String>>(2)? })))
+                .optional()?;
+            o.insert("data_table".into(), table.unwrap_or(Value::Null));
+            let tl = c.prepare_cached("SELECT * FROM timeline_event WHERE ref_id = ?1 LIMIT 1")?.query_row([id], row_object).optional()?;
+            o.insert("timeline".into(), tl.map(|t| timeline_event(&t)).unwrap_or(Value::Null));
+            Ok(Value::Object(o))
+        })
+        .await?;
+    Ok(Json(v))
+}
+
+#[derive(Serialize)]
+pub struct ArticleOut {
+    #[serde(flatten)]
+    head: Map<String, Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    body: Option<Box<RawValue>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    html: Option<String>,
+    outline: Option<Box<RawValue>>,
+    sections: Vec<Value>,
+    related: Option<Box<RawValue>>,
+    related_editions: Option<String>,
+    media: Vec<Value>,
+    tables: Vec<Value>,
+}
+
+pub async fn article(State(st): St, Path(id): Path<i64>, Query(q): Query<EditionQuery>) -> ApiResult<Json<ArticleOut>> {
+    let want_body = truthy(&q.body).unwrap_or(true);
+    let want_html = truthy(&q.html).unwrap_or(true);
+    let tree_ed = if q.edition.as_deref() == Some("kids") { "KDC" } else { "DLX" };
+    let out = content(&st)?
+        .call(move |c| {
+            let row = c
+                .prepare_cached(
+                    "SELECT a.source, a.source_file, a.paragraph_count, a.section_count, a.word_count,
+                            i.title, i.title_html, i.kind, i.in_deluxe, i.in_kids,
+                            CASE WHEN ?2 THEN a.body_json END, CASE WHEN ?3 THEN a.html END, a.outline_json
+                     FROM article a JOIN item i USING (ref_id) WHERE a.ref_id = ?1",
+                )?
+                .query_row(params![id, want_body, want_html], |r| {
+                    let mut head = Map::new();
+                    head.insert("ref_id".into(), json!(id));
+                    for (i, k) in ["source", "source_file", "paragraph_count", "section_count", "word_count", "title", "title_html", "kind"].iter().enumerate() {
+                        let v = crate::error::value(r.get_ref(i)?, false);
+                        if !v.is_null() {
+                            head.insert(k.to_string(), v);
+                        }
+                    }
+                    head.insert("editions".into(), json!(editions(r.get::<_, i64>(8)? != 0, r.get::<_, i64>(9)? != 0)));
+                    Ok((head, r.get::<_, Option<String>>(10)?, r.get::<_, Option<String>>(11)?, r.get::<_, Option<String>>(12)?))
+                })
+                .optional()?;
+            let Some((head, body, html, outline)) = row else {
+                return Err(ApiError::not_found(format!("no article {id}")).into());
+            };
+            let sections = query_objects(
+                c,
+                "SELECT section_id AS id, parent_id, level, number, title, type_code AS type FROM section WHERE ref_id = ?1 ORDER BY section_id",
+                [id],
+            )?;
+            let mut trees: Vec<(String, String)> = c
+                .prepare_cached("SELECT editions, tree_json FROM related_tree WHERE ref_id = ?1")?
+                .query_map([id], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<rusqlite::Result<_>>()?;
+            let pick = trees.iter().position(|(e, _)| e.split(',').any(|x| x == tree_ed)).or(if trees.is_empty() { None } else { Some(0) });
+            let (related_editions, related) = match pick {
+                Some(i) => {
+                    let (e, t) = trees.swap_remove(i);
+                    (Some(e), raw(Some(t)))
+                }
+                None => (None, None),
+            };
+            let tables = query_objects(
+                c,
+                // `json_json` is parsed into `json` by row_object.
+                "SELECT d.ref_id, d.kind, i.title, d.json AS json_json, d.html FROM assoc a JOIN data_table d ON d.ref_id = a.target_ref_id
+                 LEFT JOIN item i ON i.ref_id = d.ref_id WHERE a.ref_id = ?1 AND a.direction = 'forward' ORDER BY a.ordinal",
+                [id],
+            )?;
+            Ok(ArticleOut {
+                head,
+                body: raw(body),
+                html,
+                outline: raw(outline),
+                sections,
+                related,
+                related_editions,
+                media: assoc_items(c, id, "forward", 1000)?,
+                tables,
+            })
+        })
+        .await?;
+    Ok(Json(out))
+}
+
+pub async fn place(State(st): St, Path(gid): Path<i64>) -> ApiResult<Json<Value>> {
+    let links = content(&st)?
+        .call(move |c| {
+            Ok(query_objects(
+                c,
+                "SELECT p.ordinal, p.kind, p.kind_label, p.content_ref_id AS ref_id, i.title, i.kind AS item_kind
+                 FROM place_link p LEFT JOIN item i ON i.ref_id = p.content_ref_id WHERE p.place_id = ?1 ORDER BY p.ordinal",
+                [gid],
+            )?)
+        })
+        .await?;
+    if links.is_empty() {
+        return Err(ApiError::not_found(format!("no links for place {gid}")));
+    }
+    Ok(Json(json!({ "place_id": gid, "links": links })))
+}
+
+pub async fn quiz(State(st): St, Path(id): Path<i64>, Query(q): Query<EditionQuery>) -> ApiResult<Json<Value>> {
+    let ed = q.edition.unwrap_or_else(|| "deluxe".into());
+    let v = content(&st)?
+        .call(move |c| {
+            Ok(c.prepare_cached(
+                "SELECT quiz_id, edition, quiz_type, lang, json FROM quiz WHERE quiz_id = ?1 ORDER BY (edition = ?2) DESC LIMIT 1",
+            )?
+            .query_row(params![id, ed], |r| {
+                Ok(json!({ "quiz_id": r.get::<_, i64>(0)?, "edition": r.get::<_, String>(1)?, "quiz_type": r.get::<_, Option<String>>(2)?,
+                    "lang": r.get::<_, Option<String>>(3)?, "quiz": serde_json::from_str::<Value>(&r.get::<_, String>(4)?).unwrap_or(Value::Null) }))
+            })
+            .optional()?)
+        })
+        .await?;
+    v.map(Json).ok_or_else(|| ApiError::not_found(format!("no quiz {id}")))
+}
+
+pub async fn interactive(State(st): St, Path(name): Path<String>, Query(q): Query<EditionQuery>) -> ApiResult<Json<Value>> {
+    let ed = q.edition.unwrap_or_else(|| "deluxe".into());
+    let key = disc_name(&name);
+    let v = content(&st)?
+        .call(move |c| {
+            Ok(c.prepare_cached(
+                "SELECT file_name, edition, package, control_type, title, json FROM interactive WHERE lower(file_name) = ?1
+                 ORDER BY (edition = ?2) DESC LIMIT 1",
+            )?
+            .query_row(params![key, ed], |r| {
+                Ok(json!({ "file_name": r.get::<_, String>(0)?, "edition": r.get::<_, String>(1)?, "package": r.get::<_, Option<String>>(2)?,
+                    "control_type": r.get::<_, Option<String>>(3)?, "title": r.get::<_, Option<String>>(4)?,
+                    "definition": serde_json::from_str::<Value>(&r.get::<_, String>(5)?).unwrap_or(Value::Null) }))
+            })
+            .optional()?)
+        })
+        .await?;
+    v.map(Json).ok_or_else(|| ApiError::not_found(format!("no interactive {name}")))
+}
+
+// ---------------------------------------------------------------- dictionary
+
+/// Every dictionary form, lower-cased and sorted, for exact and word-wheel lookups.
+pub struct DictIndex {
+    names: Vec<(String, String)>, // (name, kind)
+    forms: Vec<(String, u16, u64, u8)>,
+    originals: Vec<String>,
+}
+
+const FORM_KINDS: [&str; 5] = ["headword", "inflection", "runon", "phrase", "variant"];
+
+impl DictIndex {
+    pub fn load(c: &Connection) -> rusqlite::Result<Self> {
+        let names: Vec<(String, String)> =
+            c.prepare("SELECT name, kind FROM dictionary ORDER BY name")?.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+        let mut rows: Vec<(String, u16, u64, u8, String)> = Vec::new();
+        let mut st = c.prepare("SELECT form, dictionary, ref_id, kind FROM dict_form")?;
+        let mut q = st.query([])?;
+        while let Some(r) = q.next()? {
+            let form: String = r.get(0)?;
+            let dict: String = r.get(1)?;
+            let kind: String = r.get(3)?;
+            let Some(d) = names.iter().position(|(n, _)| *n == dict) else { continue };
+            let k = FORM_KINDS.iter().position(|x| *x == kind).unwrap_or(0) as u8;
+            rows.push((form.to_lowercase(), d as u16, r.get::<_, i64>(2)? as u64, k, form));
+        }
+        rows.sort_by(|a, b| a.0.cmp(&b.0).then(a.3.cmp(&b.3)).then(a.1.cmp(&b.1)));
+        let originals = rows.iter().map(|r| r.4.clone()).collect();
+        let forms = rows.into_iter().map(|(l, d, r, k, _)| (l, d, r, k)).collect();
+        Ok(DictIndex { names, forms, originals })
+    }
+
+    pub fn len(&self) -> usize {
+        self.forms.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.forms.is_empty()
+    }
+
+    /// Matches as (dictionary, kind, ref, form, form kind).
+    fn lookup(&self, q: &str, prefix: bool, dict: Option<&str>, kind: Option<&str>, limit: usize) -> Vec<(String, String, u64, String, &'static str)> {
+        let q = q.trim().to_lowercase();
+        if q.is_empty() {
+            return Vec::new();
+        }
+        let start = self.forms.partition_point(|f| f.0.as_str() < q.as_str());
+        let mut out = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for (i, f) in self.forms[start..].iter().enumerate() {
+            let hit = if prefix { f.0.starts_with(&q) } else { f.0 == q };
+            if !hit || out.len() >= limit {
+                break;
+            }
+            let (name, dkind) = &self.names[f.1 as usize];
+            if dict.is_some_and(|d| !d.eq_ignore_ascii_case(name)) || kind.is_some_and(|k| k != dkind) {
+                continue;
+            }
+            if seen.insert((f.1, f.2)) {
+                out.push((name.clone(), dkind.clone(), f.2, self.originals[start + i].clone(), FORM_KINDS[f.3 as usize]));
+            }
+        }
+        out
+    }
+}
+
+pub async fn dictionaries(State(st): St) -> ApiResult<Json<Value>> {
+    let v = content(&st)?
+        .call(|c| {
+            Ok(query_objects(
+                c,
+                "SELECT name, kind, title, entry_count, uniq_tag, lex_file, guid, parent_guid, signature_json FROM dictionary ORDER BY name",
+                [],
+            )?)
+        })
+        .await?;
+    Ok(Json(json!({ "dictionaries": v })))
+}
+
+#[derive(Deserialize)]
+pub struct LookupQuery {
+    pub q: Option<String>,
+    pub dict: Option<String>,
+    pub kind: Option<String>,
+    pub prefix: Option<String>,
+    pub limit: Option<usize>,
+}
+
+pub async fn dict_lookup(State(st): St, Query(q): Query<LookupQuery>) -> ApiResult<Json<Value>> {
+    let Some(idx) = st.dict.clone() else {
+        return Err(ApiError::unavailable("dictionary index not available"));
+    };
+    let query = q.q.clone().unwrap_or_default();
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
+    let hits = idx.lookup(&query, truthy(&q.prefix).unwrap_or(false), q.dict.as_deref(), q.kind.as_deref(), limit);
+    let entries = content(&st)?
+        .call(move |c| {
+            let mut st = c.prepare_cached("SELECT headword, summary FROM dict_entry WHERE dictionary = ?1 AND ref_id = ?2")?;
+            let mut out = Vec::new();
+            for (dict, kind, ref_id, form, form_kind) in hits {
+                let (headword, summary): (Option<String>, Option<String>) =
+                    st.query_row(params![dict, ref_id as i64], |r| Ok((r.get(0)?, r.get(1)?))).optional()?.unwrap_or((None, None));
+                out.push(json!({ "dictionary": dict, "kind": kind, "ref_id": ref_id, "headword": headword, "summary": summary,
+                    "form": form, "form_kind": form_kind, "url": format!("/api/dictionary/{dict}/{ref_id}") }));
+            }
+            Ok(out)
+        })
+        .await?;
+    Ok(Json(json!({ "query": query, "entries": entries })))
+}
+
+pub async fn dict_entry(State(st): St, Path((dict, id)): Path<(String, i64)>) -> ApiResult<Json<Value>> {
+    let has_m = st.media_manifest;
+    let v = content(&st)?
+        .call(move |c| {
+            let row = c
+                .prepare_cached(
+                    "SELECT e.dictionary, d.kind, e.ref_id, e.headword, e.variety, e.summary, e.body_json, e.html
+                     FROM dict_entry e LEFT JOIN dictionary d ON d.name = e.dictionary WHERE e.dictionary = ?1 AND e.ref_id = ?2",
+                )?
+                .query_row(params![dict.to_ascii_uppercase(), id], row_object)
+                .optional()?;
+            let Some(mut o) = row else {
+                return Err(ApiError::not_found(format!("no entry {dict}/{id}")).into());
+            };
+            let name = o.get("dictionary").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            o.insert(
+                "forms".into(),
+                json!(query_objects(c, "SELECT form, kind FROM dict_form WHERE dictionary = ?1 AND ref_id = ?2", params![name, id])?),
+            );
+            let mut audio = query_objects(c, "SELECT file_name, audio_ref_id FROM dict_audio WHERE dictionary = ?1 AND ref_id = ?2", params![name, id])?;
+            for a in &mut audio {
+                let o = a.as_object_mut().unwrap();
+                let f = o.get("file_name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                o.insert("url".into(), json!(format!("/media/file/{f}")));
+                o.insert("media".into(), json!(info_for_name(c, has_m, &f, "deluxe")?));
+            }
+            o.insert("audio".into(), json!(audio));
+            Ok(Value::Object(o))
+        })
+        .await?;
+    Ok(Json(v))
+}
+
+// ---------------------------------------------------------------- timeline
+
+pub async fn timeline_meta(State(st): St) -> ApiResult<Json<Value>> {
+    let v = content(&st)?
+        .call(|c| {
+            let cats = query_objects(c, "SELECT bit, name FROM timeline_category ORDER BY bit", [])?;
+            let regs = query_objects(c, "SELECT bit, name FROM timeline_region ORDER BY bit", [])?;
+            let (n, lo, hi): (i64, Option<i64>, Option<i64>) =
+                c.query_row("SELECT COUNT(*), MIN(start_year), MAX(COALESCE(end_year, start_year)) FROM timeline_event", [], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                })?;
+            Ok(json!({ "categories": cats, "regions": regs, "count": n, "min_year": lo, "max_year": hi }))
+        })
+        .await?;
+    Ok(Json(v))
+}
+
+#[derive(Deserialize)]
+pub struct TimelineQuery {
+    pub from: Option<i64>,
+    pub to: Option<i64>,
+    pub category: Option<String>,
+    pub region: Option<String>,
+    pub q: Option<String>,
+    pub min_importance: Option<i64>,
+    pub max_importance: Option<i64>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+fn mask_of(c: &Connection, table: &str, spec: &Option<String>) -> ApiResult<i64> {
+    let Some(spec) = spec.as_deref().filter(|s| !s.is_empty()) else { return Ok(0) };
+    let mut m = 0i64;
+    for tok in spec.split(',').map(str::trim).filter(|t| !t.is_empty()) {
+        if let Ok(b) = tok.parse::<i64>() {
+            m |= b;
+            continue;
+        }
+        let bit: Option<i64> = c
+            .prepare_cached(&format!("SELECT bit FROM {table} WHERE lower(name) = lower(?1)"))?
+            .query_row([tok], |r| r.get(0))
+            .optional()?;
+        m |= bit.ok_or_else(|| ApiError::bad_request(format!("unknown {table} {tok:?}")))?;
+    }
+    Ok(m)
+}
+
+pub async fn timeline(State(st): St, Query(q): Query<TimelineQuery>) -> ApiResult<Json<Value>> {
+    let v = content(&st)?
+        .call(move |c| {
+            let cat = mask_of(c, "timeline_category", &q.category)?;
+            let reg = mask_of(c, "timeline_region", &q.region)?;
+            let like = q.q.as_deref().filter(|s| !s.is_empty()).map(|s| format!("%{s}%"));
+            let filter = "WHERE (?1 IS NULL OR COALESCE(end_year, start_year) >= ?1) AND (?2 IS NULL OR start_year <= ?2)
+                AND (?3 = 0 OR category_mask & ?3 != 0) AND (?4 = 0 OR region_mask & ?4 != 0) AND (?5 IS NULL OR title LIKE ?5)
+                AND (?6 IS NULL OR importance >= ?6) AND (?7 IS NULL OR importance <= ?7)";
+            let p = params![q.from, q.to, cat, reg, like, q.min_importance, q.max_importance];
+            let total: i64 = c.prepare_cached(&format!("SELECT COUNT(*) FROM timeline_event {filter}"))?.query_row(p, |r| r.get(0))?;
+            let limit = q.limit.unwrap_or(500).clamp(1, 20_000);
+            let offset = q.offset.unwrap_or(0).max(0);
+            let mut st = c.prepare_cached(&format!(
+                "SELECT * FROM timeline_event {filter} ORDER BY start_year, start_month, start_day, seq LIMIT ?8 OFFSET ?9"
+            ))?;
+            let rows = st.query_map(params![q.from, q.to, cat, reg, like, q.min_importance, q.max_importance, limit, offset], row_object)?;
+            let events: Vec<Value> = rows.map(|r| r.map(|o| timeline_event(&o))).collect::<rusqlite::Result<_>>()?;
+            Ok(json!({ "total": total, "offset": offset, "events": events }))
+        })
+        .await?;
+    Ok(Json(v))
+}
+
+// ---------------------------------------------------------------- mindmaze
+
+pub async fn mindmaze(State(st): St) -> ApiResult<Json<Value>> {
+    let v = content(&st)?
+        .call(|c| {
+            let total: i64 = c.query_row("SELECT COUNT(*) FROM mindmaze_question", [], |r| r.get(0))?;
+            let cats = query_objects(
+                c,
+                "SELECT category, category_label AS label, COUNT(*) AS questions FROM mindmaze_question GROUP BY category ORDER BY category",
+                [],
+            )?;
+            let levels = query_objects(c, "SELECT level, COUNT(*) AS questions FROM mindmaze_question GROUP BY level ORDER BY level", [])?;
+            Ok(json!({ "total": total, "categories": cats, "levels": levels }))
+        })
+        .await?;
+    Ok(Json(v))
+}
+
+fn with_answers(c: &Connection, mut qs: Vec<Value>) -> rusqlite::Result<Vec<Value>> {
+    for q in &mut qs {
+        let o = q.as_object_mut().unwrap();
+        let id = o.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
+        let mut answers = query_objects(
+            c,
+            "SELECT ordinal, correct, text, text_html, article_ref_id, article_exists FROM mindmaze_answer WHERE question_id = ?1 ORDER BY ordinal",
+            [id],
+        )?;
+        for a in &mut answers {
+            let a = a.as_object_mut().unwrap();
+            for k in ["correct", "article_exists"] {
+                if let Some(v) = a.get(k).and_then(|v| v.as_i64()) {
+                    a.insert(k.into(), json!(v != 0));
+                }
+            }
+        }
+        o.insert("answers".into(), json!(answers));
+    }
+    Ok(qs)
+}
+
+#[derive(Deserialize)]
+pub struct MazeQuery {
+    pub category: Option<i64>,
+    pub level: Option<i64>,
+    pub limit: Option<i64>,
+    pub random: Option<String>,
+    pub seed: Option<i64>,
+}
+
+pub async fn mindmaze_questions(State(st): St, Query(q): Query<MazeQuery>) -> ApiResult<Json<Value>> {
+    let random = truthy(&q.random).unwrap_or(false) || q.seed.is_some();
+    let seed = q.seed.unwrap_or_else(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as i64)) & 0x7fff_ffff;
+    let v = content(&st)?
+        .call(move |c| {
+            let order = if random { "((id * 2654435761 + ?4) % 4294967291)" } else { "id + 0 * ?4" };
+            let qs = query_objects(
+                c,
+                &format!(
+                    "SELECT id, category, category_label, level, clue, clue_html, location FROM mindmaze_question
+                     WHERE (?1 IS NULL OR category = ?1) AND (?2 IS NULL OR level = ?2) ORDER BY {order} LIMIT ?3"
+                ),
+                params![q.category, q.level, q.limit.unwrap_or(10).clamp(1, 1000), seed],
+            )?;
+            Ok(json!({ "questions": with_answers(c, qs)? }))
+        })
+        .await?;
+    Ok(Json(v))
+}
+
+pub async fn mindmaze_question(State(st): St, Path(id): Path<i64>) -> ApiResult<Json<Value>> {
+    let v = content(&st)?
+        .call(move |c| {
+            let qs = query_objects(
+                c,
+                "SELECT id, category, category_label, level, clue, clue_html, location FROM mindmaze_question WHERE id = ?1",
+                [id],
+            )?;
+            Ok(with_answers(c, qs)?.into_iter().next())
+        })
+        .await?;
+    v.map(Json).ok_or_else(|| ApiError::not_found(format!("no question {id}")))
+}
+
+// ---------------------------------------------------------------- statistics
+
+const INDICATOR_SQL: &str = "SELECT s.id, s.name, s.category_mask, s.categories, s.content_ref_id, s.source,
+        u.id AS unit_id, u.unit, u.alt_unit, u.factor, u.offset
+    FROM stat_indicator s LEFT JOIN stat_unit u ON u.id = s.unit_id";
+
+fn indicator(o: Map<String, Value>) -> Value {
+    let mut o = o;
+    let unit = o.remove("unit_id").map(|id| {
+        json!({ "id": id, "unit": o.remove("unit"), "alt_unit": o.remove("alt_unit"), "factor": o.remove("factor"), "offset": o.remove("offset") })
+    });
+    for k in ["unit", "alt_unit", "factor", "offset"] {
+        o.remove(k);
+    }
+    let cats: Vec<String> =
+        o.get("categories").and_then(|v| v.as_str()).map(|s| s.split(", ").filter(|x| !x.is_empty()).map(str::to_string).collect()).unwrap_or_default();
+    o.insert("categories".into(), json!(cats));
+    o.insert("unit".into(), unit.unwrap_or(Value::Null));
+    Value::Object(o)
+}
+
+pub async fn stats(State(st): St) -> ApiResult<Json<Value>> {
+    let v = content(&st)?
+        .call(|c| {
+            let cats = query_objects(c, "SELECT bit, name FROM stat_category ORDER BY bit", [])?;
+            let mut st = c.prepare_cached(&format!("{INDICATOR_SQL} ORDER BY s.name"))?;
+            let inds: Vec<Value> = st.query_map([], row_object)?.map(|r| r.map(indicator)).collect::<rusqlite::Result<_>>()?;
+            let countries = query_objects(c, "SELECT id, name FROM stat_country ORDER BY name", [])?;
+            Ok(json!({ "categories": cats, "indicators": inds, "countries": countries }))
+        })
+        .await?;
+    Ok(Json(v))
+}
+
+pub async fn stats_indicator(State(st): St, Path(id): Path<i64>) -> ApiResult<Json<Value>> {
+    let v = content(&st)?
+        .call(move |c| {
+            let Some(ind) = c.prepare_cached(&format!("{INDICATOR_SQL} WHERE s.id = ?1"))?.query_row([id], row_object).optional()? else {
+                return Err(ApiError::not_found(format!("no indicator {id}")).into());
+            };
+            let values = query_objects(
+                c,
+                "SELECT v.country_id, c.name AS country, v.rank, v.value, v.value_text, v.decimals, v.year, v.note
+                 FROM stat_value v LEFT JOIN stat_country c ON c.id = v.country_id WHERE v.indicator_id = ?1 ORDER BY v.rank, c.name",
+                [id],
+            )?;
+            Ok(json!({ "indicator": indicator(ind), "values": values }))
+        })
+        .await?;
+    Ok(Json(v))
+}
+
+pub async fn stats_country(State(st): St, Path(id): Path<i64>) -> ApiResult<Json<Value>> {
+    let v = content(&st)?
+        .call(move |c| {
+            let Some(country) = c.prepare_cached("SELECT id, name FROM stat_country WHERE id = ?1")?.query_row([id], row_object).optional()? else {
+                return Err(ApiError::not_found(format!("no country {id}")).into());
+            };
+            let values = query_objects(
+                c,
+                "SELECT v.indicator_id, s.name AS indicator, v.rank, v.value, v.value_text, v.decimals, v.year, v.note
+                 FROM stat_value v JOIN stat_indicator s ON s.id = v.indicator_id WHERE v.country_id = ?1 ORDER BY s.name",
+                [id],
+            )?;
+            Ok(json!({ "country": country, "values": values }))
+        })
+        .await?;
+    Ok(Json(v))
+}
+
+// ---------------------------------------------------------------- search
+
+#[derive(Deserialize)]
+pub struct SearchQuery {
+    pub q: Option<String>,
+    pub kind: Option<String>,
+    pub edition: Option<String>,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+    pub snippets: Option<String>,
+    pub lexicon: Option<String>,
+}
+
+fn search_index(st: &AppState) -> ApiResult<Arc<encarta_search::SearchIndex>> {
+    st.search.clone().ok_or_else(|| ApiError::unavailable("search index not available (run `encarta-convert search`)"))
+}
+
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> ApiResult<T> {
+    Ok(tokio::task::spawn_blocking(f).await.map_err(anyhow::Error::from)??)
+}
+
+pub async fn search(State(st): St, Query(q): Query<SearchQuery>) -> ApiResult<Json<encarta_search::SearchResponse>> {
+    let idx = search_index(&st)?;
+    let req = SearchRequest {
+        q: q.q.unwrap_or_default(),
+        kind: q.kind,
+        edition: q.edition,
+        limit: q.limit.unwrap_or(20),
+        offset: q.offset.unwrap_or(0).min(10_000),
+        snippets: truthy(&q.snippets).unwrap_or(true),
+    };
+    Ok(Json(blocking(move || idx.search(&req)).await?))
+}
+
+pub async fn suggest(State(st): St, Query(q): Query<SearchQuery>) -> ApiResult<Json<Value>> {
+    let idx = search_index(&st)?;
+    let query = q.q.unwrap_or_default();
+    let limit = q.limit.unwrap_or(10).clamp(1, 100);
+    let qq = query.clone();
+    let s = blocking(move || Ok(idx.suggest(&qq, limit, q.edition.as_deref(), q.kind.as_deref()))).await?;
+    Ok(Json(json!({ "query": query, "suggestions": s })))
+}
+
+pub async fn spell(State(st): St, Query(q): Query<SearchQuery>) -> ApiResult<Json<encarta_search::SpellResult>> {
+    let idx = search_index(&st)?;
+    let query = q.q.unwrap_or_default();
+    let limit = q.limit.unwrap_or(5).clamp(1, 50);
+    let r = blocking(move || {
+        let lex: Vec<&str> = q.lexicon.as_deref().map(|l| l.split(',').map(str::trim).filter(|s| !s.is_empty()).collect()).unwrap_or_default();
+        idx.spell(&query, &lex, q.edition.as_deref(), limit).ok_or_else(|| anyhow::Error::from(ApiError::unavailable("no spelling data")))
+    })
+    .await?;
+    Ok(Json(r))
+}
+
+// ---------------------------------------------------------------- atlas gazetteer
+
+fn gazetteer(st: &AppState) -> ApiResult<&Db> {
+    st.gazetteer.as_ref().ok_or_else(|| ApiError::unavailable("atlas gazetteer not available"))
+}
+
+/// FTS5 query: every word as a quoted prefix term (all must match).
+pub fn fts_query(q: &str) -> String {
+    q.split(|c: char| !c.is_alphanumeric() && c != '\'' && c != '’')
+        .filter(|w| !w.is_empty())
+        .map(|w| format!("\"{}\"*", w.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[derive(Deserialize)]
+pub struct GazQuery {
+    pub q: Option<String>,
+    pub limit: Option<i64>,
+}
+
+pub async fn atlas_search(State(st): St, Query(q): Query<GazQuery>) -> ApiResult<Json<Value>> {
+    let db = gazetteer(&st)?;
+    let text = q.q.unwrap_or_default();
+    let fts = fts_query(&text);
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
+    if fts.is_empty() {
+        return Ok(Json(json!({ "query": text, "places": [] })));
+    }
+    let t = text.clone();
+    let places = db
+        .call(move |c| {
+            let sql: String = c.query_row("SELECT value FROM meta WHERE key = 'search_sql'", [], |r| r.get(0))?;
+            let trimmed = sql.trim_end();
+            let sql = match trimmed.rfind("LIMIT") {
+                Some(i) => format!("{} LIMIT ?3", &trimmed[..i]),
+                None => format!("SELECT * FROM ({trimmed}) LIMIT ?3"),
+            };
+            Ok(query_objects(c, &sql, params![fts, t, limit])?)
+        })
+        .await?;
+    Ok(Json(json!({ "query": text, "places": places })))
+}
+
+pub async fn atlas_place(State(st): St, Path(entity): Path<i64>) -> ApiResult<Json<Value>> {
+    let db = gazetteer(&st)?;
+    let with_content = db.has("c");
+    let v = db
+        .call(move |c| {
+            let Some(mut place) = c.prepare_cached("SELECT * FROM place_full WHERE entity = ?1")?.query_row([entity], row_object).optional()? else {
+                return Err(ApiError::not_found(format!("no place {entity}")).into());
+            };
+            if let Some(cl) = place.remove("classes").and_then(|v| v.as_str().and_then(|s| serde_json::from_str::<Value>(s).ok())) {
+                place.insert("classes".into(), cl);
+            }
+            let names = query_objects(c, "SELECT * FROM place_name WHERE entity = ?1", [entity])?;
+            let links = if with_content {
+                query_objects(
+                    c,
+                    "SELECT l.kind, l.kind_label, l.content_id AS ref_id, i.title, i.kind AS item_kind
+                     FROM place_link l LEFT JOIN c.item i ON i.ref_id = l.content_id WHERE l.entity = ?1",
+                    [entity],
+                )?
+            } else {
+                query_objects(c, "SELECT kind, kind_label, content_id AS ref_id FROM place_link WHERE entity = ?1", [entity])?
+            };
+            Ok(json!({ "place": place, "names": names, "links": links }))
+        })
+        .await?;
+    Ok(Json(v))
+}

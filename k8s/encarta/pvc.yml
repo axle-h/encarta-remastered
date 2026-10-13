@@ -1,0 +1,19 @@
+# The converter's `out/`, copied in by `../sync-data.sh` and mounted read-only by the server. It holds
+# nothing that cannot be re-synced from a local `out/`, so losing it costs a copy, not data.
+# `local-path` pins it to the one node and cannot expand a bound claim: raising `storage` means a
+# delete and a full re-sync. It does not enforce the size either, so this is a reservation, not a quota.
+# `out/` was 11G at the time of writing, with media and atlas output still growing.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data
+  namespace: encarta
+  labels:
+    app: encarta
+spec:
+  storageClassName: local-path
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 64Gi

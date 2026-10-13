@@ -1,0 +1,39 @@
+# The throwaway pod `sync-data.sh` rsyncs into: the one thing that mounts `data` read-write. Created
+# and deleted by the script; outside `encarta/` so `apply.sh` never starts it.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: data-loader
+  namespace: encarta
+  labels:
+    app: encarta-data-loader
+spec:
+  restartPolicy: Never
+  # `sleep` as PID 1 ignores SIGTERM, so a grace period only delays the delete.
+  terminationGracePeriodSeconds: 1
+  enableServiceLinks: false
+  containers:
+    - name: loader
+      image: alpine:3.22
+      # rsync is the receiving end of `rsync -e 'kubectl exec'`. Root, so it can write the
+      # volume whatever owns it; files land world-readable, and the server only reads.
+      command: ["/bin/sh", "-c", "apk add --no-cache rsync && exec sleep infinity"]
+      readinessProbe:
+        exec:
+          command: ["rsync", "--version"]
+        periodSeconds: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          # Dirty page cache counts against this. At 512Mi, writing the 3.4G `content.sqlite` at
+          # network speed got the container OOM-killed.
+          memory: 2Gi
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: data

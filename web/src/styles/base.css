@@ -1,0 +1,159 @@
+/* Design tokens and base styles. The palette follows the Encarta 2009 look (blue-gray headings,
+   orange accents, green feature buttons) with our own values. */
+:root {
+  --serif: "MS Reference Serif", "Lucida Bright", Georgia, "Times New Roman", serif;
+  --sans: "MS Reference Sans Serif", Verdana, Tahoma, "DejaVu Sans", "Segoe UI", sans-serif;
+  --ui: Tahoma, Verdana, "Segoe UI", "DejaVu Sans", sans-serif;
+
+  --text: #191919;
+  --text-soft: #444;
+  --muted: #6d6d6d;
+  --line: #d9dbe0;
+  --line-soft: #e8e9ec;
+  --heading: #30476d;
+  --heading-num: #7f8ea8;
+  --caption: #30476d;
+  --link: #1a32c8;
+  --link-hover: #d35a00;
+  --orange: #f08a1c;
+  --orange-dark: #d86d06;
+  --orange-panel: #ee7f12;
+  --green: #5fae24;
+  --green-dark: #3f8a12;
+  --gray-panel: #8b8b86;
+  --strip-bg: #ecebef;
+  --page: #ffffff;
+  --chrome-top: #ffffff;
+  --chrome-bottom: #e4e3dd;
+
+  --cat-0: #2f7fc4;
+  --cat-1: #c0392b;
+  --cat-2: #8e5bb5;
+  --cat-3: #d98a00;
+  --cat-4: #2e9a5c;
+  --cat-5: #7a6046;
+  --cat-6: #888;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text);
+  font: 13px/1.45 var(--ui);
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--link-hover);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+img {
+  border: 0;
+}
+
+:focus-visible {
+  outline: 2px solid #3b7bd8;
+  outline-offset: 2px;
+}
+
+.enc-muted {
+  color: var(--muted);
+}
+
+.enc-error,
+.enc-page-error {
+  color: #a3271a;
+}
+
+.enc-page-error {
+  padding: 32px 24px;
+  max-width: 720px;
+}
+
+.enc-loading {
+  display: flex;
+  justify-content: center;
+  padding: 80px 0;
+}
+
+.enc-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid #e2e2e2;
+  border-top-color: var(--orange);
+  animation: enc-spin 0.8s linear infinite;
+  margin: 24px auto;
+}
+
+@keyframes enc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.enc-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border: 1px solid var(--green-dark);
+  border-radius: 14px;
+  background: linear-gradient(#8fd34f, var(--green) 55%, var(--green-dark));
+  color: #fff;
+  font-weight: bold;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.enc-button:hover {
+  color: #fff;
+  filter: brightness(1.06);
+}
+
+.page-title {
+  font: normal 30px/1.2 var(--serif);
+  color: #3b3b3b;
+  margin: 18px 0 12px;
+}
+
+.icon.flip {
+  transform: rotate(180deg);
+}
+
+::highlight(enc-find) {
+  background: #ffe36b;
+  color: inherit;
+}
+
+::highlight(enc-find-current) {
+  background: #ff9d2e;
+  color: #000;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

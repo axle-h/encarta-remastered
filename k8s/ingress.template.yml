@@ -1,0 +1,30 @@
+# A template: `${ENCARTA_HOST}` is replaced by `apply.sh` with the public hostname, which is kept out of
+# git (from `$ENCARTA_HOST` or the gitignored `host.local`). Applied as it stands, it is rejected.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: encarta
+  namespace: encarta
+  labels:
+    app: encarta
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-production
+    # <namespace>-<middleware>@kubernetescrd, so this only resolves if the namespace really is `encarta`.
+    traefik.ingress.kubernetes.io/router.middlewares: encarta-redirect-http-https@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: "${ENCARTA_HOST}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: encarta
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - "${ENCARTA_HOST}"
+      secretName: encarta-tls

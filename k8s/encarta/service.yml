@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: encarta
+  namespace: encarta
+  labels:
+    app: encarta
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      name: http
+  selector:
+    app: encarta
