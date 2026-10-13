@@ -1,0 +1,45 @@
+# Build output
+/target
+
+# Microsoft material: the disc image and anything extracted or converted from it
+/vendor
+/extracted
+/out
+*.iso
+*.ISO
+
+# Decompiler/disassembler output of Microsoft binaries (see docs/CLEAN_ROOM.md)
+/analysis/decompiled
+*.gpr
+*.rep/
+
+# Windows XP reference VM and private captures from it
+/vm
+/fixtures
+*.qcow2
+*.img
+*.vmdk
+
+# Safety net: disc file types that must never be committed by accident
+*.[Ee][Ii][Tt]
+*.[Aa][Kk][Cc]
+*.[Mm][Aa][Dd]
+*.[Ee][Ff][Ff]
+*.[Ee][Cc][Nn]
+*.[Ee][Cc][Ss]
+*.[Ee][Cc][Tt]
+*.[Ll][Ee][Xx]
+*.[Dd][Ll][Xx]
+*.[Kk][Dd][Cc]
+*.[Ii][Tt][Rr]
+*.[Cc][Aa][Bb]
+*.[Mm][Ss][Ii]
+*.[Dd][Ll][Ll]
+*.[Ee][Xx][Ee]
+*.[Oo][Cc][Xx]
+*.[Ww][Mm][Vv]
+*.[Ww][Mm][Aa]
+*.[Tt][Tt][Ff]
+*.pmtiles
+*.sqlite
+*.db

@@ -1,0 +1,9 @@
+[package]
+name = "encarta-formats"
+version = "0.1.0"
+edition = "2024"
+description = "Readers for Encarta 2009 data formats (clean-room, from observed file structure)"
+
+[dependencies]
+lzxd = "0.2"
+anyhow = "1"
