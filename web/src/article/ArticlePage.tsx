@@ -78,8 +78,8 @@ function ArticleView({ article: a, kids }: { article: Article; kids: boolean }) 
       const el = document.getElementById(h.slice(1));
       if (el) {
         el.scrollIntoView({ block: "start" });
-        el.classList.add("enc-flash");
-        window.setTimeout(() => el.classList.remove("enc-flash"), 1800);
+        el.classList.add("enc-target-flash");
+        window.setTimeout(() => el.classList.remove("enc-target-flash"), 1800);
       }
     }, 30);
     return () => window.clearTimeout(t);

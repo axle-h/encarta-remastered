@@ -374,8 +374,9 @@ file open keeps reading it until it reopens). Rows from the current disc in brac
 | `meta` | `key` | schema version (**2**: `title-ref` parts, `cluster`/`media-grid` blocks, `media.col`, `article.layout`, timeline and statistics display columns), converter, SDB revision |
 
 The same step copies the disc's MS Reference Serif and Sans text fonts (`AREF/FONTS/REFSER*.TTF`,
-`REFSAN*.TTF`, 8 files) to `out/fonts/` (each written to `‹name›.partial` and renamed); the server serves
-them as `/fonts/{file}` and lists them in `/api/meta`.
+`REFSAN*.TTF`) and the Flash interactives' device fonts (`TAHOMA*.TTF`, `TIMES*.TTF`, `ARIAL.TTF`,
+`ARIALBD.TTF`, `ARIALI.TTF`), 17 files, to `out/fonts/` (each written to `‹name›.partial` and renamed); the
+server serves them as `/fonts/{file}` and lists them in `/api/meta`.
 
 ## 10. Completeness
 

@@ -20,26 +20,27 @@ Effort key: S ≈ days, M ≈ 1–2 weeks, L ≈ 2–4 weeks.
 | 4 Web client core | done | [web-client.md](web-client.md) |
 | 5 Atlas | done | [atlas-client.md](atlas-client.md) |
 | 6 3D tours | done | [tour-runtime.md](tour-runtime.md) |
-| 7 Games | done except the board games | [games.md](games.md) |
+| 7 Games | done; the board games run under Ruffle, not yet played through | [games.md](games.md) |
 | 8 Parity audit | in progress: the list below | [parity.md](parity.md) |
 
 Dropped by choice: parental controls (the dictionary's offensive-word filter); like Wikipedia, nothing is hidden.
 
 ## Next (priority order)
 
-1. **Ruffle gaps** in the IAF player (Vasco da Gama map fills; the `MatchGame` script limit) and a test pass over
-   Kids copies, DragDrop/CrossFade/ZFL/BGA controls, SWQUIZ media and timeline pop-ups. 860 interactives. M
-2. **Board-game engine** for the 10 `BGAControl` games (Flash boards → Ruffle); their quizzes play without boards. L
-3. **Geography Quiz**: the VM's full score table, Try Again reopening the start dialog, the 9-tick slider look. S
-4. **MIDI soundfont**: 236 music files sound synthetic. M
-5. **Timeline**: open items in the Timeline view at the event; media in event pop-ups; essay bar pictures. S
-6. **Accessibility**: media viewer focus trap, timeline list alternative, axe pass. S
-7. **Article layout**: the inline-table box border; country introductions and overflow into the next section
+1. **Board games under Ruffle**: play each of the 10 `BGAControl` games to the end (boards, pips, timers, keys,
+   endings). The boards and their quiz questions already run in the disc's IAF player under Ruffle (games.md); build
+   a native engine only for a game that breaks. S
+2. **Geography Quiz**: the VM's full score table, Try Again reopening the start dialog, the 9-tick slider look. S
+3. **MIDI soundfont**: 236 music files sound synthetic. M
+4. **Timeline**: open items in the Timeline view at the event; media in event pop-ups; essay bar pictures. S
+5. **Accessibility**: media viewer focus trap, timeline list alternative, axe pass. S
+6. **Article layout**: the inline-table box border; country introductions and overflow into the next section
    (content-schema §11). S
-8. **Atlas**: alternate label style (w6), area-pen masks, road-shield source, flat-view re-tiling off the main
+7. **Atlas**: alternate label style (w6), area-pen masks, road-shield source, flat-view re-tiling off the main
    thread, time zones in the click menu (V11 shows none). M
-9. **Performance**: `Cache-Control` on API responses; WOFF2 fonts (a converter step). S
-10. **Sounds**: startup and menu sounds (the Options setting is stored only). S
+8. **Performance**: `Cache-Control` on API responses; WOFF2 fonts (a converter step; keep the TTFs, which Ruffle
+   needs). S
+9. **Sounds**: startup and menu sounds (the Options setting is stored only). S
 
 ### Needs the VM
 - Panoramas: single panoramas' `initangle`, panorama zoom.
@@ -48,4 +49,6 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 - UI never captured: the ▾ tab under the search box, the Quick Search dialog, the Kids menu bar, Encarta's own
   ranking; rows marked *(ours)* in [parity.md](parity.md).
 - Data: content-schema §11 questions; a few field meanings in the small formats (1.5).
+- Interactives: Flash is not installed in the guest, so nothing to compare the Ruffle rendering with (fonts: the
+  disc lacks Trebuchet MS; Vasco da Gama's ocean fill went missing once and was not reproduced).
 - VM tooling: sound in the guest, a debugger workflow.

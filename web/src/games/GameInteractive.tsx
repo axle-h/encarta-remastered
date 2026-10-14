@@ -1,7 +1,7 @@
 /**
  * For the media viewer: an `.iax` interactive that the games module plays natively. MatchGame
- * interactives (which stall in Ruffle on the IAF player's script time limit) are drawn by the
- * games' match player; anything else renders `fallback` (the Ruffle player).
+ * interactives (whose scripts run away under Ruffle 0.7.1 until its wasm memory is exhausted) are
+ * drawn by the games' match player; anything else renders `fallback` (the Ruffle player).
  */
 import { lazy, Suspense, type ReactNode } from "react";
 import { useApi } from "../api/useApi";

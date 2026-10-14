@@ -1034,9 +1034,24 @@ fn dictionaries(cx: &mut Ctx) -> Result<()> {
 
 // ---- fonts -----------------------------------------------------------------------------------
 
-/// Copies the MS Reference Serif and Sans text fonts (`AREF/FONTS/REFSER*.TTF`, `REFSAN*.TTF`) to
-/// `out/fonts/`, which the server serves as `/fonts/{file}`. Each file is written to a temporary
-/// name and renamed, so a running server never sees a half-written font.
+/// The `AREF/FONTS` files copied to `out/fonts/`: the MS Reference Serif and Sans text fonts the
+/// web client's CSS uses, and the Tahoma, Times New Roman and Arial faces that the Flash
+/// interactives name as device fonts (the web client hands all of them to Ruffle, web-client.md).
+fn is_served_font(name: &str) -> bool {
+    let up = name.to_ascii_uppercase();
+    let Some(stem) = up.strip_suffix(".TTF") else {
+        return false;
+    };
+    stem.starts_with("REFSER")
+        || stem.starts_with("REFSAN")
+        || stem.starts_with("TAHOMA")
+        || stem.starts_with("TIMES")
+        || matches!(stem, "ARIAL" | "ARIALBD" | "ARIALI")
+}
+
+/// Copies the fonts of [`is_served_font`] to `out/fonts/`, which the server serves as
+/// `/fonts/{file}`. Each file is written to a temporary name and renamed, so a running server
+/// never sees a half-written font.
 fn copy_fonts(extracted: &Path, dir: &Path) -> Result<usize> {
     let src = extracted.join("iso/AREF/FONTS");
     let Ok(rd) = std::fs::read_dir(&src) else {
@@ -1047,8 +1062,7 @@ fn copy_fonts(extracted: &Path, dir: &Path) -> Result<usize> {
     for e in rd {
         let e = e?;
         let name = e.file_name().to_string_lossy().to_string();
-        let up = name.to_ascii_uppercase();
-        if !(up.starts_with("REFSER") || up.starts_with("REFSAN")) || !up.ends_with(".TTF") {
+        if !is_served_font(&name) {
             continue;
         }
         let tmp = dir.join(format!("{name}.partial"));
@@ -1057,6 +1071,21 @@ fn copy_fonts(extracted: &Path, dir: &Path) -> Result<usize> {
         n += 1;
     }
     Ok(n)
+}
+
+#[cfg(test)]
+mod font_tests {
+    use super::is_served_font;
+
+    #[test]
+    fn served_fonts() {
+        for f in ["REFSER.TTF", "refsanbi.ttf", "TAHOMA.TTF", "TAHOMABD.TTF", "TIMESBI.TTF", "ARIAL.TTF", "ARIALBD.TTF", "ARIALI.TTF"] {
+            assert!(is_served_font(f), "{f}");
+        }
+        for f in ["ARIALN.TTF", "MSGEOAR1.TTF", "REFSPCL.TTF", "VERDREF.TTF", "REF_ICON.FON", "TAHOMA.TTF.partial"] {
+            assert!(!is_served_font(f), "{f}");
+        }
+    }
 }
 
 // ---- small formats ---------------------------------------------------------------------------

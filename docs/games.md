@@ -64,7 +64,12 @@ accents, punctuation, a leading article and thousands separators **(ours)**. Poi
 frames), pips with links and states, question settings per pip (`count`, `goal`, `time`, `usetimer`, `qgroups`),
 events (`score`, `keys`, `dialog`, `newboard`, `newpip`, `endgame`, `retreat`, conditional `eval` on score/keys,
 `labelfx`/`pipfx`/`boardfx`) and dialogs. Its art is Flash, so the faithful route is the disc's IAF player under Ruffle
-(media viewer); the quiz player above makes every question playable meanwhile.
+(media viewer), and that route works: in the Ruffle test pass (web-client.md) all six boards tried open (Postcards
+from Africa, United States State Capitals, Spelling Bee, Math Matrix, Wilderness Adventure, Sports Mountain); in
+Postcards from Africa a postcard opens the Sahara board and a suitcase a SWQUIZ question with its picture (loaded from
+`dswMedia/quiz/{id}/`), answers, reward text, Media Credits and continue; in Wilderness Adventure Start and a
+destination lead to the Woods board. Whole games have not been played through. The quiz player above remains the
+way to play a question group on its own.
 
 ## Match games
 
@@ -76,8 +81,10 @@ The status line uses the definition's strings ("matches in", "tries", "Level:", 
 **(ours)**: 10 per match; the reward line is the first text with no misses, the second with misses ≤ half the matches,
 else the third.
 
-The same player replaces Ruffle in the media viewer for `MatchGame` interactives (`games/GameInteractive.tsx`), which
-stall on the IAF player's script time limit under Ruffle.
+The same player replaces Ruffle in the media viewer for `MatchGame` interactives (`games/GameInteractive.tsx`). Under
+Ruffle 0.7.1 the `MatchGame` control's AVM1 scripts allocate without end (the stack shows a property setter running script)
+until the wasm heap is exhausted (`handle_alloc_error`), and the player stops with nothing drawn; this is not the
+script time limit, so raising `maxExecutionDuration` does not help.
 
 ## MindMaze (extra)
 

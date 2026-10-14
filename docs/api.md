@@ -348,8 +348,9 @@ extension: `.jtn`/`.jsm` are JPEG, `.gtn` GIF, `.dib` BMP …), `X-Content-Type-
 
 `GET /fonts/{file}` — a font of `out/fonts/` (`.ttf`, `.otf`, `.woff`, `.woff2`, name case-insensitive), listed in
 `/api/meta` `fonts`; `Cache-Control: public, max-age=3600`. The web client declares the MS Reference faces it finds
-there (`REFSER*.TTF`, `REFSAN*.TTF`). `encarta-convert content` copies the disc's MS Reference Serif and Sans TTFs
-(8 files) to `out/fonts/` (content-schema §9).
+there (`REFSER*.TTF`, `REFSAN*.TTF`) and hands those and the Tahoma, Times New Roman and Arial files to Ruffle as
+device fonts (web-client.md). `encarta-convert content` copies these 17 TTFs of `AREF/FONTS` to `out/fonts/`
+(content-schema §9). Ruffle reads TrueType/OpenType only, so a WOFF2 step must keep the TTFs.
 
 ## Static files
 

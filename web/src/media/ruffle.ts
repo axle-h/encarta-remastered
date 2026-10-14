@@ -9,7 +9,15 @@
  */
 
 export interface RufflePlayerElement extends HTMLElement {
-  ruffle(): { load(options: { url: string; parameters?: Record<string, string>; base?: string }): Promise<void> };
+  ruffle(): {
+    load(options: {
+      url: string;
+      parameters?: Record<string, string>;
+      base?: string;
+      fontSources?: string[];
+      defaultFonts?: Record<string, string[]>;
+    }): Promise<void>;
+  };
 }
 
 interface RuffleGlobal {

@@ -57,7 +57,7 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
 | `src/api/` | typed client for api.md (`client.ts`, in-memory cache, AbortSignal), `useApi` hook, response types |
 | `src/content/` | the content model of content-schema §8 (`model.ts`), React inline renderer (`Inlines.tsx`), link mapping |
 | `src/article/` | article reader: body renderer, layout rules (`layout.ts`), media column boxes, side panels, find bar, pronunciation |
-| `src/media/` | media viewer overlay, players (audio with captions, audio sets, video with WebVTT, MIDI), variant selection (`pick.ts`), MIDI reader and synth, Ruffle loader (`ruffle.ts`) and Flash interactives (`FlashPlayer.tsx`) |
+| `src/media/` | media viewer overlay, players (audio with captions, audio sets, video with WebVTT, MIDI), variant selection (`pick.ts`), MIDI reader and synth, Ruffle loader (`ruffle.ts`), its device fonts (`ruffleFonts.ts`) and Flash interactives (`FlashPlayer.tsx`) |
 | `src/pages/` | home, browse, item dispatcher (+ `itemRoute.ts`: feature records, topic timelines, panoramas, Map Trek stops), views of the other item kinds (`ItemKinds.tsx`: web links, contributors, quotation authors, tour nodes, Map Trek, online features), panoramic tours (`PanoramaTour.tsx`, `panorama.ts`), search, media gallery, dictionary (+ `wordWheel.ts`), timeline (+ pure layout/date helpers), tours, favorites, help, atlas placeholder |
 | `src/panorama/` | the native panorama player ([Panoramas](#panoramas)): cylinder geometry, WebGL and Canvas 2D renderers, `PanoramaView`, parameters from the data, the image-SWF reader, single panoramas in the media viewer |
 | `src/components/Menu.tsx` | the accessible menu button (arrows, Home/End, Esc, ←/→ along a `menubar`) used by every menu |
@@ -144,7 +144,16 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
   (`SlideShowControl.swf`, `MatchGame.swf` …), skins, `flashvr.swf` and the slide media from that tree by relative URL
   (found by black-box observation of its requests). The player is created on open and removed on close. The 194
   panorama interactives (DATA `subgroup="360"`, exactly the `.iax` files with a `vrslide`) are drawn by the native
-  panorama player instead ([Panoramas](#panoramas)); Ruffle remains their fallback.
+  panorama player instead ([Panoramas](#panoramas)); Ruffle remains their fallback. **Device fonts**
+  (`media/ruffleFonts.ts`): the players draw text in device fonts (`.iax` text styles: Trebuchet MS 4,229, Tahoma
+  2,757, Georgia 1,228, Arial 1,179, Verdana 351, Times New Roman 5), which Ruffle replaces with its wider Noto
+  Sans, clipping single-line fields. The disc's own fonts from `/api/meta` `fonts` are handed to Ruffle
+  (`fontSources`, fetched once per page): Tahoma (also for Trebuchet MS, which the disc lacks; it sets about as wide),
+  Arial (its italic also for Tahoma/Trebuchet italic), Times New Roman, MS Reference Sans Serif as Verdana and MS
+  Reference Serif as Georgia (same metrics). Ruffle names a TrueType file by its full name ("Tahoma Bold"), so each
+  face is wrapped in a one-tag SWF (`DefineFont4`: family name, bold/italic flags, the TTF) as a Blob URL.
+  `defaultFonts` maps `_sans`/`_serif` to Arial/Times New Roman, as Windows Flash did. Lucida Console (15) and
+  Impact (4) are not on the disc and fall back.
 - Fonts: MS Reference Serif / Sans Serif are named first in the font stacks; when the server lists font files
   (`/api/meta` `fonts`, served from `out/fonts/`, which the content converter fills) `app/fonts.ts` declares the
   `REFSER*`/`REFSAN*` faces; without them the fallbacks (Lucida Bright/Georgia and Verdana/Tahoma/DejaVu Sans) are used.
@@ -240,17 +249,31 @@ decoded size and horizon match an independent survey of all 167.
   order, no numbers), Customs of Russia (sidebar view, cluster first, "Appears In"), France (media order of the
   introduction as in `761568934`), the timeline band (periods, essays, "4? BC - AD 29?").
 
+- Ruffle test pass (headless Chromium over the DevTools protocol against the real server, SwiftShader; harness
+  kept out of the repo): 46 interactives, every control type in both editions (DragDrop 10, CrossFadeControl 7,
+  ZFLControl 5, RFLControl 3, BGAControl 6, MatchGame 2, SlideShowControl 13 incl. narrated and panoramas; 18 Kids
+  copies), opened standalone and as `/item/{id}` / `/kids/item/{id}` pages. No 404s; all drew except `MatchGame`.
+  Interactions that worked: jigsaw drag (piece follows, a wrong drop returns and counts a try), CrossFade slider and
+  arrow ("Propylaea Now" → "Then", WWI before → after), ZFL zoom, pan and locator map (Venus), RFL element pick
+  (Periodic Table: Iron), slide-show labels (Castle: Keep, Turret; Vasco da Gama: 1), narrated audio buttons
+  (Counterpoint: the MP3 loads and the progress bar runs), BGA boards and questions (games.md). SWQUIZ media: every
+  picture and sound of the 1,811 quizzes in each edition (1,274 + 626 references, 968 files) resolves and loads.
+  Timeline pop-ups have no Flash here (the timeline is native; their media are PLAN item 5). Ruffle logs only stubs
+  (`System.security.allowDomain`, `Sound.getBytesLoaded/Total`), "Cannot enumerate Undefined" and the device fonts.
+  Ruffle's "hardware acceleration is disabled" box appears on first mouse-over only with a CPU (software) adapter.
+
 ## Known gaps
 
 - Placement residue is the converter's (content-schema §11.1): country introductions and items the VM carries into
   the next section.
 - Essay bars have no thumbnail (the VM shows the essay's picture at the bar's start; the event rows carry no file).
 - Inline tables lack the VM's blue box border; the Quick Facts and atlas panels are unchanged.
-- Interactives under Ruffle 0.7.1, spot-checked only: the slide shows tried run (Vasco da Gama, though its map draws
-  labels but not all fills); in the match game "Brood or Gaggle?" (`MatchGame`) a script hits Ruffle's execution limit
-  and the picture tiles stay empty. Panoramas (`vrslide`, `flashvr.swf`), blank under Ruffle, are now native.
-  Kids copies (`edition=kids`), DragDrop/CrossFade/ZFL/BGA controls, quizzes (SWQUIZ) and timeline pop-ups were not
-  tried. The players ask for "Trebuchet MS" and other device fonts that Ruffle does not have (it substitutes).
+- Interactives under Ruffle 0.7.1: see the test pass below. `MatchGame` exhausts Ruffle's memory (games.md) and is
+  native. Trebuchet MS, the players' main font, is approximated by the disc's Tahoma; Lucida Console and Impact by
+  Arial. No VM ground truth: Flash is not installed in the guest (vm-findings.md).
+- Vasco da Gama's missing ocean fill was seen once (the first headless run against a cold server: the full-frame
+  ocean rectangle and the graticule absent, land drawn) and not again in 30 runs (wgpu-webgl, webgl, canvas,
+  WebGPU; sizes 460–700 px; throttled network; in the app). Unexplained; watch for it on real GPUs.
 - MIDI uses simple synthesized voices, not a General MIDI soundfont.
 - Parental Controls of the dictionary window are dropped by choice (PLAN.md).
 - Item kinds, menus, Favorites, print and the panoramic tours added by the parity audit: see [parity.md](parity.md).

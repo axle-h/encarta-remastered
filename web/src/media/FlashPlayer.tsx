@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { iafPlayer, loadRuffle } from "./ruffle";
+import { DEFAULT_FONTS, ruffleFontSources } from "./ruffleFonts";
 
 /**
  * An `.iax` interactive run by the disc's IAF Flash player under Ruffle, at its own size
- * (`width`×`height` from the DATA `item` file), scaled down to fit the viewer.
+ * (`width`×`height` from the DATA `item` file), scaled down to fit the viewer. The disc's fonts
+ * stand in for the device fonts the players name (`ruffleFonts.ts`).
  */
 export function FlashInteractive({ iax, width, height, kids = false }: { iax: string; width: number; height: number; kids?: boolean }) {
   const box = useRef<HTMLDivElement>(null);
@@ -15,15 +17,15 @@ export function FlashInteractive({ iax, width, height, kids = false }: { iax: st
     let cancelled = false;
     let player: HTMLElement | null = null;
     setError(null);
-    loadRuffle()
-      .then((r) => {
+    Promise.all([loadRuffle(), ruffleFontSources()])
+      .then(([r, fontSources]) => {
         if (cancelled) return;
         const p = r.newest().createPlayer();
         p.className = "enc-flash-player";
         el.appendChild(p);
         player = p;
         const { url, filePath } = iafPlayer(iax, kids ? "kids" : "deluxe");
-        return p.ruffle().load({ url, parameters: { filePath } });
+        return p.ruffle().load({ url, parameters: { filePath }, fontSources, defaultFonts: DEFAULT_FONTS });
       })
       .catch((e: unknown) => !cancelled && setError(e instanceof Error ? e.message : String(e)));
     return () => {

@@ -200,11 +200,12 @@
   color: var(--text-soft);
 }
 
-.enc-flash {
-  animation: enc-flash 1.6s ease-out;
+/* The section a link jumped to (not .enc-flash, the Flash interactive box). */
+.enc-target-flash {
+  animation: enc-target-flash 1.6s ease-out;
 }
 
-@keyframes enc-flash {
+@keyframes enc-target-flash {
   from {
     background: #fff1b8;
   }

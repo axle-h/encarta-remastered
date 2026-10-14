@@ -21,7 +21,7 @@ that closed in 2009). *(ours)* marks behaviour chosen here where the original is
 
 | | done | partial | missing | n/a |
 |---|---|---|---|---|
-| Features (134 rows below) | 100 | 22 | 4 | 8 |
+| Features (134 rows below) | 105 | 17 | 4 | 8 |
 
 Fixed in this audit: 25 items (see [Fixes made](#fixes-made-in-this-audit)). The remaining gaps, in
 priority order, are the "Next" list in [PLAN.md](PLAN.md).
@@ -102,7 +102,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Captions under audio (SAMI → WebVTT) | done | | — |
 | Video with captions (414) | done | 50/50; VM `461546454` | — |
 | MIDI music (236) | partial | own SMF synth | General MIDI soundfont missing (M) |
-| Interactives (860, Flash IAF player under Ruffle) | partial | 50/50 open a player; 82 narrated/map interactives were opened as audio or atlas maps before this audit | Ruffle issues: Vasco da Gama fills, script limits (web-client.md) |
+| Interactives (860, Flash IAF player under Ruffle) | done | 50/50 open a player; Ruffle test pass: 46 of every control type and both editions draw and respond, disc fonts as device fonts (web-client.md) | Trebuchet MS approximated by Tahoma; Vasco da Gama's ocean fill missing once, not reproduced |
 | Match games natively | done | games.md | — |
 | Panoramas (151, `surround`) | done | native cylinder player (`web/src/panorama/`) in place of the Flash `vrslide` viewer, which is blank under Ruffle | — |
 | Maps as pictures (99,707) → "Open in the World Atlas" at the place | done | links to `/atlas/place/{geocode}` (this audit; was `/atlas`) | — |
@@ -188,7 +188,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 |---|---|---|---|
 | Geography Quiz: 4 levels, 20 questions, 5 buttons, points | done | VM `fixtures/geoquiz` | — |
 | Geography Quiz locator globe, zoom slider, hand tool; after-answer and end screens | partial | `games/geoquiz/QuizMap.tsx` on `<Atlas quizMode>`; Scores dialog after question 20 | the VM's full score table, Try Again reopening the start dialog, the 9-tick slider look |
-| Quizzes (1,811 SWQUIZ) | partial | native quiz player per question group | the board-game engine (`BGAControl`) is not rebuilt (L) |
+| Quizzes (1,811 SWQUIZ) | done | native quiz player per question group; inside the `BGAControl` boards under Ruffle (questions with media, rewards); all quiz media resolve | board games not yet played to the end (PLAN) |
 | Match games (64) | done | native | — |
 | MindMaze, City Climate, Population Chart | n/a | extras (not in 2009) | — |
 
@@ -200,15 +200,15 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Kids category screens | done | | — |
 | Kids articles (orange title, tile grid, no numbers) | done | VM `kids-*` | — |
 | Kids search, Kids dictionary | done | | — |
-| Kids interactives and games (264, Flash) | partial | Ruffle; match games native | Kids copies (`edition=kids`) only spot-checked |
+| Kids interactives and games (264, Flash) | done | Ruffle (18 Kids copies in the test pass); match games native | — |
 | Kids' own menu bar, Favorites, Help | missing | the Kids shell has none of the adult chrome | not captured in the VM (S) |
 
 ## Interactives
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| Slide shows, narrated slide shows (57), Flash maps (25) | partial | IAF player under Ruffle; dispatch fixed in this audit | Ruffle rendering gaps |
-| Drag-and-drop, cross-fade, ZFL, BGA controls | partial | load in Ruffle | not tried (web-client.md) |
+| Slide shows, narrated slide shows (57), Flash maps (25) | done | IAF player under Ruffle; labels, captions, narration buttons tried | — |
+| Drag-and-drop, cross-fade, ZFL, RFL, BGA controls | done | Ruffle test pass: drag, slider, zoom/pan/locator, element pick, boards (web-client.md) | BGA games not played to the end |
 
 ## Favorites, print, copy, export
 
@@ -263,7 +263,7 @@ Each family of the inventory, whether it is converted, and the UI path that reac
 | Index terms (DATAF, 180,545 items, 212,631 trees) | yes (as search results; 2009 has no index browser) | search results that expand to their entries (`/api/index-term/{id}`); terms with ≤ 30 targets are search aliases | done |
 | Sidebars (MD*.EIT) | yes (2,696) | teasers, search | done |
 | Dictionary, thesaurus, translation (EDICT) | yes (292,642 entries) | dictionary pages, search | done |
-| Interactives (`.iax` + SWF) | yes (721 + 860 items) | media viewer (Ruffle / native) | partial (Ruffle) |
+| Interactives (`.iax` + SWF) | yes (721 + 860 items) | media viewer (Ruffle / native) | done |
 | Catalog | yes | (internal) | done |
 | Titles, aliases, section heads (FINDDLX) | yes | search, autocomplete | done |
 | Search exports (`search_entry` 3,084,729, `search_word` 1,175,993) | yes | not used: search is rebuilt (inventory.md "Not needed") | n/a by design |
