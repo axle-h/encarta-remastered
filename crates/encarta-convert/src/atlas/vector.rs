@@ -124,6 +124,8 @@ struct Include {
     split: bool,
     /// Split polygons into water and land parts.
     split_area: bool,
+    /// The water parts of split polygons are drawn or hit-tested by some style.
+    water_parts: bool,
 }
 
 fn include(ts: Tileset, classes: &Classes, row: usize) -> Include {
@@ -144,6 +146,7 @@ fn include(ts: Tileset, classes: &Classes, row: usize) -> Include {
         outline: geometry && kind == GeometryKind::Area && u.outline > 0,
         split: geometry && kind == GeometryKind::Line && u.masked > 0 && ts != Tileset::Moon,
         split_area: geometry && kind == GeometryKind::Area && u.masked_fill > 0 && ts != Tileset::Moon,
+        water_parts: u.needs_water_parts(),
     }
 }
 
@@ -335,6 +338,7 @@ fn add_shares(into: &mut AreaShares, from: &AreaShares) {
 /// water and over land, on one window of the water mask around them.
 fn split_areas(out: &mut Vec<Piece>, first: usize, incl: &[Include], smp: &mut Sampler, water: &[bool; 256], st: &mut SplitStats, shares: &mut AreaShares) -> Result<()> {
     let masked = |p: &Piece| p.shape == Shape::Polygon && incl[p.class as usize].split_area;
+    let keep_water = |class: u16| incl[class as usize].water_parts;
     let mut b = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
     for p in out[first..].iter().filter(|p| masked(p)) {
         b = [b[0].min(p.bbox[0]), b[1].min(p.bbox[1]), b[2].max(p.bbox[2]), b[3].max(p.bbox[3])];
@@ -358,13 +362,18 @@ fn split_areas(out: &mut Vec<Piece>, first: usize, incl: &[Include], smp: &mut S
             Split::Water => {
                 st.polygons_water += 1;
                 e[2] += area;
-                p.water = true;
-                out.push(p);
+                if keep_water(p.class) {
+                    p.water = true;
+                    out.push(p);
+                }
             }
             Split::Parts { water, land } => {
                 st.polygons_split += 1;
                 for (w, polys) in [(true, water), (false, land)] {
                     for rings in polys {
+                        if w && !keep_water(p.class) {
+                            continue;
+                        }
                         if w {
                             e[2] += pixel::polygon_area(&rings);
                         }

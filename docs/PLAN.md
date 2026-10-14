@@ -27,8 +27,14 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 
 ## Next (priority order)
 
-1. **Atlas size**: `earth.pmtiles` grew 26 % (316 → 399 MB) with the fill masks' water/land split; drop water parts
-   of classes no style draws or hit-tests there. S
+Nothing queued. Possible follow-up, Atlas size: `earth.pmtiles` is still 399 MB; the water/land split stays for the
+classes that are hit-tested (the large ones) or drawn over water by a climate
+style (atlas-output.md "Draw-over masks"). Needs the VM first: does Encarta's click menu list an area under the sea?
+
+Done 2026-10-14 (atlas size): the water parts of split polygon classes are dropped when no style draws the fill over
+that style's water pixel class and the class is not interactive (`ClassUse::fill_water`, `needs_water_parts`). Saving
+only 0.3 MB (399.05 → 398.79 MB; 108 classes, none large), so the plan's expectation of a real cut did not hold.
+Re-run `ENCARTA_ATLAS_ONLY=vector encarta-convert atlas` to get it.
 
 Done 2026-10-14 (sounds): the startup sound (`INTROSOUND` of ENCSPLSH.DLL), a click for buttons, menu items and tabs, and
 the Kids home category hover/click sounds, extracted from the DLLs' `WAVE` resources to `out/sounds/` by
@@ -46,6 +52,8 @@ sprites), area-pen draw-over masks, flat-view tiles in Web Workers, time zones o
 134), symbol layers stacked by priority (mad-styling.md §7.3, §8.1, §5.2, §16; atlas-output.md; atlas-client.md).
 
 ### Needs the VM
+- Atlas: whether an area is listed in the click menu where it lies over the sea (decides if the water parts of
+  interactive classes can go, size not measured).
 - Sounds: which of the 49 ENCARTAR.DLL sounds (ids 31906-31978) the original plays for which menu or button.
 - Atlas: V15 (Mumbai's "Bombay" line, Bolzano/Bozen), V16 (click on the Time Zones map), label placement cost
   (mad-styling.md §7.4, §8.1).

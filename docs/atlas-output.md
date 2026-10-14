@@ -163,6 +163,8 @@ restricted mask). The report's `area_masks` gives per class the polygons and the
 over water, summed over the bands: 0.6–1.0 for the "… - Small" dependency and country colours, 0.15–0.46 for
 most Admin1/CountryRegion colours, 0.2 for International organization, 0.07–0.3 for time zones, 0.01–0.05 for
 parks and urban areas. In band 7, 88,072 of 390,040 masked polygons are cut and 31,192 lie entirely over water.
+Water parts are dropped for classes that no style fills over its water pixel class (`ClassUse::fill_water`) and
+that are not interactive (hit layers need them): 108 classes, 0.3 MB saved; the rest are kept.
 Cost: `earth.pmtiles` 316 → 399 MB (pixel staircases along the coasts), `earth-detail` 18.2 → 18.6 MB, the
 vector stage 5 → 21 s.
 

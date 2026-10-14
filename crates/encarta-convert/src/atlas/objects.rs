@@ -132,6 +132,10 @@ pub struct ClassUse {
     /// Area rules whose fill pen or pattern brush has a "draw over" mask that is not everything:
     /// the class's polygons are split into parts over water and land.
     pub masked_fill: u32,
+    /// Area rules whose fill may draw over water in their style's raster (its water pixel class
+    /// is in the pen's mask). Without any, and without hit-testing, the water parts of a split
+    /// class are dropped.
+    pub fill_water: u32,
 }
 
 impl ClassUse {
@@ -141,6 +145,10 @@ impl ClassUse {
     /// Geometry needed in tiles: drawn, or used for hit-testing (hover, click).
     pub fn needs_geometry(&self) -> bool {
         self.geometry() || self.interactive > 0
+    }
+    /// Water parts of a split area class are drawn or hit-tested.
+    pub fn needs_water_parts(&self) -> bool {
+        self.fill_water > 0 || self.interactive > 0
     }
     pub fn anything(&self) -> bool {
         self.needs_geometry() || self.label > 0
@@ -161,8 +169,18 @@ impl Classes {
         let grid = atlas.grid("PDCAltitudeGrid", "PDCAltitudeLookup")?;
         let pens = tables::pen_defs(atlas.require("GeoPenDef")?)?;
         let pen = |w: u16| (w < 0xFEF9).then(|| pens.get(w as usize)).flatten();
+        let terrain = atlas.terrain()?;
+        let hypso = terrain.raster("HYPSO").context("no HYPSO raster")?;
         for s in atlas.map_styles()? {
             let rules: DisplayRules = decode_record(&grid, s.id as u32)?;
+            // The pixel classes under water in this style's raster (Moon styles are not split).
+            let surface = if s.raster.eq_ignore_ascii_case("MOON") {
+                None
+            } else {
+                let raster = terrain.raster(&s.raster).with_context(|| format!("raster {} of style {}", s.raster, s.name))?;
+                let look = raster.look(&s.look).with_context(|| format!("LOOK {} of style {}", s.look, s.name))?;
+                Some(super::pixel::calibrate(hypso, raster, look, 4096)?)
+            };
             for r in &rules.rules {
                 let Some(u) = uses.get_mut(r.class as usize) else { continue };
                 match r.b2 & 0x0F {
@@ -186,6 +204,9 @@ impl Classes {
                         }
                         if geometry && pen(r.w5_13[2]).is_some_and(|p| super::pixel::pen_mask(&p.flags) != super::pixel::ALL_BITS) {
                             u.masked_fill += 1;
+                        }
+                        if geometry && pen(r.w5_13[2]).is_some_and(|p| surface.is_some_and(|sf| sf.pen_sides(super::pixel::pen_mask(&p.flags)).0)) {
+                            u.fill_water += 1;
                         }
                     }
                     GeometryKind::Line
@@ -227,7 +248,7 @@ impl Classes {
             .enumerate()
             .map(|(i, &kind)| FeatureClass { id: i as u16, kind, pen_group: 0, flag: 0, scale: 0, reserved: 0, group: 0, priority: 50, name: format!("class {i}") })
             .collect();
-        Classes { classes, kinds: kinds.to_vec(), uses: vec![ClassUse { geometry_default: 1, geometry_optional: 0, label: 1, interactive: 1, outline: 1, masked: 1, masked_fill: 1 }; kinds.len()] }
+        Classes { classes, kinds: kinds.to_vec(), uses: vec![ClassUse { geometry_default: 1, geometry_optional: 0, label: 1, interactive: 1, outline: 1, masked: 1, masked_fill: 1, fill_water: 1 }; kinds.len()] }
     }
 }
 
