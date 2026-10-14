@@ -27,13 +27,19 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 
 ## Next (priority order)
 
-1. **Atlas**: alternate label style (w6), area-pen masks, road-shield source, flat-view re-tiling off the main
-   thread, time zones in the click menu (V11 shows none). M
-2. **Performance**: `Cache-Control` on API responses; WOFF2 fonts (a converter step; keep the TTFs, which Ruffle
+1. **Performance**: `Cache-Control` on API responses; WOFF2 fonts (a converter step; keep the TTFs, which Ruffle
    needs). S
-3. **Sounds**: startup and menu sounds (the Options setting is stored only). S
+2. **Sounds**: startup and menu sounds (the Options setting is stored only). S
+3. **Atlas size**: `earth.pmtiles` grew 26 % (316 → 399 MB) with the fill masks' water/land split; drop water parts
+   of classes no style draws or hit-tests there. S
+
+Done 2026-10-14 (atlas): alternative-name line (`w6`), road shields (labels of shield road classes, our own
+sprites), area-pen draw-over masks, flat-view tiles in Web Workers, time zones out of the click menu (pen group
+134), symbol layers stacked by priority (mad-styling.md §7.3, §8.1, §5.2, §16; atlas-output.md; atlas-client.md).
 
 ### Needs the VM
+- Atlas: V15 (Mumbai's "Bombay" line, Bolzano/Bozen), V16 (click on the Time Zones map), label placement cost
+  (mad-styling.md §7.4, §8.1).
 - Panoramas: single panoramas' `initangle`, panorama zoom.
 - Tours: whether the Music toggle starts on or off and what it plays (no sound device in the guest; we loop the tour's ambient record), the exact on-box test for the light-blue marker, the Azuchi site map, the look-vector value behind
   the 45° pitch test, the remaining **[VM]** items in [tours-3d.md](formats/tours-3d.md) §10.

@@ -12,6 +12,7 @@
 use super::geo;
 use super::objects::Classes;
 use super::pixel::{self, SurfaceClasses};
+use super::shield::{self, Shield};
 use super::vector;
 use super::vector::Tileset;
 use anyhow::{Context, Result};
@@ -24,6 +25,8 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
+/// PDCAttribute pen group whose classes the click menu leaves out.
+const MENU_EXCLUDED_PEN_GROUP: u16 = 134;
 const NONE: u16 = 0xFFFF;
 const SPECIAL_NONE: u16 = 0xFEFA;
 const SPECIAL_PEN: u16 = 0xFEF9;
@@ -121,6 +124,8 @@ struct Ctx<'a> {
     /// First zoom of the detail tileset.
     detail_from: f64,
     faces: BTreeSet<String>,
+    /// Shield sprites the styles refer to (mad-styling.md §8.1).
+    shields: BTreeSet<Shield>,
     /// Pixel classes of the current style's raster over water and land (draw-over masks, tints).
     surface: SurfaceClasses,
 }
@@ -145,16 +150,60 @@ struct Proto {
 /// spec says only "when the full name does not fit", mad-styling.md §7.3).
 const CHAR_EM: f64 = 0.6;
 
+/// The alternative-name line of a label (mad-styling.md §4.1 `w6`, §7.3): MOBB draws it as an extra last
+/// line under the main name, in the `w6` style.
+struct AltLine {
+    face: String,
+    /// Size relative to the main name's.
+    scale: f64,
+    colour: String,
+    upper: bool,
+}
+
+/// Text of a label: the name (upper case by GeoLabel byte 26) and, with an alternative style, the
+/// alternative as a last line.
+struct TextSpec {
+    upper: bool,
+    alt: Option<AltLine>,
+}
+
+impl TextSpec {
+    fn name(&self) -> Value {
+        let n = json!(["coalesce", ["get", "name"], ""]);
+        if self.upper { json!(["upcase", n]) } else { n }
+    }
+
+    fn abbr(&self) -> Value {
+        let a = json!(["get", "abbr"]);
+        if self.upper { json!(["upcase", a]) } else { a }
+    }
+
+    /// `main` plus the alternative line where the feature has one. Brackets only when the main name starts
+    /// with kana or a CJK ideograph (U+3040…U+9FFF).
+    fn with_alt(&self, main: Value) -> Value {
+        let Some(alt) = &self.alt else { return main };
+        let first = json!(["slice", ["coalesce", ["get", "name"], ""], 0, 1]);
+        let cjk = json!(["all", [">=", first.clone(), "\u{3040}"], ["<=", first, "\u{9fff}"]]);
+        let a = json!(["get", "alt_names"]);
+        let a = if alt.upper { json!(["upcase", a]) } else { a };
+        let a = json!(["case", cjk, ["concat", "(", a.clone(), ")"], a]);
+        json!(["case", ["has", "alt_names"],
+            ["format", main.clone(), {}, "\n", {},
+                a, { "text-font": ["literal", [alt.face.clone()]], "font-scale": alt.scale, "text-color": alt.colour }],
+            main])
+    }
+}
+
 /// `text-field` of an area label: the name, or its abbreviation (U+0002) where the name is wider
 /// than the area. The area's width at zoom 10 is the tile property `width_z10`; MapLibre allows
 /// `zoom` only as the input of a top-level step, so the test is repeated at every half zoom.
-fn area_text_field(size: f64, spacing_em: f64, z0: f64, z1: f64) -> Value {
+fn area_text_field(size: f64, spacing_em: f64, z0: f64, z1: f64, text: &TextSpec) -> Value {
     let name = json!(["coalesce", ["get", "name"], ""]);
     let fits = |z: f64| {
         let width = json!(["*", ["length", name.clone()], size * (CHAR_EM + spacing_em)]);
         json!(["case",
             ["all", ["has", "abbr"], ["has", "width_z10"], [">", width, ["*", ["get", "width_z10"], 2f64.powf(z - 10.0)]]],
-            ["get", "abbr"], name.clone()])
+            text.abbr(), text.with_alt(text.name())])
     };
     let start = (z0 * 2.0).floor() / 2.0;
     let end = z1.min(18.0);
@@ -168,7 +217,7 @@ fn area_text_field(size: f64, spacing_em: f64, z0: f64, z1: f64) -> Value {
     if step.len() == 3 { fits(start) } else { Value::Array(step) }
 }
 
-/// MapLibre filter for the line runs a pen may draw on (`None`: all of them).
+/// MapLibre filter for the line runs or polygon parts a pen may draw on (`None`: all of them).
 fn side_filter(water: bool, land: bool) -> Option<Option<Value>> {
     match (water, land) {
         (true, true) => Some(None),
@@ -194,16 +243,22 @@ impl Ctx<'_> {
     }
 
     fn label_layout(&mut self, rule: &DisplayRule, kind: GeometryKind, zooms: (f64, f64)) -> Option<(Value, Value, Option<String>)> {
-        let l = self.labels.get(rule.w5_13[0] as usize)?;
+        let l = self.labels.get(rule.w5_13[0] as usize)?.clone();
         let bold = l.tail[0] == 1;
         let italic = l.tail[1] == 1;
         let face = face_name(&self.fonts, l.b0, bold, italic);
         self.faces.insert(face.clone());
         let size = l.b4[0] as f64;
         let spacing = l.b4[6] as f64;
-        let upper = l.nibbles.0 == 1;
+        // The alternative name (w6), under the main name; not on lines, whose text follows the line.
+        let alt = self.labels.get(rule.w5_13[1] as usize).cloned().filter(|_| kind != GeometryKind::Line).map(|l6| {
+            let face = face_name(&self.fonts, l6.b0, l6.tail[0] == 1, l6.tail[1] == 1);
+            self.faces.insert(face.clone());
+            AltLine { face, scale: l6.b4[0] as f64 / size.max(1.0), colour: hex(l6.color1), upper: l6.tail[3] == 1 }
+        });
+        let text = TextSpec { upper: l.tail[3] == 1, alt };
         let mut layout = json!({
-            "text-field": ["coalesce", ["get", "name"], ""],
+            "text-field": text.with_alt(text.name()),
             "text-font": [face],
             "text-size": size,
             "symbol-sort-key": ["get", "priority"],
@@ -211,16 +266,13 @@ impl Ctx<'_> {
         if spacing > 0.0 {
             layout["text-letter-spacing"] = json!(spacing / size.max(1.0));
         }
-        if upper {
-            layout["text-transform"] = json!("uppercase");
-        }
         match kind {
             GeometryKind::Line => {
                 layout["symbol-placement"] = json!("line");
             }
             GeometryKind::Area => {
                 layout["text-max-width"] = json!(8);
-                layout["text-field"] = area_text_field(size, spacing / size.max(1.0), zooms.0, zooms.1);
+                layout["text-field"] = area_text_field(size, spacing / size.max(1.0), zooms.0, zooms.1, &text);
             }
             _ => {
                 layout["text-variable-anchor"] = json!(["left", "right", "top", "bottom"]);
@@ -233,8 +285,44 @@ impl Ctx<'_> {
             "text-halo-width": 1,
             "text-halo-blur": 0,
         });
-        let ph = (upper || spacing > 0.0).then(|| "GeoLabel byte 11 (upper case) and byte 10 (letter spacing) are hypotheses (mad-styling.md §7.2)".to_string());
+        let ph = (spacing > 0.0).then(|| "GeoLabel byte 10 (letter spacing) is a hypothesis (mad-styling.md §7.2)".to_string());
         Some((layout, paint, ph))
+    }
+
+    /// Road-shield layer of a line rule whose `w5` label has a shield shape (mad-styling.md §8.1):
+    /// the road's name upright on a stretched shield sprite, repeated rarely along the road.
+    fn shield_layout(&mut self, rule: &DisplayRule) -> Option<(Value, Value)> {
+        let l = self.labels.get(rule.w5_13[0] as usize)?.clone();
+        if l.b12 == 0 {
+            return None;
+        }
+        let face = face_name(&self.fonts, l.b0, l.tail[0] == 1, l.tail[1] == 1);
+        self.faces.insert(face.clone());
+        let sh = Shield { shape: l.b12, outline: l.color2, width: l.b16, fill: l.color3, fill2: l.color4 };
+        let name = json!(["coalesce", ["get", "name"], ""]);
+        let layout = json!({
+            "symbol-placement": "line",
+            // Encarta drops a shield when one with the same text is within a sixth of the pane
+            // (~160 px of the 812 × 518 pane); MapLibre has no such test, so repeats are rare.
+            "symbol-spacing": 400,
+            "symbol-sort-key": ["get", "priority"],
+            "text-field": if l.tail[3] == 1 { json!(["upcase", name]) } else { name },
+            "text-font": [face],
+            "text-size": l.b4[0] as f64,
+            "text-rotation-alignment": "viewport",
+            "text-pitch-alignment": "viewport",
+            "text-padding": 2,
+            "text-allow-overlap": false,
+            "icon-image": sh.name(),
+            "icon-text-fit": "both",
+            "icon-text-fit-padding": [1, 3, 1, 3],
+            "icon-rotation-alignment": "viewport",
+            "icon-pitch-alignment": "viewport",
+            "icon-padding": 2,
+            "icon-allow-overlap": false,
+        });
+        self.shields.insert(sh);
+        Some((layout, json!({ "text-color": hex(l.color1) })))
     }
 
     /// Zoom range of a rule (styles are compiled for the reference pane at latitude 0).
@@ -254,6 +342,7 @@ impl Ctx<'_> {
             return Vec::new();
         }
         let masked = !is_moon && self.classes.uses[c].masked > 0;
+        let masked_fill = !is_moon && self.classes.uses[c].masked_fill > 0;
         let mut out = Vec::new();
         let z12 = class.group as u32;
         let prio = class.priority as u32;
@@ -294,7 +383,16 @@ impl Ctx<'_> {
             if geom != 0 {
                 match kind {
                     GeometryKind::Area => {
-                        if let Some(p) = pens[0].and_then(|p| self.pens.get(p)) {
+                        // Draw-over mask of the fill (mad-styling.md §5.2): which of the water and
+                        // land parts; a fill that may draw on neither is dropped.
+                        let fill = pens[0].and_then(|p| self.pens.get(p)).and_then(|p| {
+                            if !masked_fill {
+                                return Some((p, None));
+                            }
+                            let (w, l) = self.surface.pen_sides(pixel::pen_mask(&p.flags));
+                            side_filter(w, l).map(|f| (p, f))
+                        });
+                        if let Some((p, side)) = fill {
                             let mut paint = json!({ "fill-antialias": false });
                             let mut ph = None;
                             if p.w12 != NONE {
@@ -309,7 +407,9 @@ impl Ctx<'_> {
                             } else {
                                 paint["fill-color"] = json!(hex(p.color));
                             }
-                            out.push(base((0, z12, prio), "fill", "areas", vis(geom), paint, ph));
+                            let mut proto = base((0, z12, prio), "fill", "areas", vis(geom), paint, ph);
+                            proto.filter = side;
+                            out.push(proto);
                         }
                         // Outline pens stroke the seam-free `outlines` linework.
                         for (k, p) in pens.iter().enumerate().skip(1) {
@@ -398,7 +498,18 @@ impl Ctx<'_> {
                     }
                 }
             }
-            if label != 0 && !(geom != 0 && matches!(kind, GeometryKind::Point | GeometryKind::RadiusPoint) && pens[0].and_then(|p| self.pens.get(p)).is_some_and(|p| p.w12 != NONE)) {
+            if label != 0
+                && kind == GeometryKind::Line
+                && let Some((layout, paint)) = self.shield_layout(rule)
+            {
+                let mut layout = layout;
+                if label == 2 {
+                    layout["visibility"] = json!("none");
+                }
+                let mut proto = base((11, 0, prio), "symbol", "lines", layout, paint, None);
+                proto.filter = Some(json!(["has", "name"]));
+                out.push(proto);
+            } else if label != 0 && !(geom != 0 && matches!(kind, GeometryKind::Point | GeometryKind::RadiusPoint) && pens[0].and_then(|p| self.pens.get(p)).is_some_and(|p| p.w12 != NONE)) {
                 let layer = match kind {
                     GeometryKind::Area => "labels",
                     GeometryKind::Line => "lines",
@@ -436,6 +547,18 @@ impl Ctx<'_> {
 /// Per class, the zoom ranges in which the rules make it interactive (PDCAltitudeGrid `b4` low
 /// nibble, mad-styling.md §4.1): `[[minzoom, maxzoom, tri-state], …]`, adjacent equal ranges
 /// merged, tri-state 1 = by default, 2 = when the user turns the class on.
+/// Where a layer goes in the stack. MapLibre places symbols from the top layer down, so the
+/// first-placed (winning) labels must be on top: symbol layers are stacked by descending
+/// `PDCAttribute.b13`, so that the lowest value (mad-styling.md §7.4: lower wins) is placed first.
+/// Points, area labels and line labels share one collision pass in MOBB, so they interleave.
+fn stack_key(p: &Proto) -> (u8, u32, u32) {
+    if p.kind == "symbol" {
+        (9, u32::MAX - p.order.2, u32::from(p.order.0))
+    } else {
+        p.order
+    }
+}
+
 fn interactive_ranges(rules: &[DisplayRule]) -> BTreeMap<u16, Vec<(f64, f64, u8)>> {
     let mut out: BTreeMap<u16, Vec<(f64, f64, u8)>> = BTreeMap::new();
     for r in rules {
@@ -493,6 +616,7 @@ pub fn run(atlas: &Atlas, classes: &Classes, detail_classes: BTreeSet<u16>, out:
         detail_classes,
         detail_from: vector::detail_from_zoom(&cells) as f64,
         faces: BTreeSet::new(),
+        shields: BTreeSet::new(),
         surface: SurfaceClasses { water: 1, land: 4, land_luminance: 128.0 },
     };
     let terrain = atlas.terrain()?;
@@ -534,7 +658,7 @@ pub fn run(atlas: &Atlas, classes: &Classes, detail_classes: BTreeSet<u16>, out:
             }
         }
         let mut groups: Vec<(Proto, Vec<u16>)> = merged.into_values().collect();
-        groups.sort_by(|a, b| a.0.order.cmp(&b.0.order).then(a.0.minzoom.total_cmp(&b.0.minzoom)));
+        groups.sort_by(|a, b| stack_key(&a.0).cmp(&stack_key(&b.0)).then(a.0.minzoom.total_cmp(&b.0.minzoom)));
         let raster = s.raster.to_ascii_lowercase();
         let look = s.look.to_ascii_lowercase();
         let mut sources = serde_json::Map::new();
@@ -576,6 +700,10 @@ pub fn run(atlas: &Atlas, classes: &Classes, detail_classes: BTreeSet<u16>, out:
             .filter(|(c, _)| classes.is_moon(*c as usize) == is_moon_style)
             .map(|(c, v)| (c.to_string(), json!(v.iter().map(|r| json!([r.0, r.1, r.2])).collect::<Vec<_>>())))
             .collect();
+        // Classes of PDCAttribute pen group 134 (time zones, DST areas, "Shading - gray") never enter the click
+        // menu (mad-styling.md §16 V11 result).
+        let menu_excluded: Vec<u16> =
+            classes.classes.iter().filter(|c| c.pen_group == MENU_EXCLUDED_PEN_GROUP && classes.is_moon(c.id as usize) == is_moon_style).map(|c| c.id).collect();
         let rects: Vec<Value> = min_rects
             .iter()
             .filter(|r| r.style == s.id)
@@ -603,6 +731,7 @@ pub fn run(atlas: &Atlas, classes: &Classes, detail_classes: BTreeSet<u16>, out:
                 "encarta:view_p_over_m_per_height_px": geo::VIEW_P_OVER_M_PER_HEIGHT_PX,
                 "encarta:reference_pane_height_px": geo::REFERENCE_PANE_HEIGHT_PX,
                 "encarta:interactive": interactive,
+                "encarta:menu_excluded_classes": menu_excluded,
                 "encarta:surface": { "water_pixel_class": ctx.surface.water, "land_pixel_class": ctx.surface.land, "land_luminance": (ctx.surface.land_luminance * 10.0).round() / 10.0 },
                 "encarta:notes": "Zoom ranges come from Encarta camera altitudes via zoom = log2(40075·(P/m)/(1280·alt_km)) at latitude 0 for Encarta's 812 × 518 map pane (P/m = 3135, measured in the VM; P/m ≈ 6.05 × pane height). A client shifts the zoom ranges by log2(cos φ · P/m(own pane) / 3135) to apply Encarta's rule at the true ground scale. The raster-index source carries class indices for client-side recolouring (raster/palettes.json).",
             },
@@ -615,30 +744,49 @@ pub fn run(atlas: &Atlas, classes: &Classes, detail_classes: BTreeSet<u16>, out:
         index.push(json!({ "id": s.id, "name": s.name, "file": format!("styles/{name}"), "raster": s.raster, "look": s.look, "default": info.style.is_default }));
     }
     std::fs::write(dir.join("index.json"), serde_json::to_vec_pretty(&index)?)?;
-    rep.sprites = sprites(atlas, &out.join("sprites"))?;
+    rep.sprites = sprites(atlas, &out.join("sprites"), &ctx.shields)?;
     rep.faces = ctx.faces.iter().cloned().collect();
     log(format!("  {} styles, {} layers ({} with placeholders), {} sprites, faces {:?}", rep.styles.len(), rep.layers, rep.placeholder_layers, rep.sprites, rep.faces));
     Ok((rep, ctx.faces))
 }
 
 /// Bitmap symbols → `sprite.png/json` and `sprite@2x.png/json`.
-fn sprites(atlas: &Atlas, dir: &Path) -> Result<usize> {
+fn sprites(atlas: &Atlas, dir: &Path, shields: &BTreeSet<Shield>) -> Result<usize> {
     std::fs::create_dir_all(dir)?;
     let grid = atlas.grid("Bitmap", "BitmapLookup")?;
     let palette = atlas.bitmap_palette()?;
-    let mut icons: Vec<(u32, usize, usize, Vec<u8>)> = Vec::new();
+    let mut icons: Vec<(String, usize, usize, Vec<u8>)> = Vec::new();
     for run in grid.index.runs() {
         for key in run.first..=run.last() {
             let b: Bitmap = decode_record(&grid, key)?;
-            icons.push((key - 0x10000, b.width as usize, b.height as usize, b.to_rgba(&palette)));
+            icons.push((format!("bm{}", key - 0x10000), b.width as usize, b.height as usize, b.to_rgba(&palette)));
         }
     }
+    let bitmaps = icons.len();
     for ratio in [1usize, 2] {
+        // Sprites at this ratio: `(name, width, height, rgba, extra sprite JSON fields)`. Bitmaps are
+        // pixel-doubled; shields are drawn at the ratio.
+        let mut items: Vec<(String, usize, usize, Vec<u8>, Value)> = Vec::new();
+        for (name, w, h, rgba) in &icons {
+            let (pw, ph) = (w * ratio, h * ratio);
+            let mut big = vec![0u8; pw * ph * 4];
+            for yy in 0..ph {
+                for xx in 0..pw {
+                    let s = ((yy / ratio) * w + xx / ratio) * 4;
+                    let d = (yy * pw + xx) * 4;
+                    big[d..d + 4].copy_from_slice(&rgba[s..s + 4]);
+                }
+            }
+            items.push((name.clone(), pw, ph, big, json!({})));
+        }
+        for sh in shields {
+            let (n, rgba, meta) = shield::render(sh, ratio);
+            items.push((sh.name(), n, n, rgba, meta));
+        }
         // Shelf packing in rows of at most 512 px.
         let (mut x, mut y, mut row_h, mut w_max) = (0usize, 0usize, 0usize, 0usize);
         let mut place = Vec::new();
-        for (_, w, h, _) in &icons {
-            let (w, h) = (w * ratio, h * ratio);
+        for (_, w, h, _, _) in &items {
             if x + w > 512 {
                 x = 0;
                 y += row_h + 1;
@@ -646,21 +794,22 @@ fn sprites(atlas: &Atlas, dir: &Path) -> Result<usize> {
             }
             place.push((x, y));
             x += w + 1;
-            row_h = row_h.max(h);
+            row_h = row_h.max(*h);
             w_max = w_max.max(x);
         }
         let (sw, sh) = (w_max.max(1), y + row_h.max(1));
         let mut img = vec![0u8; sw * sh * 4];
         let mut index = serde_json::Map::new();
-        for ((id, w, h, rgba), &(px, py)) in icons.iter().zip(&place) {
-            for yy in 0..h * ratio {
-                for xx in 0..w * ratio {
-                    let s = ((yy / ratio) * w + xx / ratio) * 4;
-                    let d = ((py + yy) * sw + px + xx) * 4;
-                    img[d..d + 4].copy_from_slice(&rgba[s..s + 4]);
-                }
+        for ((name, w, h, rgba, meta), &(px, py)) in items.iter().zip(&place) {
+            for yy in 0..*h {
+                let d = ((py + yy) * sw + px) * 4;
+                img[d..d + w * 4].copy_from_slice(&rgba[yy * w * 4..(yy + 1) * w * 4]);
             }
-            index.insert(format!("bm{id}"), json!({ "x": px, "y": py, "width": w * ratio, "height": h * ratio, "pixelRatio": ratio }));
+            let mut e = json!({ "x": px, "y": py, "width": w, "height": h, "pixelRatio": ratio });
+            if let Some(m) = meta.as_object() {
+                e.as_object_mut().unwrap().extend(m.clone());
+            }
+            index.insert(name.clone(), e);
         }
         let stem = if ratio == 1 { "sprite".to_string() } else { format!("sprite@{ratio}x") };
         let mut png_bytes = Vec::new();
@@ -673,7 +822,7 @@ fn sprites(atlas: &Atlas, dir: &Path) -> Result<usize> {
         std::fs::write(dir.join(format!("{stem}.png")), png_bytes)?;
         std::fs::write(dir.join(format!("{stem}.json")), serde_json::to_vec_pretty(&Value::Object(index))?)?;
     }
-    Ok(icons.len())
+    Ok(bitmaps + shields.len())
 }
 
 #[cfg(test)]

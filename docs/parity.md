@@ -149,10 +149,10 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| Globe, Miller flat view, measured P/m | done | atlas-client.md, VM V1/V2/V12 | flat view re-tiles on the main thread |
+| Globe, Miller flat view, measured P/m | done | atlas-client.md, VM V1/V2/V12; flat-view tiles made in Web Workers | — |
 | 20 menu styles + statistical, moon | done | VM V4 | 4, 18, 21–23, 26 have no MapStyle |
-| Labels, symbols, road shields | partial | | road-shield source, alternate label style w6 |
-| Click menu with Map / Read Article | done | VM V11 | time zones listed although V11 shows none |
+| Labels, symbols, road shields | done | road shields are the labels of shield road classes, numbered by name (mad-styling.md §8.1, matches VM V8); alternative names (U+0004) on a `w6` line (§7.3); pen draw-over masks on lines and fills (§5.2) | label placement cost and the shields' one-per-sixth-of-pane rule approximated; "Bombay" line not yet seen in the VM (V15) |
+| Click menu with Map / Read Article | done | VM V11; pen group 134 (time zones) left out, as ENCARTA.EXE does (mad-styling.md §16) | V16 (Time Zones map click) not shot |
 | Place links (P2MTBL) | done | 206/206 sampled links open (this audit: 2,656 off-disc targets are left out instead of "Item not found"; 1,229 MSWORLD.ITR photos and sounds now open) | 910 of those photos show only their 64-px pushpin picture; 152 sounds have no audio on the disc (msworld.md §3) |
 | Place search | done | gazetteer FTS | — |
 | Map Legend, Map Customizer | done | | legend captions are class names |

@@ -17,6 +17,7 @@ mod pmtiles;
 mod preview;
 mod raster;
 mod report;
+mod shield;
 mod style;
 mod tables;
 mod vector;

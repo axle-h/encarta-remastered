@@ -129,6 +129,9 @@ pub struct ClassUse {
     /// Line rules with a pen whose "draw over" mask is not everything (mad-styling.md §5.2): the
     /// class's lines are split into runs over water and land.
     pub masked: u32,
+    /// Area rules whose fill pen or pattern brush has a "draw over" mask that is not everything:
+    /// the class's polygons are split into parts over water and land.
+    pub masked_fill: u32,
 }
 
 impl ClassUse {
@@ -181,6 +184,9 @@ impl Classes {
                         if stroke || highlight {
                             u.outline += 1;
                         }
+                        if geometry && pen(r.w5_13[2]).is_some_and(|p| super::pixel::pen_mask(&p.flags) != super::pixel::ALL_BITS) {
+                            u.masked_fill += 1;
+                        }
                     }
                     GeometryKind::Line
                         if geometry && r.w5_13[2..9].iter().any(|&w| pen(w).is_some_and(|p| p.b8[1] > 0 && super::pixel::pen_mask(&p.flags) != super::pixel::ALL_BITS)) =>
@@ -221,7 +227,7 @@ impl Classes {
             .enumerate()
             .map(|(i, &kind)| FeatureClass { id: i as u16, kind, pen_group: 0, flag: 0, scale: 0, reserved: 0, group: 0, priority: 50, name: format!("class {i}") })
             .collect();
-        Classes { classes, kinds: kinds.to_vec(), uses: vec![ClassUse { geometry_default: 1, geometry_optional: 0, label: 1, interactive: 1, outline: 1, masked: 1 }; kinds.len()] }
+        Classes { classes, kinds: kinds.to_vec(), uses: vec![ClassUse { geometry_default: 1, geometry_optional: 0, label: 1, interactive: 1, outline: 1, masked: 1, masked_fill: 1 }; kinds.len()] }
     }
 }
 

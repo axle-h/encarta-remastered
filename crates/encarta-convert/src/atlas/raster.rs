@@ -77,6 +77,13 @@ impl<'r, 'a> TileCache<'r, 'a> {
         Ok(t)
     }
 
+    /// `class[value]` of every pixel of source tile `(x, y)` at `level`, if it is the same for all.
+    pub fn uniform_tile(&mut self, level: u32, x: u32, y: u32, class: &[bool; 256]) -> Result<Option<bool>> {
+        let t = self.tile(rmap::tile_key(level, x, y))?;
+        let v = class[t[0] as usize];
+        Ok(t.iter().all(|&p| class[p as usize] == v).then_some(v))
+    }
+
     /// Raster value of octahedral image pixel `(row, col)` at `level`.
     pub fn pixel(&mut self, level: u32, row: usize, col: usize) -> Result<u8> {
         let (x, y, i) = rmap::image_to_tile_pixel(level, row, col);

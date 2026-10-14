@@ -171,16 +171,6 @@ function adjustLayer(layer: LayerSpecification, o: BuildOptions): LayerSpecifica
     const sourceLayer = (layer as { "source-layer"?: string })["source-layer"] ?? "";
     // An optional label on a shown symbol starts hidden (text-opacity 0); turning its class on shows it.
     if (paint["text-opacity"] === 0 && layerClasses(layer).ids.some((id) => o.overrides.on.has(id))) paint["text-opacity"] = 1;
-    // The Moon's maria carry their English name as the alternative (U+0004); Encarta shows it on a
-    // second line ("Mare Frigoris / Sea of Cold", V4 Moon shot).
-    if ((layer as { source?: string }).source === "moon" && sourceLayer === "labels" && layout["text-field"] !== undefined) {
-      layout["text-field"] = [
-        "case",
-        ["has", "alt_names"],
-        ["format", ["coalesce", ["get", "name"], ""], {}, "\n", {}, ["get", "alt_names"], { "font-scale": 0.85 }],
-        ["coalesce", ["get", "name"], ""],
-      ];
-    }
     if (o.labelScale === 0) {
       if (LABEL_LAYERS.has(sourceLayer) || layout["icon-image"] === undefined) layout.visibility = "none";
       else delete layout["text-field"];

@@ -627,7 +627,9 @@ len   = B(16, n)       name lengths in UTF-16 code units
 total = Σ len
 text  = W(17, total)   (only if total > 0) names back to back, not terminated
 ```
-Names may contain U+0004 separating alternative names (`"Danube\u0004Donau"`). Record key 0 (WLD, 0409):
+Names may contain U+0004 separating alternative names (`"Danube\u0004Donau"`). Road objects of the shield
+classes are named by their route number (`"95"`, `"A4"`, `"E25"`); the shield itself comes from the label style
+(mad-styling.md §8.1). Record key 0 (WLD, 0409):
 `n = 389, m = 378`; entries `(35473, 0, 995, "Volta")`, `(23347, 0, 3910, "Niger")`, `(37422, 0, 3195,
 "Congo")`, `(41819, 0, 3675, "Lualaba")`, `(8598, 0, 3375, "Danube\u0004Donau")`; `e/f/g` start
 `(1224, 81, 329), (312, 173, 971), (441, 780, 206)`.
@@ -777,8 +779,8 @@ both; 2,947,064 / 2,947,064 GeoGem references resolve; per-entity `(type, ctx)` 
 | 0 | u16 | class id (0, 1, … with gaps; ids up to 10117). **GeoGem refers to classes by row position, not id.** |
 | 2 | u8 | length of the name |
 | 3 | u8 | geometry kind: 0 point (143 rows), 1 radius point (6), 2 line (127), 3 area (330) |
-| 4 | u16 | style/pen group (e.g. 1 coastline, 43 water, 55 roads) — probably an index into `GeoPenDef` |
-| 6 | u8 | flag (21 rows set: motorways, arterials …) |
+| 4 | u16 | style/pen group (e.g. 1 coastline, 43 water, 55 roads, 134 time zones). ENCARTA.EXE classifies map hits by it (mad-styling.md §16, V11 result) |
+| 6 | u8 | routable-road flag (21 rows set: motorways, arterials, RoutableNP …; mad-styling.md §15 item 8) |
 | 7 | u32 | scale value; MOBB divides by 1000 (200000 cities, 400000 lines/areas, 30000 landmarks) |
 | 11 | u8 | 0 in all rows |
 | 12 | u8 | grouping value used when joining parts (0, 1, 2, 5, 10, 100, 120 …) |

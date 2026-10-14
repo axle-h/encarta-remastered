@@ -14,12 +14,10 @@
  *   (over the Miller image, which fills the polar rows beyond ±85.05°);
  * - `encarta-miller-mvt://<archive URL>/{z}/{x}/{y}`: the vector tiles of the real latitudes the
  *   view tile covers, clipped to their own tile, transformed and clipped again (mvt.ts).
- * Everything else (feature ids, properties, the styles) is unchanged; the client converts between
+ * The re-making runs in Web Workers (millerTiles.ts, millerProtocol.ts). Everything else (feature ids, properties, the styles) is unchanged; the client converts between
  * real and view latitudes where it talks to the map (camera, search, outline, title).
  */
-import { PMTiles } from "pmtiles";
-import type { AddProtocolAction } from "maplibre-gl";
-import { POINT, POLYGON, area2, clipLine, clipRing, decodeTile, encodeTile, type FPt, type Feature, type Layer, type Pt } from "./mvt";
+import { POINT, POLYGON, area2, clipLine, clipRing, type FPt, type Feature, type Layer, type Pt } from "./mvt";
 
 const DEG = Math.PI / 180;
 /** Web Mercator latitude limit (the converter's raster and vector tiles stop there). */
@@ -62,9 +60,9 @@ export function mercWorldLat(y: number): number {
 }
 
 /** World y of a real latitude in view coordinates. */
-const viewWorldY = (realLat: number) => (1 - millerY(realLat) / Math.PI) / 2;
+export const viewWorldY = (realLat: number) => (1 - millerY(realLat) / Math.PI) / 2;
 /** Real latitude of a view world y. */
-const realLatOfViewY = (y: number) => millerLat(Math.max(-MILLER_Y_MAX, Math.min(MILLER_Y_MAX, Math.PI * (1 - 2 * y))));
+export const realLatOfViewY = (y: number) => millerLat(Math.max(-MILLER_Y_MAX, Math.min(MILLER_Y_MAX, Math.PI * (1 - 2 * y))));
 
 /**
  * The view zoom at which the whole Miller map (pole to pole) is `heightPx` tall: Encarta's flat
@@ -186,39 +184,10 @@ export function millerVectorTiles(archiveUrl: string, maxzoom: number): string {
   return `${MILLER_MVT_PROTOCOL}://${maxzoom}/${encodeURIComponent(archiveUrl)}/{z}/{x}/{y}`;
 }
 
-function parseVectorUrl(url: string): { maxzoom: number; archive: string; z: number; x: number; y: number } | null {
+export function parseVectorUrl(url: string): { maxzoom: number; archive: string; z: number; x: number; y: number } | null {
   const m = new RegExp(`^${MILLER_MVT_PROTOCOL}://(\\d+)/([^/]+)/(\\d+)/(\\d+)/(\\d+)`).exec(url);
   if (!m) return null;
   return { maxzoom: Number(m[1]), archive: decodeURIComponent(m[2]!), z: Number(m[3]), x: Number(m[4]), y: Number(m[5]) };
-}
-
-const archives = new Map<string, PMTiles>();
-function archive(url: string): PMTiles {
-  let a = archives.get(url);
-  if (!a) archives.set(url, (a = new PMTiles(url)));
-  return a;
-}
-
-export function createMillerVectorProtocol(): AddProtocolAction {
-  return async (params, abort) => {
-    const t = parseVectorUrl(params.url);
-    if (!t) throw new Error(`bad ${MILLER_MVT_PROTOCOL} URL ${params.url}`);
-    const a = archive(t.archive);
-    const zr = realZoom(t.z, t.y, t.maxzoom);
-    const shift = t.z - zr;
-    const rx = t.x >> Math.max(0, shift);
-    const [r0, r1] = realRows(t.z, t.y, zr);
-    const sources: { zr: number; x: number; y: number; layers: Layer[] }[] = [];
-    await Promise.all(
-      Array.from({ length: r1 - r0 + 1 }, async (_, i) => {
-        const tile = await a.getZxy(zr, rx, r0 + i, abort.signal);
-        if (tile?.data) sources.push({ zr, x: rx, y: r0 + i, layers: decodeTile(new Uint8Array(tile.data)) });
-      }),
-    );
-    const layers = retile(sources, t.z, t.x, t.y);
-    const bytes = encodeTile(layers);
-    return { data: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer };
-  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -236,7 +205,7 @@ export function millerRasterTiles(raster: string, look: string, archiveUrl: stri
   return `${MILLER_RASTER_PROTOCOL}://${raster.toUpperCase()}/${look.toUpperCase()}/${encodeURIComponent(archiveUrl)}/{z}/{x}/{y}`;
 }
 
-function parseRasterUrl(url: string): { raster: string; look: string; archive: string; z: number; x: number; y: number } | null {
+export function parseRasterUrl(url: string): { raster: string; look: string; archive: string; z: number; x: number; y: number } | null {
   const m = new RegExp(`^${MILLER_RASTER_PROTOCOL}://([^/]+)/([^/]+)/([^/]+)/(\\d+)/(\\d+)/(\\d+)`).exec(url);
   if (!m) return null;
   return { raster: m[1]!, look: m[2]!, archive: decodeURIComponent(m[3]!), z: Number(m[4]), x: Number(m[5]), y: Number(m[6]) };
@@ -254,80 +223,6 @@ export function millerLevel(images: readonly MillerImage[], z: number): MillerIm
   return sorted.find((m) => m.width / 2 ** z >= 256) ?? sorted[sorted.length - 1];
 }
 
-const TILE = 256;
+export const TILE = 256;
 /** Below this zoom the flat view shows Encarta's own flat-map images; above, the remapped Mercator raster. */
 export const MILLER_IMAGE_MAX_ZOOM = 4;
-
-export function createMillerRasterProtocol(get: () => { images: MillerImage[]; imageUrl: (raster: string, look: string, level: number) => string }): AddProtocolAction {
-  const bitmaps = new Map<string, Promise<ImageBitmap | null>>();
-  const load = (url: string) => {
-    let p = bitmaps.get(url);
-    if (!p) {
-      p = fetch(url)
-        .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
-        .then((b) => createImageBitmap(b))
-        .catch(() => null);
-      bitmaps.set(url, p);
-    }
-    return p;
-  };
-  return async (params, abort) => {
-    const t = parseRasterUrl(params.url);
-    if (!t) throw new Error(`bad ${MILLER_RASTER_PROTOCOL} URL ${params.url}`);
-    const { images, imageUrl } = get();
-    const canvas = new OffscreenCanvas(TILE, TILE);
-    const ctx = canvas.getContext("2d")!;
-    ctx.imageSmoothingEnabled = false;
-    // Encarta's flat image first: all of the tile at small zooms, the polar rows at large zooms.
-    const level = millerLevel(images.filter((m) => m.raster.toUpperCase() === t.raster), t.z);
-    if (level) {
-      const img = await load(imageUrl(t.raster, t.look, level.level));
-      if (img) {
-        const r = millerImageRect(img.width, img.height, t.z, t.x, t.y);
-        drawClipped(ctx, img, r.sx, r.sy, r.size, r.size);
-      }
-    }
-    if (t.z >= MILLER_IMAGE_MAX_ZOOM || !level) {
-      const a = archive(t.archive);
-      const header = await a.getHeader();
-      const zr = realZoom(t.z, t.y, header.maxZoom, 6);
-      const shift = t.z - zr;
-      const span = TILE / 2 ** shift; // source pixels per view tile, horizontally
-      const rx = t.x >> shift;
-      const sx = (t.x - (rx << shift)) * span;
-      const [r0, r1] = realRows(t.z, t.y, zr);
-      const tiles = new Map<number, ImageBitmap>();
-      await Promise.all(
-        Array.from({ length: r1 - r0 + 1 }, async (_, i) => {
-          const tile = await a.getZxy(zr, rx, r0 + i, abort.signal);
-          if (tile?.data) tiles.set(r0 + i, await createImageBitmap(new Blob([tile.data])));
-        }),
-      );
-      const n = 2 ** t.z;
-      const m = 2 ** zr;
-      for (let row = 0; row < TILE; row++) {
-        const lat = realLatOfViewY((t.y + (row + 0.5) / TILE) / n);
-        if (Math.abs(lat) > MERCATOR_MAX_LAT) continue;
-        const sy = mercWorldY(lat) * m * TILE;
-        const ty = Math.floor(sy / TILE);
-        const img = tiles.get(ty);
-        if (!img) continue;
-        ctx.drawImage(img, sx, Math.floor(sy - ty * TILE), span, 1, 0, row, TILE, 1);
-      }
-      for (const b of tiles.values()) b.close();
-    }
-    const blob = await canvas.convertToBlob({ type: "image/png" });
-    return { data: await blob.arrayBuffer() };
-  };
-}
-
-/** `drawImage` of a source rectangle that may extend beyond the image, onto the whole tile. */
-function drawClipped(ctx: OffscreenCanvasRenderingContext2D, img: ImageBitmap, sx: number, sy: number, sw: number, sh: number): void {
-  const x0 = Math.max(0, sx);
-  const y0 = Math.max(0, sy);
-  const x1 = Math.min(img.width, sx + sw);
-  const y1 = Math.min(img.height, sy + sh);
-  if (x1 <= x0 || y1 <= y0) return;
-  const k = TILE / sw;
-  ctx.drawImage(img, x0, y0, x1 - x0, y1 - y0, (x0 - sx) * k, (y0 - sy) * k, (x1 - x0) * k, (y1 - y0) * k);
-}

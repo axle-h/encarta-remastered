@@ -6,9 +6,9 @@ and `out/report/atlas.json`. Code: `crates/encarta-convert/src/atlas.rs` and `sr
 knowledge: [mad.md](formats/mad.md), [mad-styling.md](formats/mad-styling.md), [p2mtbl.md](formats/p2mtbl.md),
 [msworld.md](formats/msworld.md).
 
-A full run takes about 4.5 minutes on 24 cores (the HYPSO raster pyramid is 4 of them) and writes 1.8 GB.
-Peak memory is about 3 GB. Every file is rewritten on each run (temporary name, then rename), so re-running is
-safe. `ENCARTA_ATLAS_ONLY=raster,vector,gazetteer,style,glyphs,tables,preview` runs only some stages, and
+A full run takes about 5 minutes on 24 cores (the HYPSO raster pyramid is 4 of them, the vector tiles 21 s)
+and writes 1.9 GB. Peak memory is about 4.5 GB (the vector stage). Every file is rewritten on each run
+(temporary name, then rename), so re-running is safe. `ENCARTA_ATLAS_ONLY=raster,vector,gazetteer,style,glyphs,tables,preview` runs only some stages, and
 `ENCARTA_ATLAS_RASTERS=MOON,TECTONIC` only some rasters. The report keeps the entries of stages that did not run.
 
 ## Layout
@@ -126,8 +126,8 @@ its U+0002 abbreviation), `abbr`, `alt_names` ("; "-joined), `name_0009` (the LC
 differs), `anonymous` (`{RESERVED}` placeholder names, which are dropped), and on points/labels `priority`
 (PDCAttribute b13, the `symbol-sort-key`) and on labels `goto_km`; `width_z10` on the labels of areas with an
 abbreviation (the area's east–west extent in px at zoom 10, for the abbreviation fallback); `water: true` on
-the line runs over water (draw-over masks, below). Within a tile, the parts of one object, class and side
-(water/land) are merged into one feature.
+the line runs and polygon parts over water (draw-over masks, below). Within a tile, the parts of one object,
+class and side (water/land) are merged into one feature.
 
 **Polygons.** GeoGem area rings carry no meaningful orientation (both windings occur). Inside one object, class
 and cell, a ring inside an odd number of other rings is a hole (Encarta fills with GDI's even-odd rule). The
@@ -146,7 +146,26 @@ between water and land of the HYPSO raster (CMT `kind` 0 = water), at the HYPSO 
 zoom, with crossings found by bisection (`pixel::split_line`). The styles then draw each pen only on the runs
 its mask allows for the style's raster (below). Simplification: the class under a line comes from the raster
 alone, not from the area fills drawn before it (for HYPSO the same classes: water areas use `b14 = 1`, land
-fills `b14 = 0`). Area pens' masks are not applied (that needs polygon clipping).
+fills `b14 = 0`).
+
+Polygons of the classes that some rule fills with a restricted pen or pattern brush
+(`ClassUse::masked_fill`, 262 classes: Admin1/CountryRegion/Dependent colours, International organization,
+time zones, LANG, REL, ECO, CLI, parks, reserves, urban areas, ice pack, intermittent lakes …; every such mask
+lacks bit 2, i.e. not over water) are split the same way, along pixel edges. Per GeoGem cell, the HYPSO water
+mask is sampled on the Web Mercator grid that resolves the lines' HYPSO level at the equator (2^17 pixels
+around the world for band 7, the raster's z9 grid; 16-px blocks inside one all-water or all-land source tile
+are filled without lookups, the others projected exactly at their corners and bilinearly between). Its water
+pixels are merged into rectangles, and each polygon is intersected with them and differenced
+(`pixel::WaterWindow`, `i_overlay`, even-odd, integer fixed-point coordinates). Polygons on one side keep their
+geometry; mixed ones become a water part (`water: true`) and a land part with the same id and properties.
+Beyond ±85.05° the edge row's class continues. The `outlines` layer stays whole (no outline pen has a
+restricted mask). The report's `area_masks` gives per class the polygons and the share of their Mercator area
+over water, summed over the bands: 0.6–1.0 for the "… - Small" dependency and country colours, 0.15–0.46 for
+most Admin1/CountryRegion colours, 0.2 for International organization, 0.07–0.3 for time zones, 0.01–0.05 for
+parks and urban areas. In band 7, 88,072 of 390,040 masked polygons are cut and 31,192 lie entirely over water.
+Cost: `earth.pmtiles` 316 → 399 MB (pixel staircases along the coasts), `earth-detail` 18.2 → 18.6 MB, the
+vector stage 5 → 21 s.
+
 GeoGem cells never straddle ±180°. Features near the antimeridian are also written, shifted by ±360°, into the
 buffers of the edge tiles. Latitudes beyond ±85.05° are clipped by the tile bounds.
 
@@ -188,7 +207,8 @@ ORDER BY h.exact DESC, p.importance DESC, h.r LIMIT 20;
 
 One style per MapStyle record (33; `styles/index.json`). Each has a background (MapStyle colour 2), the
 raster of its LOOK, then the rule layers in Encarta's draw order (mad-styling.md §9): fills by b12, line pen
-passes w7…w13 layer by layer by b12, hover highlights, point symbols and labels (sorted by b13). Rule → layer
+passes w7…w13 layer by layer by b12, hover highlights, point symbols and labels (by b13 descending, so the lowest b13 is on top: MapLibre places symbols from the top
+layer down, and in Encarta the lowest b13 wins; points, area and line labels interleave). Rule → layer
 follows mad-styling.md §14.1:
 
 | Implemented | |
@@ -199,8 +219,11 @@ follows mad-styling.md §14.1:
 | line pens: width, dashes (`line-dasharray` from the bit mask), offset, edge-only pens (`passes < width` → two 1-px lines) | §5.1 |
 | point symbols: `icon-image` = bitmap of pen w7, symbol and label together (`icon-optional: false`); radius points as circles | §7.4, §8 |
 | labels: GeoLabel font/size/colour, bold/italic → face, rule halo colour, 1-px halo; line labels along lines, area labels on `labels` | §7 |
+| alternative name (`w6` set, not on lines): the label's `text-field` is a `format`: main name in the `w5` style plus `"\n"` and the tile's `alt_names` as a last section with the `w6` face (`text-font`), `font-scale` = w6 size / w5 size and `text-color`; in brackets when the main name starts with U+3040…U+9FFF (kana/CJK); `w6` none → no alternative. Upper case (GeoLabel byte 26) is `upcase` per section | §4.1, §7.2, §7.3 |
+| road shields: a line class whose `w5` GeoLabel has a shape (byte 12 ≠ 0) gets a `symbol` layer on `lines` (filter `has name`, order after the labels) instead of a line label: `symbol-placement: line`, `symbol-spacing` 400, the name upright (`text-rotation-alignment`/`icon-rotation-alignment: viewport`), `icon-image` = sprite `shield<shape>-<outline>-<width>-<fill>-<fill2>`, `icon-text-fit: both` with padding, no overlap | §8.1 |
+| `metadata["encarta:menu_excluded_classes"]`: the classes of PDCAttribute pen group 134 (time zones, DST areas, "Shading - gray"), which the click menu never lists | §16 (V11 result) |
 | highlight pens (b15/b16/w17) as `feature-state: hover` layers (the client uses them for the selected place; Encarta highlights nothing on hover, V11) | §4.1 |
-| draw-over masks of line pens: filter `["all", <class test>, ["==", ["get","water"], true]]` (or `!=`), pen dropped where it may draw nowhere | §5.2 |
+| draw-over masks of line pens and of fill pens (and pattern brushes): filter `["all", <class test>, ["==", ["get","water"], true]]` (or `!=`), pen dropped where it may draw nowhere | §5.2 |
 | tint colours (fills, lines, highlights): the ramp entry `tint_index(L)` for the mean land luminance `L` of the style's raster LOOK (`encarta:surface`); highlight fills at 60 % | §6 |
 | area labels: abbreviation (U+0002) where `length(name) · size · 0.6 em` exceeds the area's width at the current zoom (`width_z10 · 2^(z−10)`), tested every half zoom in a `step` | §7.3 |
 | per class, the zoom ranges where the rules make it interactive (`b4`): `metadata["encarta:interactive"] = {class: [[minzoom, maxzoom, tri-state]…]}` | §4.1 |
@@ -214,15 +237,23 @@ luma (the spec says only "luminance"; an assumption).
 
 Placeholders (layer `metadata["encarta:placeholder"]`): GeoTrans tint ramps over the hill shading are drawn as a
 50 % fill of one ramp entry (§6: exact needs baking into the raster, per pixel); highlight fills with a ramp
-likewise at 60 % (the "relative" highlight variant's per-colour offsets are not specified); GeoLabel upper
-case (byte 11) and letter spacing (byte 10) are hypotheses. The abbreviation test's 0.6 em per character is a
+likewise at 60 % (the "relative" highlight variant's per-colour offsets are not specified); GeoLabel letter spacing
+(byte 10) is a hypothesis (upper case is byte 26, specified). The abbreviation test's 0.6 em per character is a
 hypothesis (the spec says only "when the full name does not fit"); it gives "NETH." and "LUX." over Europe at
-3,000 km, as V3/V11 show. Not modelled, because the spec does not say when it applies: the alternate label
-style w6 (§4.1: "when it is used is open"), and the GeoLabel bytes still open in §7.2. Layers with identical
+3,000 km, as V3/V11 show. Not modelled: the choice among Encarta's three label layouts by overlap cost (§7.3: the
+alternative name is always drawn when the rule has `w6` and the feature has one, even when it makes the label
+collide), the one-same-text-shield-per-sixth-of-the-pane rule and the shield's two-digit minimum width (§8.1:
+`symbol-spacing` stands in for the first; MapLibre has no text-width minimum), the shield candidate cost, and the
+GeoLabel bytes still open in §7.2. Layers with identical
 paint, filter and zoom range are merged with a class filter (1,153 layers for Atlas Political, 13,390 in all).
 
 **Sprites**: one sprite per Bitmap record, `bm<id>` (id = key − 0x10000), palette from BitmapPalette with its
-transparent entry, at 1x and 2x (pixel-doubled).
+transparent entry, at 1x and 2x (pixel-doubled). Plus one **shield sprite** per (shape, outline colour and
+width, fill, second fill) that a rule's `w5` label uses (GeoLabel bytes 12–22; 5 in the shipped styles), named
+`shield<shape>-…` (`shield.rs`): a 24-unit box drawn by us (rectangle, rounded rectangle, ellipse, each with or
+without an inset outline, and our own simple Interstate shield, US-highway badge, maple leaf and Mexican shield;
+no outline data from the binary), rendered at the ratio, with `stretchX`/`stretchY` (the middle row and column)
+and `content` (the text box) for `icon-text-fit: both`.
 
 **Glyphs**: SDF PBFs (24 px/em, 3-px buffer, radius 8, cutoff 0.25) for every face the styles use, from the
 disc's own TTFs (`AREF/FONTS`). The face name is `<Label Font name> <Regular|Bold|Italic|Bold Italic>`. The
@@ -273,6 +304,8 @@ without bathymetry), GeoGem bands 0–7 and 31,662 entities, all of which are in
 - Unit tests: PMTiles writer/reader round trip (with leaf directories, runs, dedup), Hilbert ids, MVT encode/decode
   of synthetic geometry (holes, orientation, clipping), clipping, even-odd nesting, seam-free outlines, zoom bands
   (earth stops at z8, Moon to band 2), projection interpolation, zoom/level choice, altitude→zoom, dash arrays,
-  pixel classes and pen masks, water/land line splitting, SDF, name conventions. Disc tests (skipped without
-  `extracted/`): HYPSO ocean value at 0° N 140° W through a Mercator tile and a PMTiles round trip; band-7
-  Denmark tile with Copenhagen, exterior-first polygons, dropped seam edges and water runs.
+  pixel classes and pen masks, water/land line splitting, polygon splitting on synthetic masks (coast, lake
+  hole, staircase, beyond the world edge), SDF, name conventions. Disc tests (skipped without `extracted/`):
+  HYPSO ocean value at 0° N 140° W through a Mercator tile and a PMTiles round trip; band-7
+  Denmark tile with Copenhagen, exterior-first polygons, dropped seam edges, water runs, a masked fill as water
+  and land features of one id, and uniform-block mask sampling against point lookups.

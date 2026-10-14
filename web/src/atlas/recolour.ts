@@ -6,9 +6,9 @@
  *
  * Tiles are requested as `encarta-look://<RASTER>/<LOOK>/{z}/{x}/{y}`.
  */
-import { PMTiles } from "pmtiles";
 import type { AddProtocolAction, RasterSourceSpecification } from "maplibre-gl";
-import { decodePngValues } from "./png";
+import { applyLut } from "./lookTile";
+import { runInWorker } from "./tilePool";
 import { rasterArchive, type Endpoints, type Palettes } from "./data";
 
 export const LOOK_PROTOCOL = "encarta-look";
@@ -29,10 +29,7 @@ export function buildLut(colours: readonly string[], transparent: ReadonlySet<nu
   return lut;
 }
 
-export function applyLut(values: Uint8Array, lut: Uint32Array, out = new Uint32Array(values.length)): Uint32Array {
-  for (let i = 0; i < values.length; i++) out[i] = lut[values[i]!]!;
-  return out;
-}
+export { applyLut };
 
 export function lookTileUrl(raster: string, look: string): string {
   return `${LOOK_PROTOCOL}://${raster.toUpperCase()}/${look.toUpperCase()}/{z}/{x}/{y}`;
@@ -62,9 +59,8 @@ export function bakedLooks(index: readonly { raster: string; look: string }[]): 
   return new Set(index.map((e) => `${e.raster.toUpperCase()}/${e.look.toUpperCase()}`));
 }
 
-/** The protocol handler. One per page; palettes and endpoints are read when a tile is requested. */
+/** The protocol handler. One per page; palettes and endpoints are read when a tile is requested. The pixel work runs in a tile worker. */
 export function createLookProtocol(get: () => { palettes: Palettes | null; ep: Endpoints }): AddProtocolAction {
-  const archives = new Map<string, PMTiles>();
   const luts = new Map<string, Uint32Array>();
   return async (params, abort) => {
     const t = parseLookUrl(params.url);
@@ -77,20 +73,7 @@ export function createLookProtocol(get: () => { palettes: Palettes | null; ep: E
       lut = buildLut(look.colours);
       luts.set(`${t.raster}/${t.look}`, lut);
     }
-    let archive = archives.get(t.raster);
-    if (!archive) {
-      archive = new PMTiles(rasterArchive(t.raster, "index", ep));
-      archives.set(t.raster, archive);
-    }
-    const tile = await archive.getZxy(t.z, t.x, t.y, abort.signal);
-    if (!tile) return { data: await blankTile() };
-    const png = await decodePngValues(new Uint8Array(tile.data));
-    const rgba = applyLut(png.values, lut);
-    const image = new ImageData(new Uint8ClampedArray(rgba.buffer), png.width, png.height);
-    return { data: await createImageBitmap(image), cacheControl: tile.cacheControl, expires: tile.expires };
+    const r = await runInWorker({ kind: "look", archive: rasterArchive(t.raster, "index", ep), lut, z: t.z, x: t.x, y: t.y }, abort.signal);
+    return { data: r.data as ImageBitmap, cacheControl: r.cacheControl, expires: r.expires };
   };
-}
-
-function blankTile(): Promise<ImageBitmap> {
-  return createImageBitmap(new ImageData(256, 256));
 }

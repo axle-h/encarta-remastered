@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LayerSpecification } from "maplibre-gl";
-import { classNames, hitClassesAt, hitLayers, hitRanges, interactiveRanges, isHoverLayer, layerClasses, layerState, statLayer } from "../layers";
+import { classNames, hitClassesAt, hitLayers, hitRanges, interactiveRanges, isHoverLayer, layerClasses, layerState, menuExcludedClasses, statLayer } from "../layers";
 import { syntheticStyle } from "./fixtures";
 
 const s = syntheticStyle();
@@ -60,6 +60,14 @@ describe("added layers", () => {
     expect(h.map((l) => l.id)).toContain("encarta-hit-areas-earth-0");
     expect(h.every((l) => (l as { paint: Record<string, unknown> }).paint["fill-opacity"] === 0)).toBe(true);
     expect(JSON.stringify(h.find((l) => (l as { minzoom?: number }).minzoom === 0.97))).toContain('"literal",[62]');
+  });
+  it("leaves out the classes of pen group 134 (time zones) from the click menu", () => {
+    const none = { on: new Set<number>(), off: new Set<number>() };
+    const withZones = { ...s, metadata: { ...(s.metadata ?? {}), "encarta:menu_excluded_classes": [80] } };
+    expect(hitRanges(s, none).has(80)).toBe(true);
+    expect(hitRanges(withZones, none).has(80)).toBe(false);
+    expect(hitRanges(withZones, none).has(62)).toBe(true);
+    expect(menuExcludedClasses(withZones).has(80)).toBe(true);
   });
   it("colours countries from feature-state", () => {
     const l = statLayer("earth") as { paint: Record<string, unknown>; "source-layer": string };

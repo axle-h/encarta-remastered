@@ -93,6 +93,12 @@ export function interactiveRanges(style: StyleSpecification): Map<number, [numbe
   return out;
 }
 
+/** Classes the click menu never lists (metadata `encarta:menu_excluded_classes`: PDCAttribute pen group 134). */
+export function menuExcludedClasses(style: StyleSpecification): Set<number> {
+  const raw = ((style.metadata ?? {}) as Record<string, unknown>)["encarta:menu_excluded_classes"];
+  return new Set(Array.isArray(raw) ? raw.filter((c): c is number => typeof c === "number") : []);
+}
+
 function union(r: Ranges): Ranges {
   const s = [...r].sort((a, b) => a[0] - b[0]);
   const out: Ranges = [];
@@ -108,13 +114,14 @@ function union(r: Ranges): Ranges {
  * Where each class goes into the hit list: where its rules make it interactive (`b4`), with the
  * user's class overrides (off = never, on = also where the rule makes it optional). Drawing is not
  * required: the VM's click menu (V11) lists statistical regions and basins that Political neither
- * draws nor labels. It also leaves out the time zones that Political marks interactive in the same
- * way, which nothing in the rules explains yet (docs/atlas-client.md "Known differences").
+ * draws nor labels. It leaves out the classes of PDCAttribute pen group 134 (time zones, DST areas,
+ * "Shading - gray"), as ENCARTA.EXE does (metadata `encarta:menu_excluded_classes`, mad-styling.md §16 V11).
  */
 export function hitRanges(style: StyleSpecification, o: ClassOverrides): Map<number, Ranges> {
   const out = new Map<number, Ranges>();
+  const excluded = menuExcludedClasses(style);
   for (const [cls, rules] of interactiveRanges(style)) {
-    if (o.off.has(cls)) continue;
+    if (o.off.has(cls) || excluded.has(cls)) continue;
     const r = union(rules.filter((x) => x[2] === 1 || (x[2] === 2 && o.on.has(cls))).map((x): [number, number] => [x[0], x[1]]));
     if (r.length) out.set(cls, r);
   }

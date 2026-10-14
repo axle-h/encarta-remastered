@@ -14,13 +14,14 @@
 //! edges, so outline pens and highlights do not draw the cell seams). Areas follow Encarta's
 //! even-odd fill: within one object, class and cell, a ring inside an odd number of other rings
 //! is a hole. Lines of classes with "draw over" masks are split into runs over water and over
-//! land (`water: true` on the water runs; mad-styling.md §5.2, `pixel.rs`).
+//! land (`water: true` on the water runs; mad-styling.md §5.2, `pixel.rs`); so are the polygons
+//! of classes whose fill pen has such a mask, along the pixel edges of the water mask.
 
 use super::clip::{self, Rect};
 use super::geo;
 use super::mvt::{self, Geometry, Layer, Value};
 use super::objects::{Classes, Objects};
-use super::pixel::{self, Sampler};
+use super::pixel::{self, Sampler, Split, WaterWindow};
 use super::raster;
 use super::pmtiles::{Info, TileType, Writer};
 use anyhow::Result;
@@ -62,7 +63,8 @@ struct Piece {
     obj: u32,
     class: u16,
     shape: Shape,
-    /// Lines: the run lies over water (HYPSO), for the pens' draw-over masks.
+    /// Lines and polygons of masked classes: the part lies over water (HYPSO), for the pens'
+    /// draw-over masks.
     water: bool,
     /// Labels: east–west extent of the labelled area in fixed-point world units (0 = unknown).
     extent: i32,
@@ -120,6 +122,8 @@ struct Include {
     outline: bool,
     /// Split lines into water and land runs.
     split: bool,
+    /// Split polygons into water and land parts.
+    split_area: bool,
 }
 
 fn include(ts: Tileset, classes: &Classes, row: usize) -> Include {
@@ -139,6 +143,7 @@ fn include(ts: Tileset, classes: &Classes, row: usize) -> Include {
         label_point: kind == GeometryKind::Area && u.label > 0,
         outline: geometry && kind == GeometryKind::Area && u.outline > 0,
         split: geometry && kind == GeometryKind::Line && u.masked > 0 && ts != Tileset::Moon,
+        split_area: geometry && kind == GeometryKind::Area && u.masked_fill > 0 && ts != Tileset::Moon,
     }
 }
 
@@ -298,12 +303,86 @@ pub struct SplitStats {
     pub outline_parts: u64,
     pub lines_split: u64,
     pub water_runs: u64,
+    /// Polygons of masked fill classes: all, entirely over water, cut into water and land parts.
+    pub polygons_masked: u64,
+    pub polygons_water: u64,
+    pub polygons_split: u64,
+}
+
+impl SplitStats {
+    fn add(&mut self, o: &SplitStats) {
+        self.seam_edges_dropped += o.seam_edges_dropped;
+        self.outline_parts += o.outline_parts;
+        self.lines_split += o.lines_split;
+        self.water_runs += o.water_runs;
+        self.polygons_masked += o.polygons_masked;
+        self.polygons_water += o.polygons_water;
+        self.polygons_split += o.polygons_split;
+    }
+}
+
+/// Per masked fill class: `[polygons, Mercator area, of it over water]` (areas in fixed units²).
+type AreaShares = BTreeMap<u16, [f64; 3]>;
+
+fn add_shares(into: &mut AreaShares, from: &AreaShares) {
+    for (&c, v) in from {
+        let e = into.entry(c).or_default();
+        (0..3).for_each(|k| e[k] += v[k]);
+    }
+}
+
+/// Splits the masked-fill polygons in `out[first..]` (the pieces of one cell) into parts over
+/// water and over land, on one window of the water mask around them.
+fn split_areas(out: &mut Vec<Piece>, first: usize, incl: &[Include], smp: &mut Sampler, water: &[bool; 256], st: &mut SplitStats, shares: &mut AreaShares) -> Result<()> {
+    let masked = |p: &Piece| p.shape == Shape::Polygon && incl[p.class as usize].split_area;
+    let mut b = [i32::MAX, i32::MAX, i32::MIN, i32::MIN];
+    for p in out[first..].iter().filter(|p| masked(p)) {
+        b = [b[0].min(p.bbox[0]), b[1].min(p.bbox[1]), b[2].max(p.bbox[2]), b[3].max(p.bbox[3])];
+    }
+    if b[0] > b[2] {
+        return Ok(());
+    }
+    let win = WaterWindow::sample(b, FIXED as i64, smp, water)?;
+    for mut p in out.split_off(first) {
+        if !masked(&p) {
+            out.push(p);
+            continue;
+        }
+        st.polygons_masked += 1;
+        let area = pixel::polygon_area(&p.parts);
+        let e = shares.entry(p.class).or_default();
+        e[0] += 1.0;
+        e[1] += area;
+        match win.split(&p.parts) {
+            Split::Land => out.push(p),
+            Split::Water => {
+                st.polygons_water += 1;
+                e[2] += area;
+                p.water = true;
+                out.push(p);
+            }
+            Split::Parts { water, land } => {
+                st.polygons_split += 1;
+                for (w, polys) in [(true, water), (false, land)] {
+                    for rings in polys {
+                        if w {
+                            e[2] += pixel::polygon_area(&rings);
+                        }
+                        let mut q = Piece::new(p.obj, p.class, Shape::Polygon, rings);
+                        q.water = w;
+                        out.push(q);
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 impl Decoder<'_> {
     /// Every piece of band `band` that `ts` includes, placed per key (shared records repeat).
-    /// `level`: the HYPSO level that splits masked lines into water and land runs.
-    fn band_pieces(&self, ts: Tileset, band: usize, region: Option<(f64, f64, f64, f64)>, level: u32) -> Result<(Vec<Piece>, SplitStats)> {
+    /// `level`: the HYPSO level that splits masked lines and polygons into water and land parts.
+    fn band_pieces(&self, ts: Tileset, band: usize, region: Option<(f64, f64, f64, f64)>, level: u32) -> Result<(Vec<Piece>, SplitStats, AreaShares)> {
         let b = self.cells.bands[band];
         let (lo, hi) = (b.first_key, b.first_key + b.key_count());
         let in_region = |key: u32| match (region, self.cells.cell(key)) {
@@ -315,19 +394,21 @@ impl Decoder<'_> {
         };
         let runs: Vec<_> = self.gem.index.runs().iter().filter(|r| r.first < hi && r.last() >= lo).cloned().collect();
         let incl: Vec<Include> = (0..self.classes.classes.len()).map(|c| include(ts, self.classes, c)).collect();
-        let pieces: Vec<(Vec<Piece>, SplitStats)> = runs
+        let pieces: Vec<(Vec<Piece>, SplitStats, AreaShares)> = runs
             .par_iter()
-            .map(|run| -> Result<(Vec<Piece>, SplitStats)> {
+            .map(|run| -> Result<(Vec<Piece>, SplitStats, AreaShares)> {
                 let bytes = self.gem.bytes(run.offset, run.length)?;
                 let rec = GeoGemRecord::decode(&mut self.gem.decoder(bytes), &self.classes.kinds)?;
                 let mut out = Vec::new();
                 let mut st = SplitStats::default();
+                let mut shares = AreaShares::new();
                 let mut sampler = self.hypso.map(|(r, w)| (Sampler::new(r, level), w));
                 for key in run.first.max(lo)..=run.last().min(hi - 1) {
                     let Some(cell) = self.cells.cell(key) else { continue };
                     if !in_region(key) {
                         continue;
                     }
+                    let first = out.len();
                     for o in &rec.objects {
                         let Some(obj) = self.objects.index(o.object) else { continue };
                         // Area rings per class, kept in record order.
@@ -402,18 +483,20 @@ impl Decoder<'_> {
                             }
                         }
                     }
+                    if let Some((smp, water)) = sampler.as_mut() {
+                        split_areas(&mut out, first, &incl, smp, water, &mut st, &mut shares)?;
+                    }
                 }
-                Ok((out, st))
+                Ok((out, st, shares))
             })
             .collect::<Result<_>>()?;
         let mut stats = SplitStats::default();
-        for (_, s) in &pieces {
-            stats.seam_edges_dropped += s.seam_edges_dropped;
-            stats.outline_parts += s.outline_parts;
-            stats.lines_split += s.lines_split;
-            stats.water_runs += s.water_runs;
+        let mut shares = AreaShares::new();
+        for (_, s, sh) in &pieces {
+            stats.add(s);
+            add_shares(&mut shares, sh);
         }
-        let mut pieces: Vec<Piece> = pieces.into_iter().flat_map(|(p, _)| p).collect();
+        let mut pieces: Vec<Piece> = pieces.into_iter().flat_map(|(p, _, _)| p).collect();
         // Label anchors: one per (object, class) of labelled area classes.
         let mut best: HashMap<(u32, u16), (f64, usize, [i32; 4])> = HashMap::new();
         for (i, p) in pieces.iter().enumerate() {
@@ -450,7 +533,7 @@ impl Decoder<'_> {
         labels.sort_by_key(|l| (l.obj, l.class));
         pieces.retain(|p| p.shape != Shape::Polygon || incl[p.class as usize].geometry);
         pieces.extend(labels);
-        Ok((pieces, stats))
+        Ok((pieces, stats, shares))
     }
 }
 
@@ -632,6 +715,17 @@ pub struct TilesetReport {
     pub bytes: u64,
     pub classes_with_geometry: Vec<u16>,
     pub classes_as_label_points: Vec<u16>,
+    /// Masked fill classes, summed over the tileset's bands: polygons, and the share of their
+    /// (Mercator) area that lies over water of the HYPSO raster.
+    pub area_masks: Vec<AreaMaskReport>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AreaMaskReport {
+    pub class: u16,
+    pub name: String,
+    pub polygons: u64,
+    pub water_share: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -671,12 +765,15 @@ pub fn run(atlas: &Atlas, objects: &Objects, classes: &Classes, out: &Path, log:
         let mut done_band = usize::MAX;
         let mut pieces = Vec::new();
         let mut splits = SplitStats::default();
+        let mut shares = AreaShares::new();
         for &(z, band) in &zb {
             if band != done_band {
                 // Split at the HYPSO level of the band's finest tile zoom.
                 let z_last = zb.iter().filter(|&&(_, b)| b == band).map(|&(z, _)| z).max().unwrap_or(z);
                 let level = raster::level_for(2.0 * std::f64::consts::PI / (512.0 * (1u64 << z_last) as f64), max_level);
-                (pieces, splits) = dec.band_pieces(ts, band, None, level)?;
+                let band_shares;
+                (pieces, splits, band_shares) = dec.band_pieces(ts, band, None, level)?;
+                add_shares(&mut shares, &band_shares);
                 done_band = band;
             }
             // Bucket pieces by tile (sorted list instead of a map).
@@ -756,6 +853,15 @@ pub fn run(atlas: &Atlas, objects: &Objects, classes: &Classes, out: &Path, log:
             zooms,
             classes_with_geometry: (0..incl.len()).filter(|&c| incl[c].geometry).map(|c| c as u16).collect(),
             classes_as_label_points: (0..incl.len()).filter(|&c| incl[c].label_point).map(|c| c as u16).collect(),
+            area_masks: shares
+                .iter()
+                .map(|(&c, v)| AreaMaskReport {
+                    class: c,
+                    name: classes.classes[c as usize].name.clone(),
+                    polygons: v[0] as u64,
+                    water_share: if v[1] > 0.0 { (v[2] / v[1] * 1e4).round() / 1e4 } else { 0.0 },
+                })
+                .collect(),
         });
         log(format!("  {}: {} tiles, {:.1} MB", ts.path(), stats.addressed, stats.bytes as f64 / 1e6));
     }
@@ -809,10 +915,10 @@ mod tests {
         assert_eq!(band_for_zoom(&cells, 10), 8);
         let terrain = atlas.terrain().unwrap();
         let hypso = terrain.raster("HYPSO").unwrap();
-        let water = pixel::water_values(hypso.look("HYPSO").unwrap());
-        let dec = Decoder { gem: atlas.geo_gem().unwrap(), cells: cells.clone(), classes: &classes, objects: &objects, hypso: Some((hypso, water)) };
-        let (pieces, splits) = dec.band_pieces(Tileset::Earth, 7, Some((11.0, 55.0, 13.5, 56.5)), 7).unwrap();
-        assert!(splits.seam_edges_dropped > 0 && splits.water_runs > 0, "{splits:?}");
+        let water_tab = pixel::water_values(hypso.look("HYPSO").unwrap());
+        let dec = Decoder { gem: atlas.geo_gem().unwrap(), cells: cells.clone(), classes: &classes, objects: &objects, hypso: Some((hypso, water_tab)) };
+        let (pieces, splits, _) = dec.band_pieces(Tileset::Earth, 7, Some((11.0, 55.0, 13.5, 56.5)), 7).unwrap();
+        assert!(splits.seam_edges_dropped > 0 && splits.water_runs > 0 && splits.polygons_split > 0, "{splits:?}");
         assert!(pieces.len() > 1000);
         // Tile z8 containing Copenhagen (12.57 E, 55.68 N).
         let (z, n) = (8u8, 256.0);
@@ -839,6 +945,27 @@ mod tests {
         for f in &areas.features {
             assert!(mvt::signed_area2(&f.parts[0]) > 0, "first ring of a polygon feature is exterior");
         }
+        // Masked fills (e.g. "International organization" over the Øresund) come as a water and
+        // a land feature of one object.
+        let water = |f: &mvt::DecodedFeature| f.props.iter().any(|p| p.0 == "water" && p.1 == Value::Bool(true));
+        assert!(areas.features.iter().any(|f| water(f) && areas.features.iter().any(|g| g.id == f.id && !water(g))));
+        // Blocks filled from uniform source tiles agree with point lookups.
+        let mut smp = Sampler::new(hypso, 7);
+        let grid = smp.mercator_grid() as f64;
+        let (mut out, mut uniform) = (vec![false; 16 * 16], 0);
+        for k in 0..400 {
+            let (i, j) = ((geo::lon_to_x(8.0 + (k % 20) as f64 * 0.25) * grid) as i64, (geo::lat_to_y(54.0 + (k / 20) as f64 * 0.2) * grid) as i64);
+            let lat = |r: usize| geo::y_to_lat((j as f64 + r as f64 + 0.5) / grid);
+            let lon0 = i as f64 * 360.0 / grid - 180.0;
+            smp.water_block(lat, lon0, 360.0 / grid, 16, 16, &water_tab, &mut out, 16).unwrap();
+            let first = out[0];
+            uniform += out.iter().all(|&v| v == first) as u32;
+            for (r, c) in [(0, 0), (7, 9), (15, 15), (3, 12)] {
+                let v = water_tab[smp.value(lat(r), lon0 + (c as f64 + 0.5) * 360.0 / grid).unwrap() as usize];
+                assert_eq!(out[r * 16 + c], v, "block {k} pixel {r},{c}");
+            }
+        }
+        assert!(uniform > 100, "{uniform}");
     }
 
     #[test]

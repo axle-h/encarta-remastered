@@ -37,13 +37,12 @@ import { HIT_PREFIX, hitClassesAt, hitRanges, vectorSources, type ClassOverrides
 import {
   MILLER_MVT_PROTOCOL,
   MILLER_RASTER_PROTOCOL,
-  createMillerRasterProtocol,
-  createMillerVectorProtocol,
   fromViewLat,
   toViewLat,
   zoomToFitHeight,
   type MillerImage,
 } from "./miller";
+import { createMillerRasterProtocol, createMillerVectorProtocol } from "./millerProtocol";
 import { LOOK_PROTOCOL, bakedLooks, createLookProtocol } from "./recolour";
 import { useSettings } from "../settings/settings";
 import { formatLatLong } from "./format";

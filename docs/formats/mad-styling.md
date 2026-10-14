@@ -158,7 +158,7 @@ pen; it is not used in the shipped data). "Tri-state" is explained in §4.3.
 | `b4` low nibble | B | **interactive** (the feature goes into the hit-test list used for tooltips and clicks): tri-state | code |
 | `b4` high nibble | | 0/1/2, mostly on areas (17 = `0x11`, 33 = `0x21`). Meaning open (probably the same tri-state for a 4th aspect) | — |
 | `w5` | W | **GeoLabel index** of the label style | code; validated range (all < 422) |
-| `w6` * | W | second GeoLabel index (alternate label style; its fonts and colours are loaded with w5). When it is used is open | code |
+| `w6` * | W | GeoLabel index of the **alternative name** (the text after U+0004, §7.3): MOBB draws it as an extra last line under the main name, in this style. `w6` = none: the alternative is never drawn. With a shield style in `w5` (§8) it styles the text after U+0006 under the shield. Set in 23,145 of 33,086 rules (= `w5` in 17,866); all 353 names with U+0004 fall on classes that have it | code (FUN_6356e587, FUN_6356ea10) |
 | `w7 … w13` * | W | **pen layers 0…6** (GeoPenDef index). Lines: up to 5 stacked strokes in the shipped data (w12, w13 always none). Areas: w7 is the fill pen. Points: w7 is the **symbol pen** (its bitmap is the symbol) | code + renders |
 | `b14` | B | the **pixel class** of this rule's pen colours: 0 → class 4, 1 → class 2, 2 → class 3, 3 → class 6 (§5.4). Lines mostly 3, areas 0 or 1 | code |
 | `b15` | B | 1 = the feature is **highlighted** when the mouse is over it or it is selected | code |
@@ -307,8 +307,8 @@ ribbon over land and a light one where they cross water. Lake fills (`b14 = 1`, 
 take the same bit, as do land fills (`b14 = 0`, class 4) and land pixels. Other rasters differ: the climate
 rasters and TECTONIC use `kind 4` (class 0, bit 16) everywhere, SATELLITE `kind 0` water and mostly `kind 2` land
 (measured by the converter, `encarta:surface`). The converter implements the line masks this way
-(docs/atlas-output.md "Draw-over masks"); area pens' masks (e.g. Admin1 fills `1,0,1,1,1`, not over water) are not
-applied yet.
+(docs/atlas-output.md "Draw-over masks"), and the area pens' masks likewise (e.g. Admin1 fills `1,0,1,1,1`, not
+over water): the polygons are split into water and land parts against the same HYPSO mask.
 
 This answers the CMT `kind` question of mad.md §9.7: it is the pixel class of the raster colour.
 
@@ -375,16 +375,16 @@ dropped. For a vertical label the face name gets an `@` prefix.
 | 7 | — | 0/1/2 | open |
 | 8, 9 | — | mostly 4, 4 | open |
 | 10 | spacing | 0…5. **Hypothesis**: extra letter spacing in px (3 in large sea names) | — |
-| 11 | two nibbles | low 0/1, high 0/1/2. **Hypothesis**: low nibble = upper case (1 in place labels such as GeoLabel 106) | — |
-| 12 | alt | 0 in 356 labels. When ≠ 0, a name that contains U+0005 is labelled with the part after it, and the three extra colours below are used | code (partly) |
-| 13–15 | colour2 | extra colour (when byte 12 ≠ 0) | code |
-| 16 | — | 1 (379×). **Hypothesis**: halo on | — |
-| 17–19 | colour3 | extra colour | code |
-| 20–22 | colour4 | extra colour | code |
+| 11 | two nibbles | low 0/1 (meaning open; not upper case, see byte 26). High 0/1/2 (10 labels ≠ 0): for a **line** label, 1 and 2 select two other placement routines (FUN_6353dc50, FUN_6353de50) instead of the along-the-line one; what they do is open | code (partly) |
+| 12 | shield | **shield shape** (§8): 0 = plain text (356 labels); 1 rectangle (16), 2 rectangle with an inset outline, 3 rounded rectangle with half-width corners (5), 4 the same with an inset outline, 5 ellipse (10), 6 ellipse with an inset outline, 7 Interstate shield (9), 8 US-highway badge (12), 9 maple leaf (7), 10 Mexican federal shield (7). Shapes 7–10 are outlines built into MOBB (0…100 unit box, stretched to the text box); 7 and 10 have two parts | code + data |
+| 13–15 | colour2 | shield outline colour | code (FUN_6353bc40) |
+| 16 | — | 1 (379×). For shield labels: the shield outline width in px (0 = no outline). Other use open | code (partly) |
+| 17–19 | colour3 | shield fill (shapes 1–6; part 1 of shapes 7–10) | code |
+| 20–22 | colour4 | fill of part 2 of shapes 7 and 10 | code |
 | 23 | bold | 1 = bold | code (FUN_6353d379) |
 | 24 | italic | 1 = italic (56 labels, e.g. GeoLabel 7, sea names) | code |
 | 25 | — | flag tested before placing a label (FUN_635351a0) | open |
-| 26 | — | flag | open |
+| 26 | upper | 1 = **upper case** (168 labels): main name and abbreviation through Unicode Attributes, else `towupper`; ß → SS. The alternative name follows byte 26 of the `w6` style. GeoLabel 117 (countries) has it, 106 (cities) not, matching V3 | code (FUN_6356e587, FUN_6358353d) + V3 |
 
 **Halo** (code: FUN_6353b940, FUN_635426ff). MOBB first draws the text with the halo colour at every offset in
 `[−1, 1]²` except the centre. Then it draws the text in its own colour at the centre. The halo colour comes from
@@ -397,7 +397,18 @@ Validated over all 11,808 GeoObjGrid0409 records. These are the only control cha
   (837 names). Use the abbreviation when the full name does not fit;
 - **U+0004** separates **alternative names**: `"Danube\u0004Donau"` (353 names). Show the first, and offer the
   others to search or show them in brackets (VM V9);
-- U+0005 (GeoLabel byte 12) does not occur in the shipped names.
+- U+0005, U+0006, U+0007 do not occur in the shipped names. MOBB drops the text after any of them from the
+  label; for a shield label the text after U+0005 or U+0006 replaces the shield text, and the text after U+0006 is
+  also drawn under the shield in the `w6` style (code: FUN_6356e375, FUN_63540fe0).
+
+**Label lines** (code: FUN_6356e587, FUN_6356ea10, callers FUN_635375fe, FUN_635381ae, FUN_63538eff). MOBB splits
+a name into the main name (before the first control character), the alternative (after U+0004) and the
+abbreviation (after U+0002). It tries three layouts in this order: (0) the main name on 1–3 lines in the `w5`
+style plus the alternative as an extra last line in the `w6` style, only when `w6` ≠ none and there is an
+alternative; (1) the main name alone on 1–4 lines; (2) the abbreviation alone, only when there is one. The
+alternative is put in brackets only when the main name starts with kana or a CJK ideograph. How it chooses among
+the layouts that fit (overlap cost) is not fully read. Example (style 0, 3000 km): Mumbai (class 2) in GeoLabel
+106 (14 px bold), "Bombay" under it in GeoLabel 36 (12 px regular); not yet seen in the VM (V15).
 
 How "does not fit" is decided is not specified. The converter uses the abbreviation for an **area** label when
 the name, at 0.6 em per character, is wider than the area at the current zoom (**hypothesis**). Over Europe at
@@ -414,7 +425,8 @@ What is established (code and renders):
   boxes and keeps the one with the fewest overlaps). Line labels follow the line, and MOBB rotates the font
   (`lfEscapement` from the segment angle).
 
-MapLibre: `symbol-sort-key = b13`. Use `text-variable-anchor` [right, left, top, bottom] for points,
+MapLibre: `symbol-sort-key = b13` within a layer, and symbol layers stacked by descending b13 (MapLibre places
+the top layer's symbols first). Use `text-variable-anchor` [right, left, top, bottom] for points,
 `symbol-placement: line` for line classes, and `text-allow-overlap: false` with `icon-optional: false` so that
 symbol and label appear together.
 
@@ -433,12 +445,49 @@ symbol and label appear together.
   a **shield point class** (validated: every value is one of rows 456–467, "Shield - Interstate" … "Shield -
   US"). Type 1 → 463 "Shield - Motorway", 7 → 456 Interstate, 8 → 467 US, 9/12/15/18 → 465 State, 10/13/20 →
   459 County, 14 → 462 Mexico Federal, 16 → 460 European, 17 → 458 Brazil, 19 → 457 Australia, 21–27 → 461 Hong
-  Kong. The shield class's rule gives the shield bitmap (pen w7) and the number's label style (w5). **Open:**
-  where a road's shield type and number come from. GeoObj `cls` is 0 everywhere and no name contains a shield
-  code. The GeoStreet* tables in MOBB's table list (§17) are not on this disc. Shields may therefore not occur in
-  the shipped world data (VM V8). **VM result (V8):** they do occur: New York at 30 km shows interstate shields
-  (95, 495, 278), the Netherlands A-road and E-road shields (A4, A2 …, E30, E25). Where the type and number come
-  from is still open (not converted).
+  Kong. ShieldId is **not used by the shipped world data**. Its only readers are the GeoTag point reader
+  (FUN_63563df4: the tag's shield type → ShieldId → the shield class's rule and label) and a 13-field street
+  record decoder (FUN_635153a0: a name character below U+0020 is replaced by the shield shape of the class's
+  `w5` label). Both read tables that are not on this disc (GeoTag, GeoTagLookup, GeoTagDirType, GeoStreet*); the
+  GeoTag path is skipped when the table is absent. No GeoGem part has a class in rows 456–467 (validated).
+
+### 8.1 Road shields (code + data, validated against V8)
+
+A road shield is the **label of a road line** whose label style is a shield style. There is no separate shield
+object, type code or number field:
+- **Which roads:** the rule's `w5` GeoLabel has byte 12 ≠ 0 (the shape, §7.2). In style 0 these are the line
+  classes 206 "Road - gen shield - major" (shape 1, GeoLabel 144: blue rectangle, white 9 px text), 207
+  "interstate shield - major" (7, GeoLabel 145), 208 and 212 "canada shield" (9, GeoLabel 146), 209 and 211
+  "mexico shield" (10, GeoLabel 147), 210 and 213 "us hwy shield" (8, GeoLabel 148), 399 "interstate shield -
+  minor" (7), 400 "gen shield - minor" (1) and the tunnels 427, 428 (1). Other styles may give a class another
+  shield label (style 18: 398 → shape 1, 399/400 → shape 9). The shield point classes 456–467 also have shield
+  labels but no data.
+- **Number text:** the road object's GeoObj name, as is ("95", "495", "A4", "E25"); the label's byte 26 upper-cases
+  it. Each route is its own GeoObj entity with its own line parts, so a road with two numbers (A2 and E25) carries
+  two overlapping line objects.
+- **Look:** the box fits the text (minimum text width: two "9" digits) plus a margin of a few px; colours from
+  GeoLabel bytes 1–3 (text), 13–15 (outline, width byte 16), 17–19 and 20–22 (fills). The shield is drawn upright, not along
+  the line (FUN_6357cc5f sizes, FUN_6357ce42 and FUN_6357c949 draw; the outlines of shapes 7–10 are in MOBB's
+  data at 0x636072b8).
+- **Placement** (FUN_63540fe0, candidates FUN_63506f3f): for each on-screen run of the road (pixel length `L`),
+  MOBB takes `min(16, L / 10)` points evenly spaced from one shield width after the start to one shield width
+  before the end; a run not longer than two shield widths gets no shield. Each point costs
+  `4000 · |d − L/2| / (L/2)` (`d` = distance along the run) plus the overlap cost of the shield box; the cheapest
+  box that does not collide is kept. A shield is dropped when one with the same text is already placed within `√((W/6)² + (H/6)²)`
+  px (`W × H` = the map pane). The shield then enters the label collision list and the hit-test list.
+- **Altitudes:** the label is on (`b3 = 1`) from 1,999 km down in every style that has the class (14 styles;
+  tunnels from 149 km), but the line parts exist only in GeoGem bands 7–9, so shields appear from **799 km** down
+  (210, 213 and the tunnels: from 149 km, band 8).
+- **Counts (WLD):** 2,013 GeoObj entities have a shield class as their main class (206: 1,025, 400: 616, 207: 192,
+  210: 83, 209: 26, 213: 26, 211: 24, 208: 18, 212: 3); 2,172 have at least one shield part. GeoGem holds 737
+  shield road objects in band 7, 1,443 in band 8 and 1,443 in band 9 (5,898 line parts in band 9).
+- **V8 check:** every shield in the shots is a shield-class road whose box covers the view: New York 95, 495, 278,
+  78 (class 207, Interstate) and 3 (class 206, blue rectangle); the Netherlands A1, A2, A4, A12, A16, A27, A50,
+  E25, E30, E31 (class 206, blue rectangles, as V8 shows for both A- and E-roads).
+
+MapLibre: one symbol layer per shield road class with `symbol-placement: line`, `text-field` = name,
+`icon-image` = a sprite per GeoLabel shape and colours stretched with `icon-text-fit: both`, `text-rotation-alignment`
+and `icon-rotation-alignment: viewport`, `symbol-spacing` large and `text-allow-overlap: false`.
 
 ## 9. Draw order and the drawing passes
 
@@ -524,8 +573,9 @@ the Find pages, so a search reimplementation can binary-search a page with them.
 
 Records `{u16 code point, u16 upper-case form, u16 base letter, u8 ANSI fallback}`. Examples: `ä` → upper `Ä`,
 base `a`, fallback 0xE4. `ā` → `Ā`, base `a`, fallback `a`. `‘` (U+2018) → base `'`, fallback 0x27. MOBB loads
-them into a lookup by code point (FUN_63583434). Probably used for case-insensitive and accent-insensitive
-matching of typed search text. A rebuilt search can use Unicode case folding and NFD stripping instead; this table
+them into a lookup by code point (FUN_63583434). The upper-case form is used for upper-case labels (GeoLabel
+byte 26, §7.2; FUN_63583492). Probably also used for case-insensitive and accent-insensitive matching of typed
+search text. A rebuilt search can use Unicode case folding and NFD stripping instead; this table
 is only needed for exact parity.
 
 ## 12. Miller flat map: MillerStyles, MillerTerrainGrid
@@ -696,7 +746,10 @@ the bounding-box centre; collision uses boxes only; upper case is applied when G
    `w24` are Bitmap ids (not pens). Only `w7…w13` and `w17` are pens.
 8. **§8.1 PDCAttribute**: byte 12 (`b12`) is the z-order of the draw lists (§9), and byte 13 is very probably the
    label priority (§7.4). Byte 6 (the "flag") is tested when a feature is added to the hit-test list
-   (FUN_635461c0).
+   (FUN_635461c0). It marks routable road classes (21 rows: motorways, arterials, RoutableNP …): such hits carry
+   route data, sort apart, and at most 4 of them stay in a hit list (FUN_635287e0). Bytes 4–5 (the "style/pen
+   group") are what ENCARTA.EXE uses to classify hits: group 134 (time zones) is never put in the click menu
+   (§16 V11 result).
 
 ## 16. VM screenshot checklist
 
@@ -720,6 +773,8 @@ opened with the URL form of §2.3. If `alt` turns out not to be km, adjust the n
 | V12 | `lat=0.00/long=0.00/alt=20000.00/style=0`, then switch Encarta to its flat-map view (if it has one) | Miller map extent, flat-map scale (§2.1, §12) |
 | V13 | `lat=12.50/long=-69.95/alt=5.00/style=0` (Aruba is not in MinRect) and `lat=45.44/long=12.33/alt=5.00/style=0` (Venice is in MinRect) | the MinRect zoom limit |
 | V14 | a map with `style=12` (Statistical) and a statistic chosen | how statistical classes `Z - (STAT) …` are coloured |
+| V15 | `lat=19.00/long=72.80/alt=3000.00/style=0` (Mumbai), `lat=46.50/long=11.35/alt=150.00/style=0` (Bolzano) | the alternative name (U+0004) on a second line in the `w6` style ("Bombay", "Bozen"), §7.3 |
+| V16 | `style=13` (Time Zones), left click on land | the click menu leaves out time zones on their own map too (§16 V11 result); the page title |
 
 **Results** (shots taken; details in docs/vm-findings.md, fixtures in `fixtures/atlas/`):
 - V1/V2: `alt` is km; `P/m ≈ 3135` for the 812 × 518 pane, `≈ 6.05 × pane height`; true ground scale, no 1/cos φ (§2.1).
@@ -730,12 +785,22 @@ opened with the URL form of §2.3. If `alt` turns out not to be km, adjust the n
   13 Time Zones, 14 Statistical, 15 Climate, 16 Precipitation (Annual), 17 Outline, 19 Geography Quiz, 20 Moon,
   24 Languages, 25 Religions; 4, 18, 21–23, 26 are looks outside the menu; 27–33 fall back to style 0. The political
   map with country fills is menu 1 (MapStyle 10), not V5's guess.
-- V8: road shields exist (§8). V9: "WIEN" in a box; U+0002/U+0004 not seen. V10: style 17 is Outline.
+- V8: road shields exist, explained in §8.1. V9: "WIEN" in a box; U+0002/U+0004 not seen. V10: style 17 is Outline.
 - V11: **hovering highlights nothing** (only the cursor changes), nor does hovering the click menu. A left click
   opens a menu of everything under the point ("Limoges, Auvergne, Western Europe, West Central Europe, Massif
   central, Loire Basin, France"), each with "Map / Read Article". So `b15/b16/w17` (§4.1) is at most a selection
   highlight. The menu includes classes the style neither draws nor labels (statistical regions, `b2 = 16, b3 = 0,
-  b4 = 1`) but no time zone, although Political gives the time zones the same bytes (open).
+  b4 = 1`) but no time zone, although Political gives the time zones the same bytes. **Explained (code):** MOBB's
+  hit list keeps both (interactive tri-state `b4`, §4.3); ENCARTA.EXE drops every hit whose class has
+  `PDCAttribute` pen group (u16 at offset 4) **134** before it builds the menu (FUN_00431630). Group 134 = rows
+  115, 116, 117, 129, 130, 131 (time zones, "Daylight time bag") and 233 "Shading - gray"; no other group is
+  dropped. Statistical regions are group 28. Data check: the 54 time-zone entities are the only ones on those
+  classes and none has a Find Grid entry, while all 21 statistical regions have one (type 207). Client rule:
+  menu = hit list minus classes of pen group 134. Two more special groups (FUN_00431f70): a click that hits a class
+  of group 214 (the 17 "Thematic Trek" point classes) or 223 (row 303 "Landmark - point of interest - content") with a content
+  link of the matching kind opens that content directly, without the menu (unless the hit list also holds one of
+  the internal groups 0xFFFB/0xFFFC, which are not map data). The page title (FUN_00430310) shows a
+  time zone only on the Time Zones map.
 - V12: the flat view is Miller (§12.3). V13: zoom is limited over open ocean and Aruba, Venice zooms to street
   level (MinRect, §13.2). V14: statistical classes pale peach to dark red-brown, water pale grey-blue, no data
   light grey.
@@ -744,11 +809,14 @@ opened with the URL form of §2.3. If `alt` turns out not to be km, adjust the n
 
 Open, in priority order:
 1. ~~`P` and `m` (§2.1)~~: measured, `P/m ≈ 6.05 × pane height` (V1, V2).
-2. GeoLabel bytes 5–12, 16, 25, 26 (sizes, case, spacing, halo switch). Then PDCAltitude `b2` high nibble,
-   `b4` high nibble, and when `w6` is used.
-3. The road shield source (§8); V8 shows shields exist.
-3a. Why V11's click menu leaves out time zones that Political marks interactive like the statistical regions it
-    lists (§16).
+2. GeoLabel bytes 5–10, 11 (low nibble; what the two other line-label routines of the high nibble do), 16 (other
+   than shield outline), 25. Then PDCAltitude `b2` high nibble and `b4` high nibble (MOBB copies `b4` high into
+   each hit-list entry; its use there is not read). ~~When `w6` is used~~: alternative-name line (§4.1, §7.3);
+   VM V15 to confirm.
+3. ~~The road shield source~~: shields are labels of road lines whose `w5` GeoLabel has a shape in byte 12 (§8.1),
+   checked against V8. Open: how the overlap cost weighs against the centre cost (exact choice among candidates).
+3a. ~~Why V11's click menu leaves out time zones~~: ENCARTA.EXE drops pen group 134 (§16 V11 result); V16 to
+    confirm on the Time Zones map.
 4. Whether areas are always drawn before lines (§9). The exact label candidate positions (§7.4).
 5. The Miller `y0` at levels 2–3 (§12.3), and the flat-view scale relation (§2.1).
 6. The meaning of MapStyle colour 1/2 and flags (§3); LegendGrid (§13.1).
@@ -774,7 +842,14 @@ Provenance (MOBB200.DLL, same build as mad.md §10):
 | Draw lists and z-order | FUN_6351da30 (runs by kind and b12), sort key FUN_6351cda0, line pass FUN_6351fc90, object sort FUN_6351ce2a |
 | Icons from w23/w24 | FUN_63519a2d, FUN_63519add |
 | GeoObj "go to" point | FUN_635226dc (reader), FUN_6351bb2f, FUN_6351bcf6 |
-| ShieldId | FUN_6355780e |
+| ShieldId | reader FUN_6355780e; users (GeoTag/GeoStreet only) FUN_63563df4, FUN_63563ed9, FUN_635153a0; lookup FUN_63515240 |
+| `w6` alternative-name style | name split FUN_6356e587 (components FUN_6356e375, FUN_6356e4c8); layouts FUN_6356ea10 from FUN_635375fe, FUN_635381ae, FUN_63538eff, FUN_6353aedc; accessors FUN_63535170, FUN_6353ecd0; line labels FUN_63540710 |
+| GeoLabel record in memory (byte 12 → shape, 26 → upper case) | FUN_63522439; upper case FUN_6356e2c1, FUN_6358353d, FUN_63583492 |
+| Line-label dispatch (byte 11 high nibble, shield) | FUN_6353c390 → FUN_6353dc50, FUN_6353de50, FUN_63540fe0, FUN_63540710 |
+| Shield shapes | shape object FUN_6357c8f3, FUN_6357c73b, colours FUN_6353bc40; size FUN_6357cc5f; draw FUN_6357ce42, FUN_6357c949; outline table 0x636072b8 (codes 7–10), init FUN_6357cbfe |
+| Shield placement | FUN_63540fe0; candidates FUN_63506f3f, centre cost FUN_63506c04, run length FUN_63506efb |
+| Hit test (MOBB) | API FUN_6352e53f (flags, optional pen-group filter, −2 = byte-6 flag); point query FUN_635627d0; screen list FUN_63560af8; geometry FUN_63561810; entry FUN_63527fe0, merge FUN_635280f0; sort FUN_635281c0, rank FUN_63527e50; keep 4 byte-6 hits FUN_635287e0; PDCAttribute in memory FUN_6356ca26 |
+| Click menu (ENCARTA.EXE) | timer FUN_00432140; trek/content shortcut FUN_00431f70; menu items, skips pen group 134 FUN_00431630; hit op CSyncMapOpHitDetect FUN_005a36a0, queue FUN_0058d210; hit item FUN_005900a0; page title FUN_00430310, group table FUN_0042fe00 |
 | MinRect | FUN_6355f45e, FUN_6355f377 |
 | Font Conv, Unicode Attributes | FUN_63518367 / FUN_63518302; FUN_63583434 |
 | MillerStyles | FUN_63574650 (table 0x31), FUN_63573e50 |
