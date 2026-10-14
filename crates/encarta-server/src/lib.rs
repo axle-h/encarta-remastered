@@ -8,6 +8,7 @@ pub mod api;
 pub mod db;
 pub mod error;
 pub mod files;
+pub mod flash_compat;
 pub mod games;
 pub mod media;
 

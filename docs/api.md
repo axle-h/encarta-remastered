@@ -329,7 +329,10 @@ east, north, goto_km, importance, feature_type, context, class_name, classes: [�
   `edition`'s copy (`kids` = the `EE/KIDS/…` containers). Flash movies load their siblings by relative URL, so the
   IAF player runs from here: `…/dswMedia/shared/players/IAFPlayer/base.swf` with `filePath=…/dswMedia/IAF/a/<id>/<id>.iax`.
   An `.iax` that is not in the tree (they live in `baggage/`) is resolved by its name. `POST` is answered like `GET`
-  (Flash's `loadMovie` with variables posts them). Original bytes, same headers as `/media/file`.
+  (Flash's `loadMovie` with variables posts them). Original bytes, same headers as `/media/file`, except the IAF skins
+  (`…/IAFPlayer/skins/*.swf`): a script that sets `onLoad` on a clip right after `loadMovie` has that `onLoad`
+  renamed, since Ruffle runs the handler where Flash does not (games.md, picture answers); ETag `"{sha256}-ruffle1"`,
+  no ranges.
 
   The atlas's MSWORLD.ITR catalog names that are on the disc under another name resolve through the manifest's
   `atlas_file` (media.md §7), after the catalog keys and file names.

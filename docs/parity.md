@@ -188,7 +188,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 |---|---|---|---|
 | Geography Quiz: 4 levels, 20 questions, 5 buttons, points | done | VM `fixtures/geoquiz` | — |
 | Geography Quiz locator globe, zoom slider, hand tool; after-answer and end screens | partial | `games/geoquiz/QuizMap.tsx` on `<Atlas quizMode>`; Scores dialog after question 20 | the VM's full score table, Try Again reopening the start dialog, the 9-tick slider look |
-| Quizzes (1,811 SWQUIZ) | done | native quiz player per question group; inside the `BGAControl` boards under Ruffle (questions with media, rewards); all quiz media resolve; all ten boards played to an ending (games.md) | picture answers draw blank inside the boards (PLAN) |
+| Quizzes (1,811 SWQUIZ) | done | native quiz player per question group; inside the `BGAControl` boards under Ruffle (questions with media, rewards); all quiz media resolve; all ten boards played to an ending; picture answers show (games.md) | — |
 | Match games (64) | done | native | — |
 | MindMaze, City Climate, Population Chart | n/a | extras (not in 2009) | — |
 
@@ -276,7 +276,7 @@ Each family of the inventory, whether it is converted, and the UI path that reac
 | Games (MindMaze, Geo Quiz D*.TXT) | yes | `/games` | done |
 | Place → media links (P2MTBL) | yes (16,122) | atlas click menu | done (2,656 targets are on no edition of this disc) |
 | Spelling lexicons (LEX) | yes (783,245 words) | did-you-mean, `/api/spell` | done |
-| Quizzes (SWQUIZ) | yes (3,622) | `/games/quizzes`; the boards under Ruffle | partial (board picture answers blank) |
+| Quizzes (SWQUIZ) | yes (3,622) | `/games/quizzes`; the boards under Ruffle | done |
 | Contributors (`list/expert.xml`) | yes (2,034) | article "Contributed By", contributor pages (this audit) | done |
 | Disc fonts | yes (8) | every page | done |
 | CHM help, Works integration, executables | omitted by design (media.md §4, CLEAN_ROOM rule 6) | — | n/a |

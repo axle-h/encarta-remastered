@@ -92,11 +92,18 @@ No script error. Two requests fail, both harmless: Math Matrix's win sound `Matr
 (the manifest's `iax_ref` has it unresolved), and Spelling Bee asks once for its own folder (an empty file name).
 Long reveals (Continental Quiz) need the dialog's scroll arrow before continue shows; that is the original layout.
 
-**Defect: picture answers are blank.** In a question whose answers are pictures, the four answer buttons are drawn
-empty (hover lights them; clicking still answers). The JPEGs are requested and served (200), the same file shows as
-the reward picture, and waiting does not help. Seen under Ruffle 0.7.1 and 0.8.0-nightly 2026-10-13. 31 board
-questions are affected (Animal Paths 12, Wilderness Adventure 9, Postcards from Africa 8, Time Traveler 2), so those
-can only be guessed in the board; the quiz player above shows them. Cause not yet found (PLAN).
+**Picture answers (fixed).** In a question whose answers are pictures, Ruffle drew the answer buttons empty
+(hover lit them; clicking still answered), though the JPEGs were served and the same file showed as the reward
+picture; 31 board questions (Animal Paths 12, Wilderness Adventure 9, Postcards from Africa 8, Time Traveler 2), under
+Ruffle 0.7.1 and 0.8.0-nightly 2026-10-13. Cause, from the skin's AVM1 (`BGA_Standard.swf`, answer symbol): the
+answer loads its picture into an empty clip with `loadMovie` and then sets an `onLoad` handler on that clip that sets
+`_width`/`_height` to the question's `w`/`h`. Flash Player drops a clip's handlers when `loadMovie`'s content
+arrives, so there the handler never runs; Ruffle runs it, and the pictures end up at zero size. The handler only
+restores each picture's own size (the `w`/`h` of all 120 picture answers on the disc match their JPEGs), so the server
+disables it: `/media/disc/…/IAFPlayer/skins/*.swf` is served with that `onLoad` renamed in the script's constant pool
+(`crates/encarta-server/src/flash_compat.rs`, api.md). Two disc files match (`BGA_Standard.swf`,
+`ComponentLib.swf`); with it, Animal Paths' picture questions show their four pictures, answer by clicking one, score
+and scroll as the other questions do.
 
 The quiz player above remains the way to play a question group on its own.
 

@@ -258,7 +258,7 @@ decoded size and horizon match an independent survey of all 167.
   (Periodic Table: Iron), slide-show labels (Castle: Keep, Turret; Vasco da Gama: 1), narrated audio buttons
   (Counterpoint: the MP3 loads and the progress bar runs), BGA boards and questions (games.md). SWQUIZ media: every
   picture and sound of the 1,811 quizzes in each edition (1,274 + 626 references, 968 files) resolves and loads.
-  Timeline pop-ups have no Flash here (the timeline is native; their media are PLAN item 5). Ruffle logs only stubs
+  Timeline pop-ups have no Flash here (the timeline is native; their media are the PLAN's Timeline item). Ruffle logs only stubs
   (`System.security.allowDomain`, `Sound.getBytesLoaded/Total`), "Cannot enumerate Undefined" and the device fonts.
   Ruffle's "hardware acceleration is disabled" box appears on first mouse-over only with a CPU (software) adapter.
 
@@ -269,7 +269,7 @@ decoded size and horizon match an independent survey of all 167.
 - Essay bars have no thumbnail (the VM shows the essay's picture at the bar's start; the event rows carry no file).
 - Inline tables lack the VM's blue box border; the Quick Facts and atlas panels are unchanged.
 - Interactives under Ruffle 0.7.1: see the test pass below. `MatchGame` exhausts Ruffle's memory (games.md) and is
-  native. In the `BGAControl` boards, picture answers draw blank (games.md). Trebuchet MS, the players' main font,
+  native. In the `BGAControl` boards, picture answers drew blank until the server patched the skin (games.md). Trebuchet MS, the players' main font,
   is approximated by the disc's Tahoma; Lucida Console and Impact by Arial. No VM
   ground truth: Flash is not installed in the guest (vm-findings.md).
 - Vasco da Gama's missing ocean fill was seen once (the first headless run against a cold server: the full-frame

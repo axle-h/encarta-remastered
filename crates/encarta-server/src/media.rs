@@ -7,7 +7,7 @@ use crate::error::{ApiError, ApiResult};
 use anyhow::Result;
 use axum::extract::{Path as UrlPath, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use encarta_formats::catalog::{self, Catalog, Edition, Table};
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -443,5 +443,42 @@ pub async fn disc(State(st): State<Arc<AppState>>, UrlPath((edition, path)): Url
     let Some((sha, p, mime)) = row else {
         return Err(ApiError::not_found(format!("no disc file {path}")));
     };
-    serve_path(req, st.out.join("media").join(p), mime, Some(format!("\"{sha}-original\"")), false).await
+    let file = st.out.join("media").join(p);
+    if crate::flash_compat::applies(&path) {
+        let (s, f) = (sha.clone(), file.clone());
+        let patched = tokio::task::spawn_blocking(move || crate::flash_compat::patched_cached(&s, || std::fs::read(f).ok()))
+            .await
+            .ok()
+            .flatten();
+        if let Some(bytes) = patched {
+            return Ok(serve_bytes(&req, bytes, mime, &format!("\"{sha}-ruffle1\"")));
+        }
+    }
+    serve_path(req, file, mime, Some(format!("\"{sha}-original\"")), false).await
+}
+
+/// Serves an in-memory body (GET/HEAD, `If-None-Match`; no ranges) with long-lived caching.
+fn serve_bytes(req: &Request, bytes: Arc<Vec<u8>>, mime: &str, etag: &str) -> Response {
+    use axum::http::{HeaderValue, Method};
+    let inm = req.headers().get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok());
+    let fresh = inm.is_some_and(|v| v.split(',').any(|t| t.trim() == etag || t.trim() == "*"));
+    let mut r = if fresh {
+        StatusCode::NOT_MODIFIED.into_response()
+    } else if req.method() == Method::HEAD {
+        let mut r = StatusCode::OK.into_response();
+        r.headers_mut().insert(header::CONTENT_LENGTH, HeaderValue::from(bytes.len()));
+        r
+    } else {
+        (StatusCode::OK, bytes.as_ref().clone()).into_response()
+    };
+    let h = r.headers_mut();
+    if !fresh {
+        h.insert(header::CONTENT_TYPE, HeaderValue::from_str(mime).unwrap_or(HeaderValue::from_static("application/octet-stream")));
+        h.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
+    }
+    h.insert(header::CACHE_CONTROL, HeaderValue::from_static(IMMUTABLE));
+    if let Ok(v) = HeaderValue::from_str(etag) {
+        h.insert(header::ETAG, v);
+    }
+    r
 }

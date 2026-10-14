@@ -519,6 +519,7 @@ dependencies = [
  "axum",
  "encarta-formats",
  "encarta-search",
+ "flate2",
  "http-body",
  "http-body-util",
  "rusqlite",

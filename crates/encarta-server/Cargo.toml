@@ -8,6 +8,7 @@ description = "Read-only HTTP server for the converted Encarta output (out/)"
 encarta-formats = { path = "../encarta-formats" }
 encarta-search = { path = "../encarta-search" }
 anyhow = "1"
+flate2 = "1"
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "fs", "io-util"] }
 tower-http = { version = "0.6", features = ["compression-gzip", "compression-br"] }

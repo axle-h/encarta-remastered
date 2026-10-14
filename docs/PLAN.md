@@ -20,28 +20,24 @@ Effort key: S ≈ days, M ≈ 1–2 weeks, L ≈ 2–4 weeks.
 | 4 Web client core | done | [web-client.md](web-client.md) |
 | 5 Atlas | done | [atlas-client.md](atlas-client.md) |
 | 6 3D tours | done | [tour-runtime.md](tour-runtime.md) |
-| 7 Games | done; all ten board games played to an ending under Ruffle; picture answers draw blank (Next 1) | [games.md](games.md) |
+| 7 Games | done; all ten board games played to an ending under Ruffle, picture answers included | [games.md](games.md) |
 | 8 Parity audit | in progress: the list below | [parity.md](parity.md) |
 
 Dropped by choice: parental controls (the dictionary's offensive-word filter); like Wikipedia, nothing is hidden.
 
 ## Next (priority order)
 
-1. **Board-game picture answers**: under Ruffle (0.7.1 and a 0.8.0 nightly) the answer buttons of picture questions
-   draw empty, though the JPEGs load and show as reward pictures; 31 board questions (games.md). Find the cause (the
-   quiz skin's AVM1 in `analysis/decompiled/`, then a Ruffle issue or a workaround); fall back to a native board
-   engine only if Ruffle cannot be made to draw them. S
-2. **Geography Quiz**: the VM's full score table, Try Again reopening the start dialog, the 9-tick slider look. S
-3. **MIDI soundfont**: 236 music files sound synthetic. M
-4. **Timeline**: open items in the Timeline view at the event; media in event pop-ups; essay bar pictures. S
-5. **Accessibility**: media viewer focus trap, timeline list alternative, axe pass. S
-6. **Article layout**: the inline-table box border; country introductions and overflow into the next section
+1. **Geography Quiz**: the VM's full score table, Try Again reopening the start dialog, the 9-tick slider look. S
+2. **MIDI soundfont**: 236 music files sound synthetic. M
+3. **Timeline**: open items in the Timeline view at the event; media in event pop-ups; essay bar pictures. S
+4. **Accessibility**: media viewer focus trap, timeline list alternative, axe pass. S
+5. **Article layout**: the inline-table box border; country introductions and overflow into the next section
    (content-schema §11). S
-7. **Atlas**: alternate label style (w6), area-pen masks, road-shield source, flat-view re-tiling off the main
+6. **Atlas**: alternate label style (w6), area-pen masks, road-shield source, flat-view re-tiling off the main
    thread, time zones in the click menu (V11 shows none). M
-8. **Performance**: `Cache-Control` on API responses; WOFF2 fonts (a converter step; keep the TTFs, which Ruffle
+7. **Performance**: `Cache-Control` on API responses; WOFF2 fonts (a converter step; keep the TTFs, which Ruffle
    needs). S
-9. **Sounds**: startup and menu sounds (the Options setting is stored only). S
+8. **Sounds**: startup and menu sounds (the Options setting is stored only). S
 
 ### Needs the VM
 - Panoramas: single panoramas' `initangle`, panorama zoom.
