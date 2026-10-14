@@ -2,7 +2,7 @@
  * Response shapes of the content server (docs/api.md). Fields are optional where the server omits
  * NULL columns. Body/inline node shapes are content-schema.md §8 (see `content/model.ts`).
  */
-import type { Block, Inline } from "../content/model";
+import type { ArticleLayout, Block, Inline } from "../content/model";
 
 export type Edition = "deluxe" | "kids";
 
@@ -57,8 +57,15 @@ export interface AssocItem {
   title_html?: string;
   caption_html?: string;
   thumb?: FileRef | null;
-  /** Not in api.md yet: the gallery-size picture (DATA `picon`), if the server adds it. */
+  /** The gallery-size picture (DATA `picon`). */
   picon?: FileRef | null;
+  /** The full-size picture: the item's `image`, else (audio sets, composites) its first child's. */
+  image?: FileRef | null;
+  /** DATA `NoSquish="1"` (maps, charts, art that keeps its size). */
+  no_squish?: boolean;
+  /** Sidebar rows only: the sidebar's preview (HTML) and category ("GREAT WORKS OF LITERATURE"), for its teaser. */
+  preview_html?: string;
+  sidebar_category?: string;
 }
 
 export interface DataTable {
@@ -91,6 +98,20 @@ export interface TimelineEvent {
   region_mask?: number;
   categories?: string[];
   regions?: string[];
+  /** The event item has a body (`/api/article/{ref_id}`). */
+  has_article?: boolean;
+  /** Plain text of the body (only with `text=1`). */
+  text?: string;
+  /** How the Timeline draws it (timeline.md §3.2): a square and title, an orange bar, or a striped essay bar. */
+  display?: "point" | "period" | "essay";
+  /** The boxed upper-case bar label of periods and essays ("HISTORICAL ESSAY: …"). */
+  label?: string;
+  /** The pop-up date line ("4? BC - AD 29?"), and its two ends. */
+  date_text?: string;
+  start_text?: string;
+  end_text?: string;
+  /** Title size rank: 5 = largest (importance 1), 1 = smallest, 0 unranked. */
+  prominence?: number;
 }
 
 export interface Item {
@@ -157,6 +178,8 @@ export interface Article {
   title: string;
   title_html?: string;
   kind: string;
+  /** Page layout (content-schema §8); absent from servers older than schema 2. */
+  layout?: ArticleLayout;
   editions?: Edition[];
   source?: string;
   word_count?: number;
@@ -241,6 +264,8 @@ export interface DictLookupEntry {
 export interface DictLookupResponse {
   query: string;
   entries: DictLookupEntry[];
+  /** With `around=N`: the N word-wheel headwords before the query, in wheel order. */
+  before?: DictLookupEntry[];
 }
 
 export interface DictEntry {
@@ -268,6 +293,25 @@ export interface TimelineResponse {
   total: number;
   offset: number;
   events: TimelineEvent[];
+}
+
+export interface InteractiveRef {
+  element: string;
+  ref: string;
+  resolution?: string;
+  sha256?: string;
+  kind?: string;
+  url?: string | null;
+}
+
+export interface Interactive {
+  file_name: string;
+  edition: Edition;
+  package?: string;
+  control_type?: string;
+  title?: string;
+  definition: Record<string, unknown>;
+  refs?: InteractiveRef[];
 }
 
 export interface PlaceResponse {

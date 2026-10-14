@@ -10,6 +10,7 @@
 //! `ENCARTA_TOURS=04257,05919` limits the run to some tours.
 
 mod actions;
+mod content;
 mod geometry;
 mod glb;
 mod images;
@@ -66,7 +67,26 @@ pub fn run(paths: &Paths) -> Result<()> {
     let out_root = paths.out.join("tours");
     std::fs::create_dir_all(&out_root)?;
     let t0 = Instant::now();
-    let reports: Vec<Result<TourReport>> = dirs.par_iter().map(|d| convert_tour(d, &out_root.join(tour_id(d)))).collect();
+    // Tour Stops and hotspot destinations come from the catalog (`encarta-convert content`).
+    let db_path = paths.out.join("content.sqlite");
+    let content_ids: Vec<u64> = dirs.iter().filter_map(|d| content_id(&tour_id(d))).collect();
+    let mut records = content::read_all(&db_path, &content_ids).with_context(|| format!("reading tour records from {}", db_path.display()))?;
+    for site in records.values_mut().flat_map(|r| r.sites.iter_mut()) {
+        if let Some(name) = &site.image_file {
+            site.image_data = find_baggage(&paths.extracted, name).map(std::fs::read).transpose()?;
+        }
+    }
+    if records.is_empty() {
+        eprintln!("note: {} has no tour records; scene.json gets no stops or hotspot destinations (run `encarta-convert content` first)", db_path.display());
+    }
+    let reports: Vec<Result<TourReport>> = dirs
+        .par_iter()
+        .map(|d| {
+            let id = tour_id(d);
+            let rec = content_id(&id).and_then(|c| records.get(&c));
+            convert_tour(d, &out_root.join(&id), rec)
+        })
+        .collect();
     let mut ok = Vec::new();
     let mut failed = false;
     for (d, r) in dirs.iter().zip(reports) {
@@ -106,6 +126,25 @@ pub fn run(paths: &Paths) -> Result<()> {
         bail!("tour conversion finished with errors");
     }
     Ok(())
+}
+
+/// Finds a baggage file (`msencdata::baggage/<name>`) in the content packages of the extracted
+/// disc (`eit/CONTENT/*/baggage/`), ignoring case.
+fn find_baggage(extracted: &Path, name: &str) -> Option<std::path::PathBuf> {
+    let mut packages: Vec<std::path::PathBuf> = std::fs::read_dir(extracted.join("eit/CONTENT")).ok()?.filter_map(|e| e.ok().map(|e| e.path().join("baggage"))).collect();
+    packages.sort();
+    packages.into_iter().find_map(|dir| {
+        let exact = dir.join(name);
+        if exact.is_file() {
+            return Some(exact);
+        }
+        std::fs::read_dir(&dir).ok()?.flatten().find(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(name)).map(|e| e.path())
+    })
+}
+
+/// Encarta content id of a tour: `7015` + the container number (§1).
+fn content_id(id: &str) -> Option<u64> {
+    format!("7015{id}").parse().ok()
 }
 
 fn tour_id(dir: &Path) -> String {
@@ -172,10 +211,10 @@ pub struct Converted {
     pub report: TourReport,
 }
 
-fn convert_tour(dir: &Path, out: &Path) -> Result<TourReport> {
+fn convert_tour(dir: &Path, out: &Path, record: Option<&content::TourContent>) -> Result<TourReport> {
     let t0 = Instant::now();
     let tour = Tour::load(dir)?;
-    let mut c = convert(&tour, &tour_id(dir))?;
+    let mut c = convert(&tour, &tour_id(dir), record)?;
     write_dir(out, &c.files)?;
     c.report.seconds = t0.elapsed().as_secs_f64();
     Ok(c.report)
@@ -185,8 +224,9 @@ fn check(checks: &mut Vec<Check>, name: &str, ok: bool, detail: String) {
     checks.push(Check { name: name.to_string(), ok, detail });
 }
 
-/// Converts a loaded tour into its output files and validates them.
-pub fn convert(tour: &Tour, id: &str) -> Result<Converted> {
+/// Converts a loaded tour into its output files and validates them. `record` is the tour's
+/// content record (stops, hotspot destinations), when the catalog has been converted.
+pub fn convert(tour: &Tour, id: &str, record: Option<&content::TourContent>) -> Result<Converted> {
     let x = &tour.model.as_ref().context("tour has no model")?.data;
     let requests = RefCell::new(BTreeSet::new());
     let simulation = sim::Simulation::run(tour, &requests);
@@ -204,7 +244,24 @@ pub fn convert(tour: &Tour, id: &str) -> Result<Converted> {
             json!({ "image": format!("cursors/{f}.png"), "width": c.image.width, "height": c.image.height, "hotspot": c.hotspot, "invertedPixels": c.inverted_pixels }),
         );
     }
-    let out = scene::build(tour, id, &simulation.sequence, &simulation.state, &geom, &requests, &cursor_info);
+    let mut out = scene::build(tour, id, &simulation.sequence, &simulation.state, &geom, &requests, &cursor_info, record);
+    // Site maps (§4.2): each stop's map bitmap as a PNG, with its named locations.
+    let mut sites = Vec::new();
+    for s in record.map_or(&[][..], |r| &r.sites[..]) {
+        let (image, size) = match &s.image_data {
+            Some(data) => {
+                let c = images::convert(data, false).with_context(|| format!("site map {}", s.id))?;
+                let path = format!("images/sitemap-{}.png", s.id);
+                files.insert(path.clone(), c.bytes);
+                (Some(path), [c.width, c.height])
+            }
+            None => (None, [0, 0]),
+        };
+        sites.push(json!({ "id": s.id, "file": s.image_file, "image": image, "size": size, "locations": s.locations }));
+    }
+    out.json["sites"] = json!(sites);
+    out.json["article"] = json!(record.and_then(|r| r.article));
+    out.json["tour"]["title"] = json!(record.and_then(|r| r.title.clone()));
 
     // Images named by actions and 2D elements, and the icon strip.
     for (stored, key) in requests.borrow().iter() {
@@ -282,6 +339,41 @@ pub fn convert(tour: &Tour, id: &str) -> Result<Converted> {
     let summary = tour.summary();
     let hotspot_total = out.hotspot_links + out.json["unresolvedHotspots"].as_array().map_or(0, Vec::len);
     check(&mut checks, "hotspot macros", hotspot_total == summary.hotspot_macros, format!("{} links + {} on missing elements vs {} statements", out.hotspot_links, hotspot_total - out.hotspot_links, summary.hotspot_macros));
+    match record {
+        Some(r) => {
+            let missing: Vec<String> = out.json["hotspots"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|h| h["destMedia"].is_null())
+                .map(|h| h["contentIdText"].as_str().unwrap_or("?").to_string())
+                .collect();
+            check(
+                &mut checks,
+                "hotspot destinations",
+                missing.is_empty(),
+                if missing.is_empty() {
+                    format!("{} stops, {} hotspot records, every element hotspot has a destmedia", r.stops.len(), r.hotspots.len())
+                } else {
+                    format!("no destmedia for {}", missing.join(", "))
+                },
+            );
+        }
+        None => check(&mut checks, "hotspot destinations", true, "no content record (content.sqlite absent): not checked".into()),
+    }
+    match record {
+        Some(r) => {
+            let mut missing: Vec<String> = r.stops.iter().filter(|s| s.site.is_none()).map(|s| format!("stop {} has no site", s.id)).collect();
+            missing.extend(r.sites.iter().filter(|s| s.image_data.is_none()).map(|s| format!("site {} image {:?} not found", s.id, s.image_file)));
+            check(
+                &mut checks,
+                "site maps",
+                missing.is_empty(),
+                if missing.is_empty() { format!("{} site maps for {} stops", r.sites.len(), r.stops.len()) } else { missing.join("; ") },
+            );
+        }
+        None => check(&mut checks, "site maps", true, "no content record (content.sqlite absent): not checked".into()),
+    }
     let names: BTreeSet<&str> = stats.node_names.iter().map(String::as_str).collect();
     let problems = check_names(&out.json, &names, &files, tour);
     check(&mut checks, "scene.json names exist", problems.is_empty(), if problems.is_empty() { "all node, light, element and image references resolve".into() } else { problems.join("; ") });
@@ -298,6 +390,7 @@ pub fn convert(tour: &Tour, id: &str) -> Result<Converted> {
     counts.insert("lights".into(), json!(lights_in));
     counts.insert("flickerLights".into(), json!(geom.flicker_slots.len()));
     counts.insert("hotspotLinks".into(), json!(out.hotspot_links));
+    counts.insert("stops".into(), json!(record.map_or(0, |r| r.stops.len())));
     counts.insert("cloudPoints".into(), json!(cloud_points));
     counts.insert("loadStatements".into(), json!(simulation.statements));
     counts.insert("images".into(), json!(files.keys().filter(|k| k.starts_with("images/")).count()));

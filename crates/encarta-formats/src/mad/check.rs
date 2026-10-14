@@ -615,8 +615,20 @@ fn check_plain(atlas: &Atlas, world: bool, rep: &mut Report) -> Result<()> {
     if let Some(b) = atlas.section("MillerStyles") {
         let m = tables::miller_styles(b)?;
         let names: Vec<&str> = m.entries.iter().map(|e| e.raster.as_str()).collect();
-        rep.log.push(format!("ok   MillerStyles: {} levels, rasters {}", m.level_pairs.len(), names.join(" ")));
+        rep.log.push(format!("ok   MillerStyles: {} levels, rasters {}", m.levels.len(), names.join(" ")));
+        if world {
+            rep.assert(m.levels.first() == Some(&(512, 384)) && m.entries.len() == 11, "MillerStyles: level 0 is 512 × 384, 11 rasters");
+        }
     }
+    let ramps = tables::geo_trans(atlas.require("GeoTrans")?)?;
+    let rects = tables::min_rects(atlas.require("MinRect")?)?;
+    let attrs = tables::unicode_attributes(atlas.require("Unicode Attributes")?)?;
+    let conv = tables::font_conv(atlas.require("Font Conv")?)?;
+    let max_tint = pens.iter().map(|p| p.b8[3]).filter(|&t| t != 0xFF).max().unwrap_or(0) as usize;
+    rep.assert(max_tint < ramps.len(), format!("GeoTrans: {} ramps cover every pen tint (max {max_tint})", ramps.len()));
+    rep.assert(rects.iter().all(|r| styles.iter().any(|s| s.id == r.style)), format!("MinRect: {} rows, all for known styles", rects.len()));
+    rep.assert(styles.iter().filter(|s| s.is_default).count() == 1, "MapStyle: exactly one default style");
+    rep.log.push(format!("ok   Unicode Attributes {} records, Font Conv {} code pages", attrs.len(), conv.len()));
     if world {
         rep.assert(classes.get(41).map(|c| c.name.as_str()) == Some("River"), "PDCAttribute row 41 is River");
         let leg = atlas.grid("LegendGrid", "LegendLookup")?;

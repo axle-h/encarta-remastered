@@ -623,6 +623,44 @@ pub fn split_counts(mix: &[f64], n: usize) -> Vec<usize> {
 
 const PLACE_KINDS: [&str; 3] = ["country", "place", "continent"];
 
+/** Answer buttons per question (VM: five, at every level). */
+pub const GEOQUIZ_CHOICES: usize = 5;
+
+/**
+ * The answer buttons for one place: the place and `choices - 1` others of the same type from the
+ * level's pool, `same_region` of them (the level file's third line, per type) from the place's own
+ * region and the rest from anywhere, all with distinct names, in random order (docs/games.md).
+ */
+pub fn deal_choices(place: &Value, pool: &[Value], same_region: usize, choices: usize, rng: &mut Rng) -> Vec<Value> {
+    let name_of = |v: &Value| v["name"].as_str().unwrap_or("").to_lowercase();
+    let mut names: HashSet<String> = HashSet::from([name_of(place)]);
+    let mut out = vec![json!({ "entity": place["entity"], "name": place["name"] })];
+    let region = place["region"].as_i64();
+    let mut local: Vec<&Value> = pool.iter().filter(|v| v["region"].as_i64() == region).collect();
+    let mut any: Vec<&Value> = pool.iter().collect();
+    rng.shuffle(&mut local);
+    rng.shuffle(&mut any);
+    let wanted = choices.saturating_sub(1);
+    for v in local {
+        if out.len() > same_region.min(wanted) {
+            break;
+        }
+        if names.insert(name_of(v)) {
+            out.push(json!({ "entity": v["entity"], "name": v["name"] }));
+        }
+    }
+    for v in any {
+        if out.len() > wanted {
+            break;
+        }
+        if names.insert(name_of(v)) {
+            out.push(json!({ "entity": v["entity"], "name": v["name"] }));
+        }
+    }
+    rng.shuffle(&mut out);
+    out
+}
+
 pub async fn geoquiz_game(State(st): St, Path(level): Path<i64>, Query(q): Query<SeedQuery>) -> ApiResult<Json<Value>> {
     if !(1..=4).contains(&level) {
         return Err(ApiError::not_found(format!("no Geography Quiz level {level}")));
@@ -659,6 +697,12 @@ pub async fn geoquiz_game(State(st): St, Path(level): Path<i64>, Query(q): Query
                 o.insert("kind_label".into(), json!(PLACE_KINDS[kind as usize]));
                 pools[kind as usize].push(p);
             }
+            let per_type: Vec<usize> = lv
+                .as_ref()
+                .and_then(|l| l["per_type"].as_array().cloned())
+                .map(|a| a.iter().map(|x| x.as_u64().unwrap_or(0) as usize).collect())
+                .unwrap_or_default();
+            let full = pools.clone();
             let mut rng = Rng::new(seed);
             let mut want = split_counts(&mix, n);
             let mut picked: Vec<Value> = Vec::new();
@@ -679,6 +723,12 @@ pub async fn geoquiz_game(State(st): St, Path(level): Path<i64>, Query(q): Query
                 short -= take;
             }
             rng.shuffle(&mut picked);
+            for p in &mut picked {
+                let k = p["kind"].as_i64().unwrap_or(1) as usize;
+                let same = per_type.get(k).copied().unwrap_or(0);
+                let choices = deal_choices(p, &full[k], same, GEOQUIZ_CHOICES, &mut rng);
+                p["choices"] = json!(choices);
+            }
             Ok(json!({ "level": level, "seed": seed, "settings": lv, "places": picked }))
         })
         .await?;
@@ -844,6 +894,24 @@ mod tests {
         assert_eq!(anchor_paragraph(&paras, "Which river floods?", "Quibble", 3), Some(3));
         assert_eq!(anchor_paragraph(&paras, "Which river floods?", "Quibble", 1), Some(2));
         assert_eq!(anchor_paragraph(&paras, "xyzzy", "plugh", 1), None);
+    }
+
+    #[test]
+    fn choices_take_the_region_share_first() {
+        let mk = |e: i64, r: i64| json!({ "entity": e, "name": format!("P{e}"), "region": r });
+        let pool: Vec<Value> = (1..=20).map(|e| mk(e, if e <= 6 { 1 } else { 2 })).collect();
+        let place = mk(1, 1);
+        for same in 0..=4 {
+            let mut rng = Rng::new(same as u64);
+            let ch = deal_choices(&place, &pool, same, 5, &mut rng);
+            assert_eq!(ch.len(), 5);
+            assert_eq!(ch.iter().filter(|c| c["entity"] == 1).count(), 1);
+            let local = ch.iter().filter(|c| c["entity"].as_i64().unwrap() <= 6).count() - 1;
+            assert!(local >= same, "same={same} local={local}");
+        }
+        // A tiny pool gives fewer buttons rather than repeats.
+        let mut rng = Rng::new(1);
+        assert_eq!(deal_choices(&place, &pool[..3], 4, 5, &mut rng).len(), 3);
     }
 
     #[test]
@@ -1034,6 +1102,12 @@ mod tests {
         assert!(places.iter().all(|p| p["entity"] != 5 || p["kind"] == 1));
         assert!(places.iter().all(|p| p["kind"] != 2), "mix gives continents no share");
         assert_eq!(places[0]["region_name"], "Imaginaria");
+        for p in places {
+            let ch = p["choices"].as_array().unwrap();
+            assert!(ch.iter().any(|c| c["entity"] == p["entity"]), "the answer is among the choices");
+            let names: HashSet<&str> = ch.iter().map(|c| c["name"].as_str().unwrap()).collect();
+            assert_eq!(names.len(), ch.len());
+        }
         assert_eq!(get(&app, "/api/games/geoquiz/9").await.0, StatusCode::NOT_FOUND);
 
         let (s, v) = get(&app, "/api/games/chart/city_climate").await;

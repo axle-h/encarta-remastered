@@ -73,12 +73,12 @@ Spinoza Describes a Rational Universe → category 0x04 (Philosophy and Religion
 | 0x2C | u32 | end year magnitude | 0 = no end date |
 | 0x30 | u16 | end month | 0 = unknown |
 | 0x32 | u16 | end day | 0 = unknown |
-| 0x34 | u16 | importance | 1 (most prominent) … 5; 0 on four records. Inferred, see below |
+| 0x34 | u16 | importance | 1 (most prominent) … 5; 0 on four records. VM: importance 1 (First Moon Landing) has a larger title than 3 (Battle of Hastings) |
 | 0x36 | u16 | category mask | bits from §2 |
 | 0x38 | u16 | region mask | bits from §2 |
 | 0x3A | u32 | sequence number | unique across both tables (1…16,465) |
 | 0x3E | u32 | refId | content id of the event body (174…, 461…, 701…) |
-| 0x42 | u16 | record kind | 1 = event, 3 = essay/feature, 0 = item-table entry |
+| 0x42 | u16 | record kind | 1 = event, 3 = historical essay (VM: a two-tone striped bar with a thumbnail and the label "HISTORICAL ESSAY: ‹TITLE›", whatever flag 0x01 says), 0 = item-table entry |
 | 0x44 | u16 | zero | always zero |
 
 Titles are UTF-16LE and may contain inline markup (`<it>…</it>` for italics). Each of the 16,465
@@ -91,10 +91,10 @@ A date is `(year magnitude, month, day)` plus four flag bits from the record's `
 
 | bit | meaning | evidence |
 |---|---|---|
-| 0x01 | **span/period**: draw as a period, not a point. Inferred | set on dynasties, empires, wars, eras: Han Dynasty, Roman Empire, World War II, Paleozoic Era |
-| 0x02 | **start circa** (approximate). Inferred | 98% of these have a year-only start ("Maya Use Symbol for Zero", 50) |
+| 0x01 | **span/period**: drawn as a horizontal orange bar from start to end with a boxed upper-case label ("WORLD WAR II"). **Confirmed in the VM** (World War II, Han Dynasty) | set on dynasties, empires, wars, eras: Han Dynasty, Roman Empire, World War II, Paleozoic Era |
+| 0x02 | **start circa** (approximate). **Confirmed**: the pop-up prints a trailing "?" on the year | 98% of these have a year-only start ("Maya Use Symbol for Zero", 50) |
 | 0x04 | **start is BC** | Battle of Actium 31, Horace Writes *Odes* 23 |
-| 0x08 | **end circa** (approximate). Inferred | almost always paired with an end year |
+| 0x08 | **end circa** (approximate). **Confirmed** (as 0x02) | almost always paired with an end year |
 | 0x10 | **end is BC** | Ptolemaic Dynasty 323–30 BC, Qin Dynasty 221–206 BC. Bantu Expansion has 0x04 but not 0x10: 2000 BC – AD 1000 |
 | 0x20 | **start magnitude is in thousands of years** | Solar Nebula Forms: 4,700,000 → 4.7 billion years BC |
 | 0x40 | **end magnitude is in thousands of years** | Archean Eon (0x75): 3,800,000 k – 2,500,000 k = 3.8–2.5 billion BC. Proterozoic Eon (0x35): 2,500,000 k BC – 570,000,000 BC |
@@ -115,6 +115,21 @@ except one data-entry error (below). Worked examples:
 | Japanese Attack Pearl Harbor | 0x00; 1941/12/7 | 7 Dec 1941 |
 | World War II | 0x01; 1939/9/1; 1945/9/2 | period, 1 Sep 1939 – 2 Sep 1945 |
 | Jesus Christ | 0x0E; 4; 29 | c. 4 BC – c. AD 29 |
+
+### 3.2 How the Timeline view shows a record (reference VM, `fixtures/timeline/`)
+
+- Point events (no 0x01, kind 1) are a square and the title; Jesus Christ (flags 0x0E, has an end date but
+  no 0x01) is a point at 4 BC. The point labels show no circa mark.
+- Periods (0x01) and essays (kind 3) are bars; their label is the title in upper case, essays prefixed
+  "HISTORICAL ESSAY: ".
+- The event pop-up date line: circa is a trailing "?" on the year and a range that starts BC and ends AD
+  writes "AD" on the end: **"4? BC - AD 29?"**. How full dates and geologic dates are worded was not
+  observed; the converter writes "October 14, 1066" and "4.7 billion years ago" (our choice).
+- A larger importance number is less prominent: the title of importance 1 is drawn largest.
+
+The converter stores these as `timeline_event.display` (`point` | `period` | `essay`), `label`,
+`date_text`, `start_text`, `end_text` and `prominence` (6 − importance; 0 when importance is 0)
+(`docs/content-schema.md` §9).
 
 Known data errors (kept verbatim by the reader):
 - *Columbus Reaches the New World*: end fields are `(10, 12, 1492)`. The editor entered the end
@@ -166,10 +181,9 @@ Each 16-byte term entry is:
 
 1. Descriptor field 5 (always 1).
 2. Term entry field 0 ("offset A"): which string pool it addresses.
-3. Confirming the inferred labels: flag 0x01 = span/period, 0x02/0x08 = circa, importance 1–5
-   (1 looks most prominent: Moon landing, Columbus, Pearl Harbor and extinction of the dinosaurs are 1;
-   Hastings is 3), importance 0 on 4 records, kind 3 = essay.
-   The VM is the cheapest way: see how these events are drawn and labelled ("c.", bars, zoom levels).
+3. ~~Inferred labels~~: confirmed in the VM (§3.2): 0x01 = period bar, 0x02/0x08 = circa ("?"), kind 3 =
+   essay, importance 1 = largest title. Still open: importance 0 on 4 records, and how importance maps
+   to zoom levels.
 
 ## 7. Modern target
 

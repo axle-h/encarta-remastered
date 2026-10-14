@@ -127,6 +127,9 @@ export interface CustomizerProps {
   onLook: (l: string | undefined) => void;
   units: "imperial" | "metric";
   onUnits: (u: "imperial" | "metric") => void;
+  /** Highlight the place under the pointer (off by default: Encarta highlights nothing on hover, V11). */
+  hoverHighlight: boolean;
+  onHoverHighlight: (on: boolean) => void;
   onReset: () => void;
   onClose: () => void;
 }
@@ -220,6 +223,10 @@ export function CustomizerPanel(p: CustomizerProps) {
           <option value="imperial">Miles</option>
           <option value="metric">Kilometres</option>
         </select>
+      </label>
+      <label className="enc-atlas-field enc-atlas-check">
+        <input type="checkbox" checked={p.hoverHighlight} onChange={(e) => p.onHoverHighlight(e.target.checked)} />
+        Highlight places under the pointer
       </label>
       <div className="enc-atlas-panel__foot">
         <button type="button" onClick={p.onReset}>

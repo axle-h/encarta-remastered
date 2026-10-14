@@ -51,8 +51,8 @@ The atlas's own entity ids (one id space shared with the rest of the atlas):
 |---|---|---|---|
 | 8 | 9,436 | 761/762 (8,087), 631 (1,260), 174, 461, 701 | **article** about the place (title = place name) |
 | 1 | 190 | 461 | "*Country*: Flag and Anthem" media item (country places) |
-| 14 | 189 | 461 (usually kind-1 id + 1: 142 of 189) | flag-related media (one is titled "Afghan Flag"); probably the flag image |
-| 15 | 193 | 461 (usually kind-1 id + 2: 145 of 189) | untitled companion of kind 1; probably the anthem audio (unconfirmed) |
+| 14 | 189 | 461 (usually kind-1 id + 1: 142 of 189) | **flag** image (`group="media"`, "Afghanistan Flag") — label `flag` |
+| 15 | 193 | 461 (usually kind-1 id + 2: 145 of 189) | **national anthem** audio (`group="audio"`, "National Anthem of Algeria") — label `anthem` |
 | 2 | 193 | 631 | "*Country* Facts and Figures" |
 | 12 | 329 | 631 | music clip ("Burundi: The Mbira", "France: The Quadrille") |
 | 5 | 98 | 631 | Media Maps photo, general landmark ("Aral Sea", "Fabled White Cliffs of Dover") |
@@ -61,8 +61,8 @@ The atlas's own entity ids (one id space shared with the rest of the atlas):
 | 101 = 5 + 3·32 | 716 | 631 | Media Maps photo, people and culture ("Children of American Samoa") |
 | 133 = 5 + 4·32 | 1,237 | 631 | Media Maps photo, architecture and settlements ("Sod House", "Hilltop Castle in Cyprus") |
 | 165 = 5 + 5·32 | 325 | 631 | Media Maps photo, animals ("Red Knot", "Lesser Indian Mongoose") |
-| 13 | 171 | 631, none titled in PFX | unknown (keys are contiguous 10,211,925…; perhaps panoramas or tours) |
-| 16 | 1,766 | 631; 1,135 of them have bodies in `content.ecn` | unknown (text items attached to places; perhaps sidebars or web links) |
+| 13 | 171 | 631, none titled in PFX | **Map Trek stops**: all are `group="maptrektour"` DATA records ("Extreme Heat", "Ice Sheets: July Temperature") — label `maptrek-stop` |
+| 16 | 1,766 | 631; 1,135 of them have bodies in `content.ecn` | **"about this map" notes**: `group="aboutmap"` records (1,135; landmark notes such as "Temple of Heaven", "Buckingham Palace"; the rest are not in DataStd/DataDlx) — label `about-map` |
 
 The photo kinds look like `5 | (theme << 5)` with theme 0–5. The theme labels above are ours, read off the titles; the
 on-screen labels need the reference VM. The photo ids are the keys of `MSWORLD.ITR $WW$CTCATALOG` (3,819 of its keys
@@ -71,7 +71,8 @@ appear here), which supplies their credit lines and file names.
 ## Validation (whole file)
 - Every block parses to exactly its length; `keyLimit` matches; ids ascend.
 - Kind 8: 7,445 of 9,436 ids are in `content.ecn` (the rest are 631/174 items that live in `data.ecn` or not at all).
-- **Needs checking later (not decompiler work):** kinds 13 and 16 once DATA*.AKC records are readable; kinds 14/15 in the VM.
+- Kinds 13–16 were identified from the DATA records (`docs/vm-findings.md`). Still open: the on-screen labels of
+  the photo themes (5 + 32·n).
 
 ## Modern target
 SQLite `place_link(place_id, kind, content_id)` plus a kind-label table.

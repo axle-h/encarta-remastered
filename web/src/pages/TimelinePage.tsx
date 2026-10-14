@@ -6,8 +6,8 @@ import { useApi } from "../api/useApi";
 import { Html } from "../components/Html";
 import { Icon } from "../components/Icons";
 import { useDocumentTitle } from "../components/useDocumentTitle";
-import { formatEventDate, yearLabel } from "./timelineDates";
-import { categoryIndex, ERAS, pan, placeEvents, ticks, zoom } from "./timelineLayout";
+import { eventDateText, yearLabel } from "./timelineDates";
+import { categoryIndex, displayOf, ERAS, pan, placeEvents, prominenceOf, ticks, titleSize, zoom, type Placed } from "./timelineLayout";
 
 const LANE_H = 30;
 const BAND_LIMIT = 400;
@@ -66,21 +66,14 @@ export function TimelinePage() {
   }, [from, to, category, region, q, setParams]);
 
   const filters = { from, to, category: category || undefined, region: region || undefined, q: q || undefined };
-  // The band shows the most important events: raise the importance floor until the window fits.
-  const band = useApi(async (s) => {
-    let last: Awaited<ReturnType<typeof api.timeline>> | undefined;
-    for (const min_importance of [0, 2, 3, 4, 5]) {
-      last = await api.timeline({ ...filters, min_importance: min_importance || undefined, limit: BAND_LIMIT }, s);
-      if (last.total <= BAND_LIMIT) break;
-    }
-    return last!;
-  }, [from, to, category, region, q]);
+  // The band shows the window's most important events (one request, `order=importance`).
+  const band = useApi((s) => api.timeline({ ...filters, order: "importance", limit: BAND_LIMIT, text: true }, s), [from, to, category, region, q]);
   // The list below pages through every event of the window in date order.
   const [listOffset, setListOffset] = useState(0);
   useEffect(() => {
     setListOffset(0);
   }, [from, to, category, region, q]);
-  const list = useApi((s) => api.timeline({ ...filters, limit: LIST_PAGE, offset: listOffset }, s), [from, to, category, region, q, listOffset]);
+  const list = useApi((s) => api.timeline({ ...filters, limit: LIST_PAGE, offset: listOffset, text: true }, s), [from, to, category, region, q, listOffset]);
   const res = list;
   const events = list.data?.events ?? [];
   const lanes = 12;
@@ -164,16 +157,7 @@ export function TimelinePage() {
           ))}
         </div>
         {placed.map((p) => (
-          <button
-            type="button"
-            key={p.ev.seq}
-            className={`tl-ev tl-cat-${categoryIndex(p.ev.category_mask)}${selected?.seq === p.ev.seq ? " current" : ""}`}
-            style={{ left: Math.max(0, p.x), top: 30 + p.lane * LANE_H }}
-            onClick={() => setSelected(p.ev)}
-            title={`${p.ev.title} (${formatEventDate(p.ev)})`}
-          >
-            <Html as="span" html={p.ev.title_html ?? p.ev.title} />
-          </button>
+          <BandEvent key={p.ev.seq} p={p} top={30 + p.lane * LANE_H} current={selected?.seq === p.ev.seq} onSelect={setSelected} />
         ))}
         {band.loading && <div className="tl-loading enc-spinner" />}
       </div>
@@ -190,7 +174,7 @@ export function TimelinePage() {
           {events.map((ev) => (
             <li key={ev.seq} className={selected?.seq === ev.seq ? "current" : ""}>
               <button type="button" onClick={() => setSelected(ev)}>
-                <span className="tl-list-date">{formatEventDate(ev)}</span>
+                <span className="tl-list-date">{eventDateText(ev)}</span>
                 <span className={`tl-dot tl-cat-${categoryIndex(ev.category_mask)}`} />
                 <Html as="span" html={ev.title_html ?? ev.title} />
               </button>
@@ -215,20 +199,67 @@ export function TimelinePage() {
   );
 }
 
+/**
+ * One event on the band, drawn as the VM does (timeline.md §3.2): a point is a square and its title,
+ * sized by prominence; a period an orange bar from start to end with a boxed upper-case label; an
+ * essay a two-tone striped bar labelled "HISTORICAL ESSAY: …".
+ */
+function BandEvent({ p, top, current, onSelect }: { p: Placed; top: number; current: boolean; onSelect: (ev: TimelineEvent) => void }) {
+  const ev = p.ev;
+  const kind = displayOf(ev);
+  const title = `${ev.title} (${eventDateText(ev)})`;
+  if (kind !== "point" && p.w > 0) {
+    const label = ev.label ?? (kind === "essay" ? `HISTORICAL ESSAY: ${ev.title}` : ev.title).toUpperCase();
+    return (
+      <button
+        type="button"
+        className={`tl-bar tl-${kind}${current ? " current" : ""}`}
+        style={{ left: p.x, top, width: p.w }}
+        onClick={() => onSelect(ev)}
+        title={title}
+      >
+        <span className="tl-bar-line" />
+        <span className="tl-bar-label" style={{ maxWidth: Math.max(p.w, 170) }}>
+          {label}
+        </span>
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={`tl-ev tl-cat-${categoryIndex(ev.category_mask)}${current ? " current" : ""}`}
+      style={{ left: Math.max(0, p.x), top, maxWidth: p.lw, fontSize: titleSize(prominenceOf(ev)) }}
+      onClick={() => onSelect(ev)}
+      title={title}
+    >
+      <i className="tl-sq" />
+      <Html as="span" html={ev.title_html ?? ev.title} />
+    </button>
+  );
+}
+
 function EventDetail({ ev, onClose }: { ev: TimelineEvent; onClose: () => void }) {
   const item = useApi(ev.ref_id ? (s) => api.item(ev.ref_id!, s) : null, [ev.ref_id]);
-  const text = useApi(item.data?.has_article ? (s) => api.article(ev.ref_id!, undefined, s) : null, [item.data]);
+  // The event's text comes with the event; the article is fetched only for older servers.
+  const text = useApi(ev.text === undefined && (ev.has_article ?? item.data?.has_article) ? (s) => api.article(ev.ref_id!, undefined, s) : null, [ev.seq, item.data]);
   const articles = (item.data?.media ?? []).filter((m) => m.kind === "article" || m.group === "article");
   return (
     <aside className="tl-detail">
       <button type="button" className="tl-detail-close" onClick={onClose} aria-label="Close">
         <Icon name="close" size={14} />
       </button>
-      <p className="tl-detail-date">{formatEventDate(ev)}</p>
+      <p className="tl-detail-date">{eventDateText(ev)}</p>
       <h2>
         <Html as="span" html={ev.title_html ?? ev.title} />
       </h2>
-      {text.data?.html ? (
+      {ev.text ? (
+        <div className="tl-detail-text">
+          {ev.text.split("\n").map((t, i) => (
+            <p key={i}>{t}</p>
+          ))}
+        </div>
+      ) : text.data?.html ? (
         <Html className="tl-detail-text" html={text.data.html} />
       ) : (
         item.data?.preview_html && <Html className="tl-detail-text" html={item.data.preview_html} />

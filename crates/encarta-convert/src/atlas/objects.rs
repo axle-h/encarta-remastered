@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use encarta_formats::mad::Atlas;
 use encarta_formats::mad::cells::CellSystem;
 use encarta_formats::mad::schemas::{DisplayRules, GeoObjRecord, ObjectRef, decode_record};
-use encarta_formats::mad::tables::{FeatureClass, GeometryKind};
+use encarta_formats::mad::tables::{self, FeatureClass, GeometryKind};
 use rayon::prelude::*;
 use std::collections::HashMap;
 
@@ -123,6 +123,12 @@ pub struct ClassUse {
     pub geometry_optional: u32,
     pub label: u32,
     pub interactive: u32,
+    /// Area rules that stroke the outline (a pen in w8…w13, or a stroke highlight b16 = 1/2):
+    /// the class also gets seam-free outlines (layer `outlines`).
+    pub outline: u32,
+    /// Line rules with a pen whose "draw over" mask is not everything (mad-styling.md §5.2): the
+    /// class's lines are split into runs over water and land.
+    pub masked: u32,
 }
 
 impl ClassUse {
@@ -150,6 +156,8 @@ impl Classes {
         let kinds = classes.iter().map(|c| c.kind).collect();
         let mut uses = vec![ClassUse::default(); classes.len()];
         let grid = atlas.grid("PDCAltitudeGrid", "PDCAltitudeLookup")?;
+        let pens = tables::pen_defs(atlas.require("GeoPenDef")?)?;
+        let pen = |w: u16| (w < 0xFEF9).then(|| pens.get(w as usize)).flatten();
         for s in atlas.map_styles()? {
             let rules: DisplayRules = decode_record(&grid, s.id as u32)?;
             for r in &rules.rules {
@@ -164,6 +172,22 @@ impl Classes {
                 }
                 if r.b4 & 0x0F != 0 {
                     u.interactive += 1;
+                }
+                let geometry = r.b2 & 0x0F != 0;
+                match classes[r.class as usize].kind {
+                    GeometryKind::Area => {
+                        let stroke = geometry && r.w5_13[3..9].iter().any(|&w| pen(w).is_some_and(|p| p.b8[1] > 0));
+                        let highlight = r.b14_16[1] == 1 && r.b14_16[2] != 3 && pen(r.w17).is_some();
+                        if stroke || highlight {
+                            u.outline += 1;
+                        }
+                    }
+                    GeometryKind::Line
+                        if geometry && r.w5_13[2..9].iter().any(|&w| pen(w).is_some_and(|p| p.b8[1] > 0 && super::pixel::pen_mask(&p.flags) != super::pixel::ALL_BITS)) =>
+                    {
+                        u.masked += 1;
+                    }
+                    _ => {}
                 }
             }
         }
@@ -197,7 +221,7 @@ impl Classes {
             .enumerate()
             .map(|(i, &kind)| FeatureClass { id: i as u16, kind, pen_group: 0, flag: 0, scale: 0, reserved: 0, group: 0, priority: 50, name: format!("class {i}") })
             .collect();
-        Classes { classes, kinds: kinds.to_vec(), uses: vec![ClassUse { geometry_default: 1, geometry_optional: 0, label: 1, interactive: 1 }; kinds.len()] }
+        Classes { classes, kinds: kinds.to_vec(), uses: vec![ClassUse { geometry_default: 1, geometry_optional: 0, label: 1, interactive: 1, outline: 1, masked: 1 }; kinds.len()] }
     }
 }
 

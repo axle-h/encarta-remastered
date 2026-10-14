@@ -8,6 +8,7 @@ import { Html } from "../components/Html";
 import { Icon } from "../components/Icons";
 import { useDocumentTitle } from "../components/useDocumentTitle";
 import { expandGrammarCodes } from "./dictCodes";
+import { WHEEL_BEFORE, wheelRows } from "./wordWheel";
 
 type Tab = "dictionary" | "thesaurus" | "bilingual";
 
@@ -59,7 +60,7 @@ export function DictionaryPage({ tab: routeTab, kids = false }: { tab: Tab; kids
     return `${tabPath(t)}${s ? `?${s}` : ""}`;
   };
 
-  // Word wheel: forms starting with the typed text.
+  // Word wheel: the headwords around the typed text (eight before it, then the following ones).
   const [wheelQ, setWheelQ] = useState(q);
   useEffect(() => {
     setWheelQ(q);
@@ -68,7 +69,12 @@ export function DictionaryPage({ tab: routeTab, kids = false }: { tab: Tab; kids
     const t = window.setTimeout(() => setWheelQ(draft.trim()), 150);
     return () => window.clearTimeout(t);
   }, [draft]);
-  const wheel = useApi(wheelQ ? (s) => api.dictLookup({ q: wheelQ, dict, prefix: true, limit: 80 }, s) : null, [wheelQ, dict]);
+  const wheel = useApi(wheelQ ? (s) => api.dictLookup({ q: wheelQ, dict, around: WHEEL_BEFORE, limit: 80 }, s) : null, [wheelQ, dict]);
+  const rows = wheel.data ? wheelRows(wheel.data.before ?? [], wheel.data.entries) : [];
+  const wheelRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    wheelRef.current?.scrollTo(0, 0);
+  }, [wheel.data]);
 
   // The entry shown: an explicit one, else the first exact match of the query.
   const exact = useApi(!entryId && q ? (s) => api.dictLookup({ q, dict, limit: 20 }, s) : null, [q, dict, entryId]);
@@ -134,16 +140,15 @@ export function DictionaryPage({ tab: routeTab, kids = false }: { tab: Tab; kids
           )}
         </div>
         <div className="dict-body">
-          <ul className="dict-wheel" aria-label="Words">
-            {wheel.data?.entries.map((e, i) => (
-              <li key={`${e.ref_id}-${e.form}-${i}`}>
-                <button type="button" className={e.ref_id === shownId ? "current" : ""} onClick={() => openEntry(e)}>
-                  {e.form ?? e.headword}
-                  {e.form && e.form.toLowerCase() !== e.headword.toLowerCase() && <span className="dict-wheel-hw"> ({e.headword})</span>}
+          <ul className="dict-wheel" aria-label="Words" ref={wheelRef}>
+            {rows.map((r, i) => (
+              <li key={`${r.entry.dictionary}-${r.entry.ref_id}-${i}`} className={r.after ? undefined : "before"}>
+                <button type="button" className={r.entry.ref_id === shownId ? "current" : ""} onClick={() => openEntry(r.entry)}>
+                  {r.label}
                 </button>
               </li>
             ))}
-            {wheelQ && wheel.data?.entries.length === 0 && <li className="enc-muted">No words start with “{wheelQ}”.</li>}
+            {wheelQ && wheel.data && rows.length === 0 && <li className="enc-muted">No words near “{wheelQ}”.</li>}
           </ul>
           <div className="dict-entry">
             {shownDict && shownId ? (
@@ -173,14 +178,27 @@ export function DictionaryPage({ tab: routeTab, kids = false }: { tab: Tab; kids
 
 function EntryView({ dict, id, fallbackWord, kids }: { dict: string; id: number; fallbackWord: string; kids: boolean }) {
   const navigate = useNavigate();
-  const res = useApi((s) => api.dictEntry(dict, id, s), [dict, id]);
+  // `/dictionary/entry/{id}` names no dictionary (ref ids are unique across them); a link whose
+  // guessed dictionary is wrong is retried by id alone.
+  const res = useApi(
+    async (s) => {
+      if (dict === "entry") return api.dictEntryById(id, s);
+      try {
+        return await api.dictEntry(dict, id, s);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return api.dictEntryById(id, s);
+        throw e;
+      }
+    },
+    [dict, id],
+  );
   const box = useRef<HTMLDivElement>(null);
   const pre = kids ? "/kids" : "";
 
   // A cross-reference to an id that is not on the disc: look the word up instead.
   useEffect(() => {
     if (res.error instanceof ApiError && res.error.status === 404 && fallbackWord) {
-      api.dictLookup({ q: fallbackWord, dict, limit: 5 }).then((r) => {
+      api.dictLookup({ q: fallbackWord, dict: dict === "entry" ? undefined : dict, limit: 5 }).then((r) => {
         const e = r.entries[0];
         if (e) navigate(`${pre}/dictionary/${e.dictionary}/${e.ref_id}?q=${encodeURIComponent(e.headword)}`, { replace: true });
       }, () => undefined);
@@ -200,7 +218,7 @@ function EntryView({ dict, id, fallbackWord, kids }: { dict: string; id: number;
   const src = pronunciationSrc(e);
   const onItemLink = (ref: number, _para: number | null, a: HTMLAnchorElement) => {
     // Links in dictionary HTML point at other entries: bilingual translations at the reverse pair.
-    const target = e.kind === "bilingual" && a.classList.contains("enc-d-media") ? reversePair(dict) : dict;
+    const target = e.kind === "bilingual" && a.classList.contains("enc-d-media") ? reversePair(e.dictionary) : e.dictionary;
     navigate(`${pre}/dictionary/${target}/${ref}?q=${encodeURIComponent(a.textContent ?? "")}`);
     return true;
   };

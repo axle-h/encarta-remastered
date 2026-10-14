@@ -53,11 +53,12 @@ The search index is built by `encarta-convert search` (→ `out/search/`, about 
 
 `GET /api/meta` → what is available:
 ```json
-{ "server": "encarta-server 0.1.0", "content": {"schema_version": "1", ...meta table},
+{ "server": "encarta-server 0.1.0", "content": {"schema_version": "2", ...meta table},
   "search": { ...out/search/meta.json } | null, "media_manifest": true, "extracted_fallback": false,
-  "tours": true, "atlas": true, "static": true }
+  "tours": true, "atlas": true, "fonts": ["/fonts/REFSAN.TTF", …], "static": true }
 ```
-`content` is `null` without a content database.
+`content` is `null` without a content database. `fonts` lists the font files of `out/fonts/` (see "Fonts"); `[]`
+when that folder is missing.
 
 ## Items and articles
 
@@ -81,9 +82,18 @@ The search index is built by `encarta-convert search` (→ `out/search/`, about 
 ```json
 { "ref_id": 461550745, "group": "media", "sec": 1, "sequence": 4, "appears": null, "par": null,
   "kind": "media", "media_type": "image", "title": "Grévy’s Zebra", "title_html": "…",
-  "caption_html": "…", "thumb": { "file_name": "t790545a.jtn", "url": "/media/file/t790545a.jtn",
-  "width": 64, "height": 64 } | null }
+  "caption_html": "…", "no_squish": true,
+  "preview_html": "<p class=\"enc-intro\">…</p>", "sidebar_category": "GREAT WORKS OF LITERATURE",   // sidebar rows only
+  "thumb": { "file_name": "t790545a.jtn", "url": "/media/file/t790545a.jtn", "width": 64, "height": 64 } | null,
+  "picon": { "file_name": "t790545a.jsm", "url": "/media/file/t790545a.jsm", "width": 192, "height": 128 } | null,
+  "image": { "file_name": "t790545a.jpg", "url": "/media/file/t790545a.jpg", "width": 556, "height": 368 } | null }
 ```
+`thumb`, `picon` (gallery picture) and `image` (full size) are the target's first DATA file of that role; `image`
+falls back to the first child's `image` (audio sets, composites: the flag of a flag-and-anthem box). `no_squish` is
+present (true) when the target's DATA has `NoSquish="1"` (maps, charts). `preview_html` (the item's preview) and
+`sidebar_category` (`meta_json.sidebar_category`, content-schema §2) are set on `sidebar` rows only: what a sidebar
+teaser shows. With these a client lays out an article's
+media without one `/api/item` request per box. `appears` is set on reverse rows only: content-schema.md §3.1.
 
 `MediaInfo` (present once the media manifest exists):
 ```json
@@ -99,23 +109,32 @@ these: the originals are WMA/WMV/GSM WAV, which browsers cannot play.
 `GET /api/article/{id}[?edition=kids][&body=0][&html=0]` → an article body and everything around it:
 ```json
 { "ref_id": 761575094, "title": "Zebra", "title_html": "Zebra", "kind": "article", "editions": ["deluxe"],
-  "source": "content", "word_count": 2496, "paragraph_count": 32, "section_count": 12,
+  "source": "content", "layout": "encyclopedia", "word_count": 2496, "paragraph_count": 32, "section_count": 12,
   "body": [ …blocks, content-schema §8… ], "html": "<article class=\"enc-article\" …>",
   "outline": [ …article.outline_json… ],
   "sections": [ { "id": 1, "parent_id": null, "level": 1, "number": "I", "title": "INTRODUCTION", "type": 4 } ],
   "related": [ …REL tree, content-schema §4… ] | null, "related_editions": "DLX,STC,STE",
+  "alt_title_html": "Timor-Leste",   // the item's alternative title, when it has one (the body's title-ref carries it too)
   "media":  [ AssocItem… ],  // forward associations (placed media, sidebars, tables, further reading …)
   "tables": [ { "ref_id": 461577482, "kind": "facts", "title": "…", "json": {…}, "html": "…" } ] }
 ```
 `related` is the tree whose editions include `DLX` (or `KDC` with `edition=kids`). `body=0`/`html=0` drop
-those fields. `404` if the item has no body.
+those fields. `404` if the item has no body. `layout` is `article.layout` (`encyclopedia`, `kids`, `sidebar`: which page
+layout to use, content-schema §2/§8). `body` is schema 2 (content-schema §8): `media` blocks carry `col` (`text` |
+`margin`), `cluster` blocks group margin items into one box, a `kids` body ends with a `media-grid`, and `title-ref`
+nodes carry `title` and `alt` parts.
 
 `GET /api/place/{gid}` → `{ "place_id": 12, "links": [ { "ordinal", "kind", "kind_label", "ref_id", "title", "item_kind" } ] }`
 (P2MTBL place → content links from `content.sqlite`; `gid` as in `/atlas/place/{gid}` links; `404` when the place
-has no links). The atlas gazetteer has the place itself: `GET /api/atlas/place/{gid}` below.
+has no links). `kind_label` (p2mtbl.md): `article`, `flag-and-anthem`, `facts-and-figures`, `photo:<theme>`, `music`,
+`maptrek-stop` (13), `flag` (14), `anthem` (15), `about-map` (16). The atlas gazetteer has the place itself: `GET /api/atlas/place/{gid}` below.
 
 `GET /api/quiz/{quiz_id}[?edition=kids]` → `{ "quiz_id", "edition", "quiz_type", "lang", "quiz": {…} }`.
-`GET /api/interactive/{file_name}[?edition=kids]` → `{ "file_name", "edition", "package", "control_type", "title", "definition": {…} }`.
+`GET /api/interactive/{file_name}[?edition=kids]` → `{ "file_name", "edition", "package", "control_type", "title", "definition": {…},
+"refs": [ { "element": "image", "ref": "T627478A.swf", "resolution": "iaf-folder", "sha256": "…", "kind": "flash",
+"url": "/media/disc/deluxe/dswMedia/IAF/a/0018888f/T627478A.swf" } ] }`. `refs` are the files the `.iax` names
+(manifest `iax_ref`, media.md §2.7; omitted without a manifest); `url` is under `/media/disc/…` when the file lives in
+`dswMedia/`, else `/media/{sha256}/original`, `null` when unresolved.
 
 ## Dictionary, thesaurus, translation
 
@@ -124,14 +143,20 @@ has no links). The atlas gazetteer has the place itself: `GET /api/atlas/place/{
 `dictionary` (`DICTA`), `thesaurus` (`THESA`), `bilingual` (`ENG_FRA`, `FRA_ENG`, `ENG_GER`, `GER_ENG`,
 `ENG_ITA`, `ITA_ENG`, `ENG_SPA`, `SPA_ENG`); `DICT`, `THES`, `TRANSL` are the empty group records.
 
-`GET /api/dictionary/lookup?q=zebra[&dict=DICTA][&kind=bilingual][&prefix=1][&limit=50]` → headword and
-form lookup, case-insensitive. `prefix=1` is the word wheel (forms starting with `q`, sorted).
+`GET /api/dictionary/lookup?q=zebra[&dict=DICTA][&kind=bilingual][&prefix=1][&around=8][&limit=50]` → headword and
+form lookup, case-insensitive. `prefix=1`: forms starting with `q`, sorted. `around=N` is the word wheel as the
+reader shows it: **headwords only**, in wheel order (case and accents folded, hyphens and apostrophes ignored:
+"parietal lobe", "pari-mutuel", "paring"), `entries` = up to `limit` headwords from the position of `q` on (whether or
+not they start with it) and `before` = the `N` headwords before that position (in wheel order, nearest last).
+Homographs are separate entries with the same headword (the reader labels them "Paris (1)", "Paris (2)").
 ```json
 { "query": "zebra", "entries": [ { "dictionary": "DICTA", "kind": "dictionary", "ref_id": 1861707064,
   "headword": "zebra", "summary": "…", "form": "zebra", "form_kind": "headword",
   "url": "/api/dictionary/DICTA/1861707064" } ] }
 ```
 `form_kind`: `headword`, `inflection`, `runon`, `phrase`, `variant`.
+
+`GET /api/dictionary/entry/{id}` → the same entry without naming the dictionary (ref ids are unique across all 13).
 
 `GET /api/dictionary/{dict}/{id}` → `{ "dictionary", "kind", "ref_id", "headword", "variety", "summary",
 "body": {…}, "html": "…", "forms": [ {"form", "kind"} ], "audio": [ { "file_name": "….wav",
@@ -143,15 +168,24 @@ form lookup, case-insensitive. `prefix=1` is the word wheel (forms starting with
 `GET /api/timeline/meta` → `{ "categories": [ {"bit": 1, "name": "Science and Technology"} ], "regions": […],
 "count": 16465, "min_year": -…, "max_year": … }`.
 
-`GET /api/timeline?from=1700&to=1800[&category=Political History,4][&region=Europe][&q=revolution][&min_importance=3][&limit=500][&offset=0]`
+`GET /api/timeline?from=1700&to=1800[&category=Political History,4][&region=Europe][&q=revolution][&min_importance=3][&order=importance][&text=1][&limit=500][&offset=0]`
 → events overlapping `[from, to]` (years; negative = BC), ordered by start date. `category`/`region` take names
-or bits, comma-separated, matching any.
+or bits, comma-separated, matching any. `order=importance` sorts the most prominent first (`prominence` descending, i.e. importance 1 first; then by
+date): with `limit` it is the band of a timeline view, the window's N most important events in one request (`order=date` is
+the default; anything else is `400`). `text=1` adds each event's body text.
 ```json
 { "total": 120, "offset": 0, "events": [ TimelineEvent… ] }
 ```
 `TimelineEvent`: `{ "seq", "ref_id", "kind", "source_table", "title", "title_html",
 "start": {"year", "month", "day", "circa"}, "end": {…} | null, "span", "importance", "category_mask",
-"region_mask", "categories": ["…"], "regions": ["…"] }`.
+"region_mask", "categories": ["…"], "regions": ["…"], "has_article": true, "text": "…",
+"display": "period", "label": "WORLD WAR II", "date_text": "September 1, 1939 - September 2, 1945",
+"start_text": "September 1, 1939", "end_text": "September 2, 1945", "prominence": 5 }`. The display columns
+(timeline.md §3.2) say how the Timeline draws the event: `display` `point` (square and title), `period` (orange bar)
+or `essay` (striped bar); `label` the boxed bar label (periods and essays only; "HISTORICAL ESSAY: …"); `date_text`
+the pop-up date line ("4? BC - AD 29?"); `prominence` the title size rank (5 = largest, 0 unranked). `has_article`: the event
+item has a body (`/api/article/{ref_id}`; the 13,061 timeline topics have none). `text` (only with `text=1`): the
+plain text of that body, paragraphs joined by `\n`.
 
 ## MindMaze
 
@@ -170,9 +204,11 @@ or bits, comma-separated, matching any.
 "countries": [ {"id", "name"} ] }`.
 
 `GET /api/stats/indicator/{id}` → `{ "indicator": {…}, "values": [ {"country_id", "country", "rank", "value",
-"value_text", "decimals", "year", "note"} ] }` (ordered by rank).
+"value_text", "decimals", "year", "year_end", "period", "note"} ] }` (ordered by rank).
 `GET /api/stats/country/{id}` → `{ "country": {"id", "name"}, "values": [ {"indicator_id", "indicator",
-"rank", "value", "value_text", "decimals", "year", "note"} ] }`.
+"rank", "value", "value_text", "decimals", "year", "year_end", "period", "note"} ] }`.
+`period` is the year span the value covers, as the atlas prints it in parentheses: "1990-2005", or "1995" for one year
+(`year_end` = year + the SDB's C column; msworld.md).
 
 ## Search
 
@@ -180,7 +216,9 @@ or bits, comma-separated, matching any.
 
 `kind` is a category — `article`, `media`, `dictionary`, `timeline`, `map`, `quotation`, `sidebar`, `web`,
 `other` — or an exact item kind (`video`, `yearbook-article` …). All words must match; when nothing does the
-search falls back to any word (`mode: "any"`).
+search falls back to any word (`mode: "any"`). The **last word is a prefix** while it is being typed (unless the
+query ends with a space or a quote, or the word is one letter): "french rev" matches "revolution", and the French
+Revolution article comes first.
 ```json
 { "query": "zebra", "mode": "all", "total": 157, "offset": 0,
   "facets": { "kind": {"article": 88, "media": 24, …}, "edition": {"deluxe": 145, "kids": 13} },
@@ -189,19 +227,25 @@ search falls back to any word (`mode: "any"`).
               "title": "Zebra", "title_html": "Zebra", "score": 12.3,
               "url": "/item/761575094#p12",   // or "/dictionary/DICTA/1861707064"
               "para": { "kind": "p", "id": 12, "section_id": 4, "section_title": "Stripes", "anchor": "#p12" },
-              "snippet_html": "… black and white <b>stripes</b> …" } ] }
+              "snippet_html": "… black and white <b>stripes</b> …",
+              "media_type": "image", "thumb": { "file_name", "url", "width", "height" } | null } ] }
 ```
-`para` (deep link to the best-matching paragraph) is omitted when the title itself matches the query.
+`media_type` and `thumb` (the item's thumbnail) come from the content database (not for dictionary hits; omitted
+without one).
+`para` (deep link to the best-matching paragraph) is omitted when the title itself matches the query, or starts
+with it when the last word is a prefix.
 Facets ignore the `kind`/`edition` filters so they can label tabs.
 
 How the index works (`crates/encarta-search`): one tantivy index with an *item* document per searchable item
 (articles, media, maps, quotations, timeline events, sidebars, web links, every dictionary/thesaurus/bilingual
 entry; not index terms or home-screen pages) and a *paragraph* document per article paragraph. Items are ranked
 by BM25 over title (×4), PFX aliases (×2.5), section headings (×1.5) and text, plus a constant bonus when the
-whole query equals a title or whole-title alias, a phrase bonus, and a static prior (category weight × inbound
+whole query equals a title or whole-title alias (30), a smaller one (20) when a title starts with the query whose last
+word is a prefix, phrase bonuses (a phrase-prefix one on titles), and a static prior (category weight × inbound
 cross-references; Kids-only items ×0.6 so Premium wins unless `edition=kids`). The best paragraph per hit is a
 second query restricted to the hits, earlier paragraphs winning ties. Text is lower-cased, accent-folded and
-English-stemmed ("Zebras" finds "zebra").
+English-stemmed ("Zebras" finds "zebra"). A partly typed last word also matches the 24 most frequent indexed terms
+of each field that start with it (unstemmed, folded), each scored by BM25 with the field's boost.
 
 `GET /api/suggest?q=zeb[&limit=10][&edition=kids][&kind=article]` → autocomplete over Encarta's word wheel:
 ```json
@@ -225,13 +269,17 @@ of the 12 lists (`BILFA` etc. for the bilingual dictionaries). Candidates are ra
 
 ## Atlas gazetteer (`out/atlas/gazetteer.sqlite`)
 
-`GET /api/atlas/search?q=paris[&limit=20]` → place-name search with the gazetteer's own query
+`GET /api/atlas/search?q=paris[&body=moon][&limit=20]` → place-name search with the gazetteer's own query
 (`meta.search_sql`: exact name first, then importance, then FTS5 rank; atlas-output.md). Every word of `q` is a
-prefix term, all must match (`"par" "fr"`).
+prefix term, all must match (`"par" "fr"`). `body=earth|moon` keeps only places on that body (the ranking is the
+same; the filter looks up to 5,000 places down the list).
 ```json
 { "query": "paris", "places": [ { "entity": 25262, "name": "Paris", "feature_type": "Sovereign Capital Million+ City",
-  "context": "France", "lat": 48.86, "lon": 2.34 } ] }
+  "context": "France", "lat": 48.86, "lon": 2.34, "goto_km": 200.0, "bbox": [2.237, 48.816, 2.469, 48.903],
+  "body": "earth", "class_name": "PPL - sovereign capital million+ city" } ] }
 ```
+`goto_km` is the "go to" altitude, `bbox` the extent `[west, south, east, north]` (`null` when the place has none),
+`body` `earth` or `moon`, `class_name` the PDC class (`place_full`).
 
 `GET /api/atlas/place/{entity}` → `{ "place": { …place_full row: entity, name, abbr, body, lat, lon, west, south,
 east, north, goto_km, importance, feature_type, context, class_name, classes: […] … },
@@ -246,6 +294,12 @@ east, north, goto_km, importance, feature_type, context, class_name, classes: [�
   a smaller AVIF/WebP derivative when the request's `Accept` allows it (`Vary: Accept`); `original=1` disables
   this. Without a manifest, the original bytes are read from `--extracted`.
 - `GET /media/{sha256}/{variant}` — a content-addressed output (`variant` as in `MediaInfo.variants`).
+- `GET|POST /media/disc/{edition}/dswMedia/{*path}` — a file of the disc's `dswMedia/` folders (Flash interactives,
+  their players, skins and media; the SW\*, SWQUIZ and SWSHARED containers) **by path**, case-insensitive, preferring
+  `edition`'s copy (`kids` = the `EE/KIDS/…` containers). Flash movies load their siblings by relative URL, so the
+  IAF player runs from here: `…/dswMedia/shared/players/IAFPlayer/base.swf` with `filePath=…/dswMedia/IAF/a/<id>/<id>.iax`.
+  An `.iax` that is not in the tree (they live in `baggage/`) is resolved by its name. `POST` is answered like `GET`
+  (Flash's `loadMovie` with variables posts them). Original bytes, same headers as `/media/file`.
 
   Folders in `name` are ignored (`/media/file/loose_media/dsv/t027282a.wmv` = `t027282a.wmv`); case does not
   matter. With `--extracted`, names the manifest does not know are read from the unpacked disc through the
@@ -257,11 +311,20 @@ Both support `Range` (single ranges; an end past the file is clamped, so `bytes=
 extension: `.jtn`/`.jsm` are JPEG, `.gtn` GIF, `.dib` BMP …), `X-Content-Type-Options: nosniff` and
 `Cache-Control: public, max-age=31536000, immutable` (the bytes behind a URL never change).
 
+## Fonts
+
+`GET /fonts/{file}` — a font of `out/fonts/` (`.ttf`, `.otf`, `.woff`, `.woff2`, name case-insensitive), listed in
+`/api/meta` `fonts`; `Cache-Control: public, max-age=3600`. The web client declares the MS Reference faces it finds
+there (`REFSER*.TTF`, `REFSAN*.TTF`). `encarta-convert content` copies the disc's MS Reference Serif and Sans TTFs
+(8 files) to `out/fonts/` (content-schema §9).
+
 ## Static files
 
 - `/atlas/…` → `out/atlas/` (layout in [atlas-output.md](atlas-output.md)): PMTiles archives, sprites, glyphs,
   palettes, `miller/` … with the same `Range` rules as media. `GET /atlas/styles/<style>.json` is rewritten on the
-  fly: root-relative `sprite`, `glyphs`, source `url`s and `tiles` become absolute for the request's origin
+  fly: root-relative `sprite`, `glyphs`, source `url`s and `tiles` become absolute for the request's origin and keep
+  the path the style was fetched under (`/atlas/…` or `/out/atlas/…`: a style read through `/out/atlas/`, as the Vite
+  dev proxy forwards it, points at `/out/atlas/…`)
   (`X-Forwarded-Proto` + `X-Forwarded-Host`/`Host`, so `https://…` behind Traefik): `"/atlas/sprites/sprite"` →
   `"https://host/atlas/sprites/sprite"`, `"pmtiles:///atlas/vector/earth.pmtiles"` →
   `"pmtiles://https://host/atlas/vector/earth.pmtiles"`. A path under `/atlas/` that is not a file (e.g. the
@@ -276,3 +339,71 @@ extension: `.jtn`/`.jsm` are JPEG, `.gtn` GIF, `.dib` BMP …), `X-Content-Type-
   JSON `404`; unknown `/media/…` and `/out/…` are plain `404`s.
 - JSON, HTML, CSS, JS, SVG, XML and VTT responses are gzip/brotli-compressed when the client accepts it;
   ranges and binary media never are.
+
+## Games
+
+Module `crates/encarta-server/src/games.rs`; game rules and data notes in [games.md](games.md). `seed` makes a deal
+repeatable (any u64; the response echoes it); without it the server picks one.
+
+`GET /api/games` → what the games page can offer:
+```json
+{ "mindmaze": { "total": 8020, "categories": [ {"category", "label", "questions"} ] } | null,
+  "quiz": { "total": 1811, "types": [ {"type": "multichoice", "quizzes": 1113} ] } | null,
+  "geoquiz": { "levels": [ GeoLevel… ] } | null,   // null without the gazetteer
+  "charts": [ {"id": "city_climate", "title": "City Climate"}, {"id": "population", …} ],   // converted datasets only
+  "match_games": 64 }
+```
+
+`GET /api/games/mindmaze/game?[level=1][&categories=0,2][&count=30][&seed=][&exclude=1,2,…]` → `{ "level", "seed",
+"questions": [ Question… ] }`: `count` (1–200) random questions of one level (1–4) from the categories (all when
+absent); ids in `exclude` come last. `Question` is the `/api/mindmaze/question/{id}` shape; the correct answer also has
+`"para"` (the answer article's paragraph that answers the clue, games.md "Answer anchors"; absent when none matches)
+and every answer `"article_title"`.
+
+`GET /api/games/mindmaze/assets` → `{ "assets": { "titlescr.dib": MediaInfo, "knock.wav": MediaInfo, "intro.mid":
+MediaInfo, … } }`: every `MINDMAZE.EIT` file by lower-case name (`503` without the media manifest).
+
+`GET /api/games/quizzes[?edition=kids]` → the board games and their quiz groups:
+```json
+{ "total": 1811, "types": […], "ungrouped": [ 3, … ],
+  "games": [ { "file_name": "00174d68.iax", "edition": "kids", "title": "Animals Quiz", "iax_title": "Kids: Animals Quiz",
+               "groups": [ {"id": "1", "name": "Pets - General", "questions": [1188, …]} ],
+               "items": [ LaunchItem… ] } ] }
+```
+`LaunchItem` (the `interactive` items whose DATA `item` file is the `.iax`): `{ "ref_id", "title", "caption_html",
+"thumb": "/media/file/….gtn", "picon": "/media/file/….gsm", "in_deluxe", "in_kids", "subgroup" }`. Group `questions`
+keep only ids in the `quiz` table.
+
+`GET /api/games/quiz?ids=1,2,…[&edition=kids]` (1–200 ids; `400` otherwise) → `{ "quizzes": [ Quiz… ] }` in the order
+asked (unknown ids skipped):
+```json
+{ "id": 1, "edition": "deluxe", "type": "multichoice" | "textAnswer",
+  "question": QuizPart, "answers": [ QuizPart + {"id": "1"} ], "correct": "2" | null, "accept": ["sidewinder", …],
+  "reward": QuizPart, "credits": "…", "reward_credits": "…" }
+```
+`QuizPart` = `{ "html": "…", "image": MediaRef | null, "audio": MediaRef | null }`; `MediaRef` = `{ "file_name",
+"url", "width", "height", "media": MediaInfo | null }`, resolved in the quiz's own folder through the manifest's
+`iax_ref`. Multiple-choice quizzes have `correct` (an answer `id`); typed ones have `accept`.
+
+`GET /api/games/geoquiz` → `{ "levels": [ GeoLevel… ] }`; `GeoLevel` = `{ "level": 1, "name": "Navigator",
+"difficulty": "easy", "questions": 20, "points": [5,4,3,2,0], "per_type": [0,0,0], "type_mix": [0.7,0.2,0.1],
+"pool": [47, 20, 7] }` (`pool` = places per type). `503` without the gazetteer.
+
+`GET /api/games/geoquiz/{level}[?seed=][&count=20]` → a game (`404` for a level outside 1–4):
+```json
+{ "level": 4, "seed": 2, "settings": GeoLevel,
+  "places": [ { "entity": 143, "name": "Slovakia", "kind": 0, "kind_label": "country" | "place" | "continent",
+                "region": 47609, "region_name": "Eastern Europe", "feature_type", "context", "class_name",
+                "lat", "lon", "west", "south", "east", "north", "goto_km",
+                "choices": [ {"entity": 143, "name": "Slovakia"}, … 5 in all, in display order ] } ] }
+```
+
+`GET /api/games/chart/{city_climate|population}` → the converted dataset (shockwave.md §7) with
+`narration.media` = the narration's MediaInfo (MP3/Opus/AAC variants). `404` for other names or when not converted.
+
+`GET /api/games/match[?edition=kids]` → `{ "games": [ { "file_name", "edition", "title", "iax_title", "audience":
+"adult" | "kids", "items": [ LaunchItem… ] } ] }` (every `MatchGame` interactive, once per file).
+
+`GET /api/games/interactive/{file}[?edition=kids]` → `{ "file_name", "edition", "package", "control_type", "title",
+"iax_title", "definition": {…}, "media": { "<ref as written>": MediaInfo }, "items": [ LaunchItem… ] }`: like
+`/api/interactive/{name}` plus every file the `.iax` references, resolved (`iax_ref`). `404` when unknown.

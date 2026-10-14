@@ -3,7 +3,8 @@
 Status: **implemented** (plan item 1.7, Step 1 decoders): every file kind parses with zero
 unexplained bytes in all 7 tours, and the self-check values below are asserted by the integration
 tests (see §12). Items still marked **[VM]** need dynamic confirmation in the Windows XP reference VM.
-They are collected in §10.
+They are collected in §10. Items marked **(VM)** were measured there (black-box, see
+[vm-findings.md](../vm-findings.md)); those measurements override the static reading where they disagree.
 
 This document is the only input a converter or runtime implementer needs. It is written from
 hex inspection of the 7 tour containers, trial parsing of every file, public documentation of the
@@ -92,7 +93,16 @@ tick. The rest of this document describes what `do` does.
       Development override: if a folder `_3DVTContent\<id>` exists it sends `script.load=<folder>\load.3sc`
       instead, and files are read from disk.
 3. `load.3sc` runs (§3.7). At its end it fires `WORLDLOADED:...` (§4.1) and starts a 1-second alarm that fires
-   `USERLOCUPDATE`.
+   `USERLOCUPDATE`. **(VM)** `USERLOCUPDATE` arrives every 1.00–1.02 s while a tour is loaded.
+4. **(VM)** After `WORLDLOADED` the host sends the camera command of the tour's **default Tour Stop** (§4.3), then
+   shows the site map and the stop's text. In the Colosseum the scene appeared 2.65 s after the request and the
+   captions, site map and text 0.65 s later.
+
+**(VM) Replies.** The reply of `Do()` is not a reliable success signal: `script.load=…\load.3sc` returns `Failed`
+although the load then runs (`WORLDLOADED` 1.6–2.3 s later), `SCENE.DISPLAYFPS=1` returns `Failed` but switches the
+overlay on, and `SCENE.HALFREZDRIVING=0` returns `Failed` (the misspelling of step 2.2). `script.itsfileurl=<path>`
+returns `1` when the container is found and `-2` for a path containing spaces (they do not survive, §3.2), so the
+host must pass an 8.3 path. A camera command pair such as `CAMERA.MOVETO=…;CAMERA.PITCH=…` returns `Success;Success`.
 
 ### 2.3 The tick
 
@@ -109,8 +119,9 @@ The control has a tick routine (`FUN_1000d3c0`, entered through `FUN_1000cc80` o
    while the model streams in.
 
 The tick is driven by a 1 ms Windows timer (`SetTimer`). On XP the timer resolution and the render time
-limit the real rate, and movement is scaled by real elapsed time (§6.9). **[VM]** Measure the tick rate on the
-reference VM (`SCENE.DISPLAYFPS=1` overlays `HW <fps>` or `SW <fps>`).
+limit the real rate, and movement is scaled by real elapsed time (§6.9). **(VM)** `SCENE.DISPLAYFPS=1` shows
+`SW 3 65.83` standing still and `SW 3 47.08` while walking (Acropolis start, 616×420, software device): about
+64 ticks/s idle (the 15.6 ms system tick), fewer while the rasteriser is busy. The `3` is unexplained.
 
 ---
 
@@ -182,6 +193,8 @@ before their `)`. Handlers trim leading `=`/`(` and trailing `)`. Booleans accep
 some properties `ACTIVE`) for true, and `0`, `FALSE`, `OFF` for false. Numbers are parsed like C `atof`/`atoi`:
 leading whitespace is skipped, the longest numeric prefix is used, and a non-numeric value gives 0. `NAME?`
 queries return the current value. Floats are formatted `%f`, so `CAMERA.POS?` returns `x,y,z,yaw`.
+**(VM)** Spaces in values are not preserved: `script.itsfileurl=C:\Program Files\…` fails (`-2`) where the same
+file's 8.3 path works, so the text loses its spaces (or is cut at the first one) before the path is used.
 
 ### 3.3 `SCENE.` / `SCRIPT.` commands (`FUN_10041f80`)
 
@@ -280,6 +293,8 @@ once per second for the rest of the session.
 leading `(` or `=` and one trailing `)`. Because of case folding (§3.2), event text without `^` arrives
 **upper-cased**. Hotspot macros (`2D._Hn.MACRO.MOUSEUP=SCRIPT.EVENT(HotSpotClicked:hotSpotID=701504853)`)
 therefore deliver `HOTSPOTCLICKED:HOTSPOTID=701504853`. The host compares names case-insensitively.
+**(VM)** Confirmed: `HOTSPOTCLICKED:HOTSPOTID=…`, `USERLEVELCHANGE:QTSREFID=…` and
+`WORLDLOADED:XOFFSET=-1.00,…` arrive upper-cased; the control's own `FinishedInitializing` keeps its case.
 
 Event payload syntax (host side, §4): `NAME` or `NAME:key=value,key=value,…`.
 
@@ -374,7 +389,7 @@ The tour window classes are `C3DVirtToursWnd`, `CMax3DVTWnd`/`CMax3DVTView` (the
 | `FinishedInitializing` | Start-up handshake (§2.2). |
 | `WORLDLOADED:<pairs>` | Marks the world as loaded, enables the tour toolbar buttons, and configures the site map from the pairs below. |
 | `USERLOCUPDATE` | Posts itself a message, then queries `camera.pos?` and updates the "you are here" marker on the site map (§4.2). |
-| `HOTSPOTCLICKED:HOTSPOTID=<n>` | Looks `n` up in the tour's hotspot list and opens that hotspot's media in the tour's side pane (§4.3). If no entry matches, the debug text `NO CALLBACK: Hotspot to ` applies and nothing happens. |
+| `HOTSPOTCLICKED:HOTSPOTID=<n>` | Looks `n` up in the tour's hotspot list and **replaces the whole main view** with the media page of that hotspot's `destmedia` (§4.3); the Back button returns to the tour at the same pose (VM). If no entry matches, the debug text `NO CALLBACK: Hotspot to ` applies and nothing happens. |
 | `USERLEVELCHANGE:QTSREFID=<n>` | Changes the floor shown on the site map to `n` (the first pair's value). Fired by the enter macros of the walk-map hotspot cells at the top and bottom of stairs (§6.4). For example, Roman Forum uses `QTSRefID=701505289`. |
 | `STARTUP` | Ignored. |
 
@@ -422,20 +437,57 @@ Given the camera position `(x, z)` and yaw `θ` (degrees, from `camera.pos?`):
 5. The host also keeps a list of named map *locations*. The nearest location within 8 px (squared
    distance < 64) whose floor matches the current floor is highlighted.
 
-**[VM]** Confirm the sign conventions by walking in a known direction and watching the marker. The X87
-operand order was read from disassembly and can be ambiguous.
+**Site-map artwork and locations (data, confirmed by the captures).** Each Tour Stop's `children/site` record
+(group `vtour`, §4.3) is the map shown while at that stop:
+
+- Its image (`item_file` role `image`) is a baggage DIB of 344×194, two 172×194 halves: the plain map, and the
+  same map tinted (peach) as it appears inside the view wedge. The site-map window is 172×194 (screen (1,129)–(173,323)
+  in the VM captures): the host draws the left half, then the right half clipped to the wedge (apex at the marker,
+  `FIELDOFVIEW` wide, reaching the window edges), then the marker, a dark blue (0x103463) four-way arrow. The
+  location boxes are part of the artwork.
+- Its `children/hotspot` records are the named locations: `title`, `destmedia` = the stop, `x`, `y` = the top-left
+  pixel of the location's 11-px box in the window (box centre ≈ x+5, y+5). The loading screen tells the user to
+  "click the highlighted points in the map" to jump to a stop; a click on a box moves to its `destmedia` stop.
+- Single-floor tours give every stop the same site; multi-floor tours have one site per floor (Roman Forum 3,
+  Beaumaris 5, Colosseum 4, Azuchi 7). `USERLEVELCHANGE:QTSREFID=<n>` names a **stop id**, and the map switches to
+  that stop's site. Stops whose site does not list them (the "Level n" stops, Roman Forum Third Floor) have no box.
+- Check against the data: for every stop that has a box, the marker of steps 1–2 at the stop's `coord3d` position
+  lands within 13 px of the box centre (within 5 px for most), including the −90 frames of Persepolis and Azuchi
+  (within 9 px), which supports the rotation rule of step 1. At the Temple of Athena Nike stop the capture's marker
+  is drawn in a lighter blue (0x6371B5) with a dotted box: probably the highlighted-location look of step 5,
+  which is not specified further.
+
+**(VM)** Confirmed for an unrotated map: at the six Acropolis stops the marker sits exactly where step 2 puts it
+(site-map window origin at screen (1,129)), +Z points up the map, and the wedge (about 80° wide) points up the map
+for yaw 3.4° and 19°, down for 197° and 204°, down-right for 155°. **[VM]** The rotated maps (Persepolis, Azuchi,
+`SM_ROTATEFRAME=-90`) were not checked.
 
 ### 4.3 Hotspots and tour content
 
 The hotspot ids in the scripts (`701504853` …) are Encarta content ids. The host matches them against the
-tour's content record (XML, read via the catalog, plan item 1.2/1.3). That record has `children/hotspot`
-elements (each with `title` and `data/files/{image,audio,video,picon}`), plus `children/media`,
-`children/label` and `files/surround`. On a match the host shows the hotspot's media with its caption,
-rendered with `display=article_3dvit` (styles `title_3dvit`/`article_body_3dvit` in `mediaart.xsl`).
-Tour credits use `display=article_vtcredits`. Decoding the content record belongs to the catalog/AKC work.
-This spec only fixes the contract: **hotspot id → content id of a media item**.
+tour's content records: DATA records of group `virttour` in the Premium catalog (`DataDlx`), decoded by the
+content converter ([content-schema.md](../content-schema.md) §3). From the data, confirmed by Encarta's menus (VM):
 
-There are 119 hotspot macros across the 7 tours (§8).
+| Record | Field | Meaning |
+|---|---|---|
+| tour (`7015nnnnn`, `ticon="vtour"`, `type="3DVT"`) | `children/media` (in order) | the **Tour Stops**, in the order of the Tour Stops menu |
+| | `default/@refid` | the **default stop**: the one the host moves to after `WORLDLOADED` (§2.2 step 4) |
+| | `children/article` | the tour's article |
+| stop | `title` | the menu entry |
+| | `default/@coord3d` | the camera command string the host sends (`CAMERA.MOVETO=…;CAMERA.PITCH=…;`, disc coordinates; multi-floor tours first move far away, e.g. to `160,…` or `350,…`, then `WALKMAP.LOAD(…)`) |
+| | `children/hotspot` (in order) | the stop's hotspots: the submenu entries after "go to the stop" |
+| | `children/label`, `children/site`, `children/article` | caption ids, the site-map location, the stop text |
+| hotspot | `title` | the menu entry and caption text |
+| | `@destmedia` | **the content id the click opens** (a `media` item, or a `flash` interactive) |
+| | `@x`, `@y` | not used by the tour runtime |
+
+**(VM) On `HOTSPOTCLICKED`** the host replaces its whole main view with the media page of `destmedia`
+(e.g. hotspot 701504869 → `msencxml://content/681500403`: picture, caption and credit), not the tour's side pane.
+The Back button returns to the tour at the pose it had when the hotspot was clicked. Several destinations are
+`group="flash"` interactives (e.g. "Propylaea, Now and Then"), which need Flash (not installed in the VM).
+Tour credits use `display=article_vtcredits`.
+
+There are 119 hotspot macros across the 7 tours (§8), and every hotspot id they fire has a `destmedia`.
 
 ---
 
@@ -672,8 +724,19 @@ so it is not a texture-size switch. Its use (if any) belongs to the renderer ana
 - **To glTF (right-handed):** negate Z for positions and normals, and reverse each triangle's index order
   (so (0,i,i+1) becomes (0,i+1,i)). Apply the same Z negation to all other tour data in world coordinates
   (camera, walk maps, lights, anchor points, clouds), so the whole scene uses one convention.
-- **UVs need no change.** D3D and glTF both put (0,0) at the top-left of the image (for three.js, use the
-  glTF loader's `flipY=false` default). This corrects the "flip V" advice in atlas-and-3d.md §3.
+- **Texture surfaces are bottom-up, so V flips: `v' = 1 − v`.** The engine fills every texture surface with the
+  image's *bottom* row first: its own BMP decoder copies the file's rows in file order (a bottom-up BMP, which every
+  tour BMP is, none has a negative height), and the OLE picture path used for JPEG and GIF gives the same order (the
+  2D GIFs, stored upside down, show upright, §8.4.1). Texture coordinates address the surface with v = 0 at its first
+  row, so v = 0 samples the image's bottom row, for every format. glTF puts v = 0 at the image's top row, hence
+  `v' = 1 − v` (equivalently: keep the UVs and flip every image vertically). With `REPEAT` sampling this is exact
+  for tiled coordinates too. **(VM)** Confirmed by rendering all 40 Tour Stops at their camera commands and comparing
+  with the captures: without the flip the Acropolis Propylaea frieze and coffers, the Athena Nike pediment, the
+  landscape backdrop and the railing spikes (`fence4.bmp`, pointing down), the Persepolis gate frieze and Gate of
+  Xerxes bulls (`bullf12.jpg`), and the Abu Simbel Osiris statues showed the wrong part of their images; with it they
+  match (mean absolute pixel difference at the six Acropolis stops 19 → 9 grey levels; what remains is filtering, the
+  software rasteriser samples without mipmaps). Most other surfaces are tiling or symmetric textures, which is why the
+  error was not visible everywhere. *Correction:* earlier versions said UVs need no change.
 - Keep the mesh names as glTF node names, so that `3D.<name>.*` script commands can find them. Keep the
   `lod_` pairs as metadata.
 
@@ -729,7 +792,7 @@ For each tour, write one `.glb`:
 - [ ] Does faceColor (0.5 grey on most materials) darken the texture, or is it ignored?
 - [ ] The LOD switch distance (13.0 XZ units expected): the distance at which acr/rom/per columns visibly change to `lod_` meshes.
 - [ ] GIF textures with transparency: shown opaque? (No tour GIF texture was checked for a transparent index.)
-- [ ] Display pixel format (555 vs 565) used by the reference VM driver, which decides the key test for the few near-magenta texels.
+- [x] Display pixel format of the reference VM: RGB 565 (VM: caption colour 0xC0D1E3 reads back with green 0xD3, which needs 6-bit green). [ ] Which key test the engine uses on that surface for the few near-magenta texels.
 - [ ] per's untextured `roooof.jpg` surface: what does it look like (white, or material colour)?
 - [ ] How the missing `grip.cur` behaves (cursor 6 falls back to the default cursor?).
 
@@ -761,8 +824,7 @@ below are pointers into that binary. Prototype parser: `analysis/decompiled/tour
   This is the same convention as the 4th value of `CAMERA.POS=x,y,z,yaw` and of `2D._x.ANCHORPOINT=x,y,z,yaw`.
 * **Pitch** φ is in degrees, and positive means looking **up** (`PITCH?` returns the elevation angle of the look
   vector). It is applied as a rotation of the look vector about the horizontal axis perpendicular to the yaw
-  direction. **[VM]** Confirm the sign: Acropolis starts at φ = 21 while standing at the bottom of the
-  Propylaea steps, so it should look up.
+  direction. **(VM)** Confirmed: pitch +30 shows sky, −30 the ground.
 * The camera stores an eye point E and a target point T (the look direction is T − E, normally unit length).
   Turning rotates T about E around +Y. Moving translates E and T together.
 
@@ -993,8 +1055,10 @@ Movement happens only in XZ. The per-step pipeline is in §6.9. Collision is res
 Simplified, parity-oriented model for the web runtime: a circle of radius R moving in XZ against the union of
 all wall segments of the active map; slide along walls; push out of segments and endpoints; reject moves whose
 end point (extended by R in the move direction) leaves the union of collision-cell polygons.
-**[VM]** Walk straight into a wall, along a wall at 30°, into a convex corner and into an open edge with no wall
-(e.g. the Acropolis cliff edge). Confirm sliding, and whether the open edge blocks.
+**(VM)** Walking at yaw 93.4 into the Propylaea side wall, X stopped at the wall (constant to 6 decimals) while Z
+kept changing at 0.0124 units/s ≈ 0.2·sin 3.4°: the move is **projected onto the wall and the tangential part
+kept**, with no bounce or jitter; at a corner the camera stopped completely. **[VM]** Open edges with no wall
+segment (does leaving the collision coverage block the move?) were not tested.
 
 ### 6.8 Ground following and gravity
 
@@ -1012,16 +1076,18 @@ After the move, FUN_10026320 runs **every tick, even when not moving**:
   so stepping down is instant too.
 * **Consequence:** `SCENE.GRAVITY` matters only in hardware mode. Encarta's Colosseum script has a `LARGE`
   macro that calls `SCENE.TRYHARDWARE`.
-  **[VM]** Record which mode Encarta runs in (normal window, maximised/"large" view) and whether stepping off a
-  ledge falls or snaps. The unused function FUN_10024940 implements the same ground rule without the
-  mode switch.
+  **(VM)** `SCENE.TRYHARDWARE` and `Try3DHardware` return `Failed` in the VM (no D3D device), so Encarta runs the
+  software device and **snap mode**: an eye raised 0.6 units with `CAMERA.POS` is back at ground + HEIGHT on the
+  next sample, and walking up the Roman Forum stair follows the steps with no lag. Gravity mode (hardware) could
+  not be observed. A port implements snap mode, which is what every user without a 3D card saw. The unused
+  function FUN_10024940 implements the same ground rule without the mode switch.
 
 ### 6.9 Input, camera step and timing
 
 **Tick.** The control calls `SetTimer(hwnd, 0, 1 ms)`. Every `WM_TIMER` runs the tick (FUN_1000cc80 →
 FUN_1000d3c0), which reads the DirectInput keyboard, runs alarms and the step (FUN_10012280), and redraws.
 Windows XP limits timers to about 10 ms, and in practice the tick rate is bounded by the 15.6 ms system tick and
-the render time. **[VM]** Measure the tick rate (e.g. watch CAMERA.POS? with a held key).
+the render time. **(VM)** About 64 ticks/s idle and 47 while walking (§2.3).
 `WM_LBUTTONDOWN`/`UP` also run one step immediately.
 
 **Time factor.** The time since the previous step is measured with QueryPerformanceCounter (or timeGetTime as
@@ -1036,7 +1102,7 @@ nominal step per tick and at most five.
 |---|---|
 | ↑ / ↓ (DIK_UP 0xC8 / DIK_DOWN 0xD0) | move input m = +1 / −1 |
 | ← / → (DIK_LEFT 0xCB / DIK_RIGHT 0xCD) | turn input t = −1 / +1 |
-| Page Up / Page Down (0xC9 / 0xD1) | pitch +PITCHSPEED / −PITCHSPEED degrees, **not time-scaled**, refused if \|pitch\| would reach 45° |
+| Page Up / Page Down (0xC9 / 0xD1) | pitch +PITCHSPEED / −PITCHSPEED degrees, **not time-scaled**, refused if \|pitch\| would reach 45° (VM: from −40 at 6°/tick: −34, −28, …, 44, then stops; from 44.998962 down it stops at −39.001038) |
 | Home (0xC7) | executes `CAMERA.PITCH=0` (level the view) |
 | Left-drag in the 3D view | m and t from the mouse offset (below); keys override if also held |
 | (two further flags for vertical "fly" ±0.01 per tick, ×20 with a modifier, exist but no key sets them in this build) | — |
@@ -1051,7 +1117,19 @@ nominal step per tick and at most five.
   No acceleration or inertia: velocity is applied immediately and stops when the input is released.
 * Worked numbers (Acropolis, `SPEED.FLY=.002`, `SPEED.TURN=.5`, assuming ~64 ticks/s, so k ≈ 1.56):
   walking 0.2 units/s (HEIGHT is 0.1 units, so this is about 2 eye-heights per second); turning
-  100°/s; pitch 6° per tick (≈ 380°/s, reaching ±45° almost at once). **[VM]** Confirm these rates.
+  100°/s; pitch 6° per tick (≈ 380°/s, reaching ±45° almost at once).
+  **(VM)** Confirmed. **Walking is 100 × `SPEED.FLY` units/s and turning 200 × `SPEED.TURN` °/s, independent of the
+  tick rate**: Acropolis 0.203 units/s and 101–103 °/s at ~47 ticks/s, Roman Forum (`.0035`) 0.347 units/s; the
+  right arrow increases yaw and turning does not move the eye. The `k ≥ 1` floor never applied (dt was always
+  > 10 ms). Pitch steps exactly `PITCHSPEED` per tick. The 45° test is made on the pitch *derived from the look
+  vector*: from 21.000036, four 6° steps reached 44.998962 (float error), so a step that lands on 45 exactly in
+  real arithmetic may be accepted. Home sets pitch 0.
+  **Not specified:** how that value is derived. Rotating a float32 look vector by 6° (stored as a unit vector, or as
+  eye and target points at the Acropolis start position) and taking `asin` or `atan2` of it gives 45.000036 ± 1·10⁻⁵,
+  not 44.998962; the observed −0.001074° is a hundred times larger. Only this one step was logged to six decimals
+  (the other sequences in vm-findings.md are given as integers), so the mechanism cannot be fitted from the data.
+  A VM log of `PITCH?` after each tick from several starts near the limit (e.g. 39.0, 39.0001, 39.001, 39.01, and
+  the same at other yaws) would pin it down.
 * While the mouse is pressed on an active 2D item, no camera step happens (it is a HUD interaction).
 
 **Cursors** (when `SCENE.CURSORS=TRUE`): over a 2D hotspot item the cursor is index 5 (`vthot360.cur`).
@@ -1075,13 +1153,13 @@ does not set the property:
 | `CAMERA.COLLISIONRADIUS` | wall clearance R | 0.05 |
 | `CAMERA.CLIMBRATE` | rise per tick on climbable walls (none ship) | 0.01 |
 | `SCENE.GRAVITY` | fall acceleration per tick² (hardware mode only) | 0.01 |
-| `CAMERA.FOV` | field of view in degrees (axis **[VM]**) | not determined; every tour sets 80 |
+| `CAMERA.FOV` | **horizontal** field of view in degrees (VM: a 5° yaw step moves the image centre 32 px, f = 366 px, so FOV 80 spans the 616-px width; vertical 59.7° at 420 px) | not determined; every tour sets 80 |
 | `CAMERA.NEAR` | near clip | set by every tour (0.01–0.09) |
 | `CAMERA.FAR` | far clip. **Negative means automatic: 2 × the largest extent of the scene's bounding box** (FUN_10065570). Every tour except Azuchi sets −1 | — |
 | `CAMERA.POS=x,y,z,yaw` | sets the eye, keeps the look vector, then sets yaw and reapplies the current pitch. Y is overridden on the next tick by ground following if over ground | eye (0, 0.2, −3), looking +Z |
 | `CAMERA.PITCH=deg` | sets pitch absolutely | 0 |
 | `CAMERA.MOVE=dx,dy,dz` | relative move, no collision | — |
-| `CAMERA.MOVETO=x,y,z,yaw` | absolute set (as POS), then hotspot check | — |
+| `CAMERA.MOVETO=x,y,z,yaw` | absolute set (as POS), then hotspot check. **(VM) quirk:** a POS/MOVETO to the X and Z the eye already has makes `POS?`/`PITCH?` report `-1.#IND00` (NaN) until `CAMERA.HOMEPOV` (which also resets HEIGHT to 0.05): the look vector degenerates. This is probably why the multi-floor stop commands first move far away. A port need not reproduce the NaN | — |
 | `CAMERA.HOME` / `HOMEPOV` / `HOMEOMNI` | restore the home pose (POV home = the defaults above) | — |
 | `CAMERA.POV` / `OMNI`, `VIEWMODE?` | walk mode (0) vs orbit mode (1); tours never use orbit mode | 0 |
 | `SCENE.HALFRESDRIVING=1` | render at half resolution while a movement key or drag is active | 0 |
@@ -1097,7 +1175,7 @@ With **walk map off** there is no collision, no ground following, no hotspots an
 horizontal, and Y never changes (there is no fly up/down binding).
 
 Note: the host (ENCARTA.EXE) sends `SCENE.HALFREZDRIVING=1/0` (spelled with Z). The control's keyword is
-`HALFRESDRIVING`, so **the host's command does not match and has no effect**. **[VM]** Confirm the reply is "Failed".
+`HALFRESDRIVING`, so **the host's command does not match and has no effect**. **(VM)** The reply is `Failed`.
 
 ### 6.11 Per-tour values (from each `load.3sc`)
 
@@ -1122,21 +1200,26 @@ as in §6.5, PVS as in §6.6.
 
 ### 6.13 VM confirmation checklist (this section)
 
-- [ ] Tick rate of the control inside Encarta (ticks/s while walking); verify `k = clamp(100·dt,1,5)` by timing a walk over a known distance (`CAMERA.POS?` before/after).
-- [ ] Walk speed, turn speed and pitch rate for one tour against the numbers in §6.9.
-- [ ] Pitch sign (positive = up) and the 45° limit; Home levels the view.
-- [ ] Software (snap) vs hardware (gravity) mode in Encarta, normal and maximised; stepping off a ledge.
-- [ ] Wall sliding, corner behaviour, open edges (does leaving collision coverage block the move?).
+- [x] Tick rate of the control inside Encarta (ticks/s while walking); verify `k = clamp(100·dt,1,5)` by timing a walk over a known distance (`CAMERA.POS?` before/after). (VM: ~64 idle, ~47 walking; speeds time-scaled.)
+- [x] Walk speed, turn speed and pitch rate for one tour against the numbers in §6.9.
+- [x] Pitch sign (positive = up) and the 45° limit; Home levels the view.
+- [x] Software (snap) vs hardware (gravity) mode in Encarta: software/snap (no D3D device in the VM). Hardware gravity and the maximised view remain unobserved.
+- [x] Wall sliding and corners. [ ] Open edges (does leaving collision coverage block the move?).
 - [ ] Hotspot enter/exit order when a macro switches walk maps (floor transitions at Beaumaris/Colosseum stairs; `UserLevelChange` events reaching the host).
 - [ ] PVS: the scene looks the same with `WALKMAP.DELETE.VISIBILITY` (no missing or extra faces at a few viewpoints).
 - [ ] Trailing junk in hotspot strings causes no visible effect.
-- [ ] `SCENE.HALFREZDRIVING` from the host returns "Failed"; whether half-res driving is ever active.
+- [x] `SCENE.HALFREZDRIVING` from the host returns "Failed". [ ] Whether half-res driving is ever active.
 - [ ] Cursor zones (30×60 px centre box, diagonals) and when `grip.cur` appears; right-button behaviour (WM_RBUTTONDOWN/UP are handled, effect not analysed).
-- [ ] Default FOV (and whether FOV is horizontal or vertical) and whether NEAR/FAR reach the projection.
+- [x] FOV is horizontal (VM). [ ] The default FOV, and whether NEAR/FAR reach the projection.
 
 ### 6.14 Remaining unknowns
 
 * The exact edge rule of the scan-line rasteriser (which grid cells on a polygon boundary are included). Only relevant within one grid unit.
+  One VM data point: the Colosseum stop "Seating Areas" stands on a thin slanted seating step whose left edge crosses
+  the eye's grid row 0.44 units left of the eye's (truncated) grid column; the original puts the eye on that step
+  (read-back Y = its plane + HEIGHT), whereas "the grid point lies inside the quantised polygon" puts it on the
+  neighbouring step 0.044 units lower. The rule "a column belongs to a polygon when the polygon's span on that row
+  overlaps the column" reproduces it and all 46 other Tour Stop read-backs.
 * The second gravity-mode flag (0x1011c958): the decompilation shows no direct writes to it. It is probably part of the hardware/fullscreen device state.
 * The meaning of the collision cell's `level` float and of the ignored u32 list in version-2 collision cells (no v2 files ship).
 * Orbit (OMNI) mode details: never used by the tours, so not specified.
@@ -1357,8 +1440,10 @@ else:
   Abu Simbel 57/59 (`_TORCH36` is stored as `"_TORCH36 "` with a trailing space, and `_TORCH39` is
   missing), Azuchi 4/7.
 
-**[VM]** Confirm the flicker visually: torch-lit walls change brightness in discrete steps
-roughly every 0.1 s / 0.4 s, and Persepolis and Colosseum torches do *not* flicker.
+**(VM)** At the Athena Parthenos stop the lit strip seen through the Parthenon doorway changes brightness between
+frames sampled 105 ms apart, in jumps with no smooth transitions, while the rest of the view is static: step
+changes about every 0.1 s. **[VM]** The 0.4 s cadence, and that Persepolis and Colosseum torches do *not* flicker,
+were not checked.
 
 ---
 
@@ -1448,9 +1533,11 @@ for each chunk of 500 consecutive points [i, j) with j = min(i+500, n−1):
 
 * One point is one texel. There are no splats, no lighting (the point colours are final), and the
   sprite's vertices are full-bright (§7.4.1).
-* Row 0 is the top row of the bitmap. The placeholder UVs put v = 0 at the bottom of the quad, so
-  cloud y = 0 lands at the bottom and the statue stands upright **[VM: confirm upright and not
-  mirrored]**.
+* Row 0 is the surface's first row, which is where v = 0 samples (§5.6: surfaces are bottom-up). The
+  placeholder UVs put v = 0 at the bottom of the quad, so cloud y = 0 lands at the bottom and the statue
+  stands upright. **(VM)** Confirmed: the Bronze Athena (stop "Bronze Athena", seen from yaw 19°) and the
+  Athena seen through the Propylaea are upright, not mirrored and show the same side as the captures
+  (shield and spear on the viewer's right), with `phi = atan2(dz, dx) + offset` and the column formula above.
 * Because only the linear index is range-checked, a point whose `col` runs past the left or right
   edge wraps into the neighbouring row. A faithful port can reproduce that, but clipping per row is
   visually equivalent for the shipped data (all clouds fit their bitmaps).
@@ -1668,14 +1755,16 @@ From `crosscheck.py`, comparing the names case-insensitively:
 
 ### 7.10 VM confirmation checklist (this area)
 
-- [ ] Torch flicker is a step change of brightness every 0.1 s / 0.4 s (Acropolis), within the
-      0.4–1.0 range of the base colour.
+- [x] Torch flicker is a step change of brightness about every 0.1 s (Acropolis). [ ] The 0.4 s cadence and
+      the 0.4–1.0 range of the base colour.
 - [ ] Persepolis and Colosseum torches do not flicker, and Abu Simbel `_TORCH36`/`_TORCH39` stay steady.
 - [ ] Lit colour × texture: modulate with no overbright. Abu Simbel's ambient 0,0,0 makes unlit
       areas black.
-- [ ] Cloud statues: upright, not mirrored. Turning around a caryatid shows the correct side. The
-      image updates in steps of about 5° in HW mode and continuously in SW mode. The image freezes
-      beyond about 18 units.
+- [x] Cloud statues: upright, not mirrored, correct side (Bronze Athena and the Propylaea view of it, §7.3.3).
+      The Persepolis Gate of Xerxes bulls, once listed here as showing "another side", are not clouds: they are
+      textured meshes (`bullf12.jpg` …) and were wrong because of the V flip (§5.6).
+      [ ] The image updates in steps of about 5° in HW mode and continuously in SW mode. The image freezes
+      beyond about 18 units. Turning around a caryatid (none is in view at a Tour Stop).
 - [ ] Sprite billboards rotate with camera yaw only. Check the sign by walking around a torch.
 - [ ] Flame filmstrips: about 14 fps with random phase per torch.
 - [ ] LOD pop at 13 units horizontal distance (Acropolis `newcolumn*`, Roman Forum `colbaseouter*`).
@@ -1913,6 +2002,15 @@ spinner (cadence subject to how the alarm/`;` parsing works, see §3). After
 `2D.LOAD(lh.32d)` replaces the elements, `_0` no longer exists and the alarm's `NEXTFRAME` fails
 silently until `SCENE.ALARM.LOADALARM.DELETE`.
 
+**(VM) Loading screen.** Encarta's control is **616×420** (at screen (289,195), with a 1-px black frame drawn by the
+host on a (49,69,107) background); the `begin.32d` rectangles are laid out for that size. While a tour loads the
+control shows a black screen with the ring icon labelled "LOADING" on the left and the framed "How to navigate a 3D
+Ancient Site" text on the right, for about **2 s** (Colosseum: 0.67 s to 2.65 s after the request; harness loads
+took 1.6–2.3 s). The per-tour spread is not explained by the data: against the texture count (one texture
+per tick, §5.4), the `.x` size, the texture pixels or bytes, the seven single loads (0.1 s resolution, disk mode,
+not Encarta's ITS mode) leave residuals of 0.2–0.3 s for any one factor and still 0.19 s (Persepolis) for a
+three-parameter fit, so a port keeps one minimum of about 2 s. **[VM]** The spinner cadence was not resolved (the load is too short to sample 16 frames).
+
 #### 8.4.4 2D sky backdrop (unused by the tours)
 
 If an element is flagged `SKY`, it is drawn first, before the 3D scene, as a full-viewport quad
@@ -1992,7 +2090,11 @@ the normal navigation cursor logic applies (slots 0–4, §6).
   matching area and disappear on leaving it. Labels are therefore hidden right after load, until the first
   move enters a hotspot cell (loading a walk map does not run the enter macro of the cell under the camera,
   §6.5). The host's "Show Labels and Hot Spots" menu item toggles the whole layer with `2D.ON`/`2D.OFF`.
-  **[VM]** Confirm: no labels until the first step; labels change as you walk; the menu hides and shows all of them.
+  **(VM)** No captions at the Acropolis start; captions after choosing a stop. But the host sends the default
+  stop's command after loading (§2.2 step 4): where that command first moves far away and back (Colosseum, and
+  every multi-floor tour), the start cell is entered again and its captions show at once. So "no labels until
+  the first step" holds only where the default stop is a plain MOVETO to the start pose (Acropolis, Persepolis,
+  Abu Simbel). **[VM]** The "Show Labels and Hot Spots" toggle was not tested.
 * Block macros: `.3sc` lines between `BEGIN(NAME);` and `END(NAME);` are concatenated with no
   separator (tabs removed, comment lines skipped), so statements without a trailing `;` run into
   the next one. In Acropolis `HIDEALL` this garbles `3d.n_00water.WATER=0` + `3d.Box23a.VISIBLE=0`
@@ -2025,16 +2127,16 @@ lh.32d 17386, 10104, 11631, 11250, 10093, 21994, 15037 B). Prototype:
 
 ### 8.8 Needs dynamic confirmation in the XP VM
 
-- [ ] Captions appear and disappear per walk-map hotspot cell (§8.6), none show before the first step, and the host's "Show Labels and Hot Spots" toggles all of them.
+- [x] Captions appear per walk-map hotspot cell and, on load, only when the default stop command re-enters a cell (§8.6). [ ] The host's "Show Labels and Hot Spots" toggle.
 - [ ] Caption widths for a sample of real titles (screenshot pixel widths) to confirm the System-font measuring bug and the 0.26/82 correction; capture System font character widths (GetCharWidth32 for 0x20–0xFF on the VM's window DC).
-- [ ] Outline thickness and exact pixel look of `_L` captions; hotspot box colours (black fill, 0xC0D1E3 text/frame, white on hover), icon at x 0–20.
+- [x] Hotspot box colours (VM: black fill, text and frame 0xC0D1E3, read back as (198,211,231) on the RGB 565 screen; white on hover; hand cursor). [ ] Outline thickness and exact pixel look of `_L` captions; icon at x 0–20.
 - [ ] Icon strip orientation on screen (upright TV/globe/clapper) and which triple each hotspot shows.
 - [ ] Cone test: captions disappear at ≈45.7° off-axis (FOV 80) and show through walls; no distance fade.
 - [ ] Captions partly off the viewport edge disappear entirely; images are clipped.
 - [ ] Can a hidden (out-of-cone) hotspot still be clicked at its last position?
 - [ ] MOUSEUP fires only when released over the same hotspot; cursor `vthot360.cur` over hotspots and during a press.
-- [ ] Event string case received by the host (`HOTSPOTCLICKED:HOTSPOTID=…` upper-cased?).
-- [ ] Loading spinner cadence (16 frames, 0.1 s) and loading-screen layout (positions relative to the control size; what control size Encarta uses).
+- [x] Event string case received by the host: upper-cased (VM).
+- [x] Loading-screen layout and control size (616×420, VM). [ ] Loading spinner cadence (16 frames, 0.1 s).
 
 
 
@@ -2081,26 +2183,47 @@ Hotspot macros are `MACRO.MOUSEUP=SCRIPT.EVENT(HotSpotClicked:…)` statements, 
 ## 10. Checklist for the XP reference VM
 
 Ordered by how much parity depends on each item. Every section also has a detailed list (§5.9, §6.13,
-§7.10, §8.8).
+§7.10, §8.8). Resolved items were measured in the reference VM ([vm-findings.md](../vm-findings.md)) and are
+folded into the sections named; they are marked (VM) there.
 
-- [ ] **Label/hotspot visibility.** No captions before the first step. Captions appear and disappear as walk-map hotspot cells are entered and left. "Show Labels and Hot Spots" (`2D.ON/OFF`) toggles all of them (§8.6, §6.5).
-- [ ] **Tick rate and speeds.** Ticks per second while walking. Verify `k = clamp(100·dt, 1, 5)` by timing a walk and a 360° turn in one tour, using `CAMERA.POS?` before and after (§6.9).
-- [ ] **Gravity vs snap.** Find out which device Encarta uses (normal and maximised view), and whether stepping off a ledge falls or snaps (§6.8). This decides whether `SCENE.GRAVITY` matters.
-- [ ] **Pitch.** Positive means looking up, the limit is ±45°, PgUp/PgDn step size, Home levels the view (§6.1, §6.9).
-- [ ] **Collision.** Sliding along walls, convex corners, and an open edge without a wall (does it block?) (§6.7).
-- [ ] **Floors.** Stair transitions switch walk maps seamlessly. The `UserLevelChange` events change the site-map floor (§6.4, §4).
-- [ ] **Flicker.** Step changes every 0.1 s / 0.4 s within 0.4–1.0 of the base colour. Persepolis and Colosseum torches are steady (§7.2.6).
-- [ ] **Lighting.** Texture × vertex colour (modulate, no overbright). Whether faceColor darkens the texture. Abu Simbel's ambient 0 gives black unlit areas (§7.2.3, §5.4).
-- [ ] **Point-cloud statues.** Upright, not mirrored, update steps, freeze beyond about 18 units (§7.3).
-- [ ] **Sprite billboards.** Yaw-only rotation and its sign. Flame filmstrip about 14 fps, random phase (§7.4).
-- [ ] **Captions.** Pixel widths (System-font measuring bug), outline look, hotspot box colours, icon orientation, the ≈45.7° cone, and captions crossing the viewport edge disappearing (§8.4, §8.5).
-- [ ] **Hotspot click.** Which media opens in the side pane. Whether the event arrives upper-cased (§4.3, §3.6).
-- [ ] **Site map.** Marker position and heading signs, including the rotated maps of Persepolis and Azuchi (§4.2).
+Resolved:
+
+- [x] **Tick rate and speeds.** ~64 ticks/s idle, ~47 walking; walk 100 × `SPEED.FLY` units/s and turn 200 × `SPEED.TURN` °/s whatever the tick rate (§2.3, §6.9).
+- [x] **Pitch.** Positive looks up; exactly `PITCHSPEED` per tick; a step reaching |pitch| ≥ 45 is refused (tested on the look-vector value); Home sets 0 (§6.1, §6.9).
+- [x] **Gravity vs snap.** Software device and snap mode in Encarta on a machine without D3D (§6.8).
+- [x] **Collision.** Wall sliding by projection, full stop in corners (§6.7).
+- [x] **FOV.** Horizontal: FOV 80 spans the 616-px control width (§6.10).
+- [x] **Hotspot click.** `destmedia` of the hotspot record replaces the main view; Back returns at the same pose; events arrive upper-cased (§4, §4.3, §3.6).
+- [x] **Tour content record.** Stops, default stop, `coord3d`, hotspots and `destmedia` (§4.3).
+- [x] **Label visibility on load.** Captions appear on load only when the host's default-stop command re-enters a hotspot cell (§8.6).
+- [x] **Captions colours.** Black fill, 0xC0D1E3 text and frame, white on hover, hand cursor (§8.5.3).
+- [x] **Site map** for an unrotated map (§4.2).
+- [x] **Loading.** Control size 616×420, loading-screen layout, about 2 s on screen (§8.4.3).
+- [x] **Leftovers.** `SCENE.HALFREZDRIVING` returns `Failed`; `Do()` replies (§2.2); spaces in values are lost (§3.2); the MOVETO-to-the-same-position NaN quirk (§6.10).
+- [x] **Flicker** steps about every 0.1 s (Acropolis) (§7.2.6).
+- [x] **Texture orientation.** Surfaces are bottom-up for every image format: `v' = 1 − v` in glTF (§5.6), checked at all 40 Tour Stops.
+- [x] **Cloud statue orientation.** Upright, not mirrored, correct side (§7.3.3).
+
+Still open:
+
+- [ ] **Floors.** Ordering of enter macros that switch walk maps (§6.4, §6.5); the `UserLevelChange` events and smooth stairs were confirmed.
+- [ ] **Flicker.** The 0.4 s cadence; Persepolis and Colosseum torches steady (§7.2.6).
+- [ ] **Lighting.** Whether faceColor darkens the texture; Abu Simbel's ambient 0 (§7.2.3, §5.4).
+- [ ] **Point-cloud statues.** Update steps, freeze beyond about 18 units (§7.3). Orientation is resolved (§7.3.3).
+- [ ] **Sprite billboards.** Yaw-only rotation and its sign. Flame filmstrip fps (about 14 expected) and random phase (§7.4).
+- [ ] **Captions.** Pixel widths (System-font measuring bug), `_L` outline look, icon orientation, the ≈45.7° cone, edge clipping, the "Show Labels and Hot Spots" toggle (§8.4, §8.5, §8.6).
+- [ ] **Site map** with the rotated frames of Persepolis and Azuchi (§4.2). The data supports the −90 rule (each stop's
+  marker lands on its location box in the map art, within 9 px), but it was not seen in the VM.
+- [ ] **Pitch limit arithmetic.** How the look-vector value tested against 45° is computed: from 21.000036 the fourth
+  6° step was accepted at 44.998962, an error of −0.001074° that float32 look-vector arithmetic does not produce (§6.9).
 - [ ] **LOD.** The pop at 13 XZ units (Acropolis `newcolumn*`) (§7.6).
-- [ ] **PVS.** The scene looks identical with `WALKMAP.DELETE.VISIBILITY` at a few viewpoints (§6.6).
+- [ ] **Water ripple** on `n_00water` (§7.4.6).
+- [ ] **PVS.** The scene looks identical with `WALKMAP.DELETE.VISIBILITY` at a few viewpoints; the always-drawn sprite list (§6.6).
 - [ ] **Back-face culling.** Single-sided walls seen from behind (§5.9).
-- [ ] **Loading.** Spinner cadence, loading-screen layout, and the control size used by Encarta (§3.5, §8.4.3).
-- [ ] **Leftovers.** `grip.cur` is missing; `SCENE.HALFREZDRIVING` returns `Failed`; junk in hotspot strings has no visible effect (§2.2, §6.2).
+- [ ] **Cursor zones** (30×60 px centre box, diagonals) and when `grip.cur` would appear (§6.9).
+- [ ] **Gravity mode** on a hardware device, and the maximised (MaxView) window (§6.8).
+- [ ] **Open edges** with no wall segment (§6.7).
+- [ ] **Loading spinner cadence** (§8.4.3). Junk in hotspot strings (§6.2). ITS-mode loading in the harness.
 
 How to capture: a debugger breakpoint on the control's `Do` method (`FUN_1000d0f0`) and on the event fire
 (`FUN_1000e720`) logs every command and event. Alternatively, the control's own `STARTMACROLOG` writes
@@ -2110,13 +2233,9 @@ How to capture: a debugger breakpoint on the control's `Do` method (`FUN_1000d0f
 
 ## 11. Remaining unknowns
 
-- **Tour content record** (needs the catalog/AKC work, plan items 1.2/1.3). The exact XML schema of the
-  `children/hotspot`, `children/media`, `children/label` and `files/surround` elements. Which hotspot id maps to which
-  media, and the caption text. Where the site-map bitmap and its named locations (host list at `+0xcd4`, with
-  floor numbers matching `QTSRefID`) come from. Until then, the converter can export the hotspot ids and
-  floor ids, and the runtime can resolve them against the converted catalog.
+- *Resolved:* the site-map artwork and its named locations come from the stops' `children/site` records (§4.2).
 - Per-vertex normal source and face-centre definition used by lighting and sprite pivots (§7.11).
-- The default FOV, whether FOV is horizontal or vertical, and the projection scale K used by caption anchoring (§6.13, §8.5.2).
+- The control's default FOV when a script sets none (every tour sets 80, which is horizontal, §6.10).
 - The exact edge rule of the walk-map grid rasteriser (only matters within one grid unit) (§6.14).
 - The second gravity-mode flag and the vertical-fly flags (§6.14).
 - `3D.LODDISTANCE` (picking-only per §7, additive switch distance per §5). It is 0 on the disc, so there is no visible effect.

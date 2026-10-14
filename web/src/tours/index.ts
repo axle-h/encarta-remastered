@@ -5,5 +5,6 @@
 export { mountTour, type MountOptions, type TourEvent, type TourHandle } from "./runtime";
 export { TourControl, type ControlOptions } from "./control";
 export type { ViewOptions } from "./render/view";
-export { parseWorldLoaded, siteMapMarker, type SiteMapConfig } from "./sitemap";
+export { currentPose, decodePose, defaultStop, encodePose, hotspotDestination, poseCommand, type Pose } from "./host";
+export { SITE_MAP_WINDOW, drawSiteMap, markerMoved, parseWorldLoaded, siteMapMarker, wedgeAngles, type SiteMapConfig, type SiteMapMarker } from "./sitemap";
 export type { TourScene } from "./types";

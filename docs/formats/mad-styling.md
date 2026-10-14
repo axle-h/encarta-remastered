@@ -67,6 +67,12 @@ it compares with the rule ranges (§4.2) and with the band table.
 value, the prototype uses **`P/m ≈ 4 × viewport height`**. With it, the label density of each altitude band looks
 like an atlas page (§14). This value is a **hypothesis**.
 
+**VM result (V1, V2; docs/vm-findings.md):** `alt` is in km and the scale is exactly inversely proportional to
+it. **`P/m ≈ 3135` (±0.5 %) for Encarta's maximised 812 × 518 map pane**, and it scales with the pane
+**height**: `P/m ≈ 6.05 × pane height` (720 × 477 gives 2891). The scale on screen is the **true ground scale at
+the view centre**, isotropic, the same at the equator, 48° N, 60° S and 65° N: there is no 1/cos φ term. The
+4 × height working value (2400) was 1.31× too small. The converter now compiles the styles for P/m 3135.
+
 ### 2.2 Altitude → Web Mercator zoom
 
 For a MapLibre map with 512-px tiles, take the ground resolution at the view centre (latitude φ):
@@ -81,11 +87,13 @@ The rule tables then become zoom ranges: a rule with altitude range `[smin, smax
 `minzoom = zoom(smax)` and `maxzoom = zoom(smin)`. Use φ = 0 to build one style for the whole world. The
 cos φ term makes Encarta's per-altitude rules switch at slightly different Mercator zooms at other latitudes. A
 style compiled at φ = 0 is accurate near the equator and switches about `log2(1/cos φ)` zoom levels later at
-latitude φ (0.5 zoom at 45°). The converter can use `zoom(a, 45°)` instead if mid-latitudes matter more.
+latitude φ (0.5 zoom at 45°). Since Encarta's scale is the true ground scale (VM, §2.1), a client applies
+`zoom(a, φ)` itself: it shifts the style's zoom ranges by `log2(cos φ · (P/m)_pane / (P/m)_style)`
+(the client in `web/src/atlas` does this per view; docs/atlas-client.md).
 
-Worked example (with the working value `P/m = 2400`, a 600-px-high view): `a = 150 km` (the Atlas Default
-minimum) gives 0.156 km/px and zoom 8.97 at the equator. `a = 4000 km` gives 4.17 km/px and zoom 4.23.
-`a = 50,000 km` gives zoom 0.58.
+Worked example (VM value `P/m = 3135`, the 812 × 518 pane): `a = 150 km` (the Atlas Default minimum) gives
+0.120 km/px and zoom 9.35 at the equator. `a = 4000 km` gives 3.19 km/px and zoom 4.62. `a = 50,000 km` gives
+zoom 0.97. (With the old working value 2400 these were 8.97, 4.23 and 0.58.)
 
 ### 2.3 Map URLs (for VM captures)
 
@@ -288,6 +296,20 @@ A pen sets a pixel only if `over` has the bit of that pixel's current class. Wit
 - pen 370 (graticule, `over = 0,1,0,1,0`) draws over land and label-class pixels. Read literally, that means the
   graticule is hidden over water. This is surprising, so VM shot V7 checks it.
 
+**Correction (atlas converter, from the data and VM V3/V7).** The two bullets above use the round-1 labels of
+the HYPSO `kind` values, which mad.md §5.4 corrects: in HYPSO, **water has `kind 0`** (class 1, bit 2) and
+**land, ice included, `kind 2`** (class 4, bit 1). With that, the rules use **pairs of pens with complementary
+masks**: "Sovereign - boundary" in style 0 at 19,999–2,000 km is pen 358 (light `D4 C8 CE`, bit 2: over water and
+lakes), pen 442 (orange `F0 9A 30`, bits 1, 4, 16: over land) and pen 20 (black dashes, every class); the
+graticule is pen 370 (blue `74 92 BC`, bits 2, 8: over water) and pen 369 (grey `89 89 89`, bits 1, 4: over land).
+So the graticule is drawn over the sea, in blue (V7 shows it), and grey over land (V3); boundaries are an orange
+ribbon over land and a light one where they cross water. Lake fills (`b14 = 1`, class 2) and water raster pixels
+take the same bit, as do land fills (`b14 = 0`, class 4) and land pixels. Other rasters differ: the climate
+rasters and TECTONIC use `kind 4` (class 0, bit 16) everywhere, SATELLITE `kind 0` water and mostly `kind 2` land
+(measured by the converter, `encarta:surface`). The converter implements the line masks this way
+(docs/atlas-output.md "Draw-over masks"); area pens' masks (e.g. Admin1 fills `1,0,1,1,1`, not over water) are not
+applied yet.
+
 This answers the CMT `kind` question of mad.md §9.7: it is the pixel class of the raster colour.
 
 **MapLibre.** Most of this follows from the draw order. Where a pen must not cover the sea (boundaries) or must
@@ -377,6 +399,10 @@ Validated over all 11,808 GeoObjGrid0409 records. These are the only control cha
   others to search or show them in brackets (VM V9);
 - U+0005 (GeoLabel byte 12) does not occur in the shipped names.
 
+How "does not fit" is decided is not specified. The converter uses the abbreviation for an **area** label when
+the name, at 0.6 em per character, is wider than the area at the current zoom (**hypothesis**). Over Europe at
+3,000 km that gives "Neth." and "Lux.", matching "NETH." in V3 and V11; V9 did not show U+0002/U+0004 cases.
+
 ### 7.4 Placement and priority
 
 What is established (code and renders):
@@ -410,7 +436,9 @@ symbol and label appear together.
   Kong. The shield class's rule gives the shield bitmap (pen w7) and the number's label style (w5). **Open:**
   where a road's shield type and number come from. GeoObj `cls` is 0 everywhere and no name contains a shield
   code. The GeoStreet* tables in MOBB's table list (§17) are not on this disc. Shields may therefore not occur in
-  the shipped world data (VM V8).
+  the shipped world data (VM V8). **VM result (V8):** they do occur: New York at 30 km shows interstate shields
+  (95, 495, 278), the Netherlands A-road and E-road shields (A4, A2 …, E30, E25). Where the type and number come
+  from is still open (not converted).
 
 ## 9. Draw order and the drawing passes
 
@@ -559,6 +587,14 @@ resolution is about 2 px. Drawing the GeoGem band-4 sovereign boundaries with th
 Chile. So the vertical extent is about ±89° at level 1. Whether `y0` is exactly `H/2` must be checked at level 3
 (open). The Miller viewpoint's constants (−0.625 = −1.25/2, 3.125 at 0x6360735c) fit the same formula.
 
+**VM result (V12):** the "Flat Map View" is Miller cylindrical: meridians every 15° at 29.52 px (1.968 px/deg),
+parallels at `y = 471 − 112.76 · 1.25 · ln tan(45° + 0.4 φ)` (112.76 = 1.968 · 180/π), within 1 px at 15°…75° N.
+Opened from the globe at 20,000 km, the whole map fills the 518-px pane height (pole to pole is
+`2 · 2.3034 · 112.76 = 519` px), so the flat view does not keep that altitude; whether it keeps closer ones
+(`P/(5·m·a)`, §2.1) was not measured. The flat view's minimum altitudes (250 km for HYPSO) are far below what
+the Miller levels resolve (level 3 is 0.083 px/km), so Encarta must draw close flat views from the globe raster
+(**hypothesis**; the client does that, docs/atlas-client.md).
+
 ## 13. Smaller items
 
 ### 13.1 LegendGrid triplets
@@ -685,13 +721,34 @@ opened with the URL form of §2.3. If `alt` turns out not to be km, adjust the n
 | V13 | `lat=12.50/long=-69.95/alt=5.00/style=0` (Aruba is not in MinRect) and `lat=45.44/long=12.33/alt=5.00/style=0` (Venice is in MinRect) | the MinRect zoom limit |
 | V14 | a map with `style=12` (Statistical) and a statistic chosen | how statistical classes `Z - (STAT) …` are coloured |
 
+**Results** (shots taken; details in docs/vm-findings.md, fixtures in `fixtures/atlas/`):
+- V1/V2: `alt` is km; `P/m ≈ 3135` for the 812 × 518 pane, `≈ 6.05 × pane height`; true ground scale, no 1/cos φ (§2.1).
+- V3/V7: graticule over land and over the ocean (the pen pairs of §5.2); capitals with square symbols; country
+  names red upper case.
+- V4: `style=n` is a menu number: 0 Comprehensive, 1 Political, 2 Tectonic, 3 Physical Features, 5 Earth By Day,
+  6 Earth At Night, 7 Ecoregions, 8/9 Temperature Jan/Jul, 10/11 Precipitation Jan/Jul, 12 Population Density,
+  13 Time Zones, 14 Statistical, 15 Climate, 16 Precipitation (Annual), 17 Outline, 19 Geography Quiz, 20 Moon,
+  24 Languages, 25 Religions; 4, 18, 21–23, 26 are looks outside the menu; 27–33 fall back to style 0. The political
+  map with country fills is menu 1 (MapStyle 10), not V5's guess.
+- V8: road shields exist (§8). V9: "WIEN" in a box; U+0002/U+0004 not seen. V10: style 17 is Outline.
+- V11: **hovering highlights nothing** (only the cursor changes), nor does hovering the click menu. A left click
+  opens a menu of everything under the point ("Limoges, Auvergne, Western Europe, West Central Europe, Massif
+  central, Loire Basin, France"), each with "Map / Read Article". So `b15/b16/w17` (§4.1) is at most a selection
+  highlight. The menu includes classes the style neither draws nor labels (statistical regions, `b2 = 16, b3 = 0,
+  b4 = 1`) but no time zone, although Political gives the time zones the same bytes (open).
+- V12: the flat view is Miller (§12.3). V13: zoom is limited over open ocean and Aruba, Venice zooms to street
+  level (MinRect, §13.2). V14: statistical classes pale peach to dark red-brown, water pale grey-blue, no data
+  light grey.
+
 ## 17. Open points and provenance
 
 Open, in priority order:
-1. `P` and `m` (§2.1). This gates exact zoom matching (V1, V2).
+1. ~~`P` and `m` (§2.1)~~: measured, `P/m ≈ 6.05 × pane height` (V1, V2).
 2. GeoLabel bytes 5–12, 16, 25, 26 (sizes, case, spacing, halo switch). Then PDCAltitude `b2` high nibble,
    `b4` high nibble, and when `w6` is used.
-3. The road shield source (§8).
+3. The road shield source (§8); V8 shows shields exist.
+3a. Why V11's click menu leaves out time zones that Political marks interactive like the statistical regions it
+    lists (§16).
 4. Whether areas are always drawn before lines (§9). The exact label candidate positions (§7.4).
 5. The Miller `y0` at levels 2–3 (§12.3), and the flat-view scale relation (§2.1).
 6. The meaning of MapStyle colour 1/2 and flags (§3); LegendGrid (§13.1).

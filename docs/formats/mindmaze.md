@@ -36,6 +36,11 @@ Parsing from offset 0 to the end yields exactly **8,020 records** and lands exac
   The reader keeps entities and markup verbatim; resolution belongs to the shared text-rendering layer.
 
 ### The `location` word (interpretation unconfirmed)
+**Games finding:** it is a paragraph number in an *earlier* revision of each answer article: 348 of 764 checked
+questions still match exactly and the rest drift steadily, so the server anchors links by matching clue and answer
+words and uses `location` only to break ties. `MINDMAZE.EIT/Area0–8.lst` are one article list per category
+(91–98 % of each category's correct-answer articles, plus related ones); unused.
+
 - It is the same for all four answers of a record in all 8,020 records. 7,255 records have 1; the others range 2 … 258.
 - Questions whose correct answer points into a long survey article have large values: three questions about China
   (Xia and Shang dynasties, Hua Guofeng, the 1979 Vietnam incursion) all point to article 761573055 with 163, 163, 255, 258,

@@ -15,6 +15,15 @@ export const FEATURES: { to: string; label: string }[] = [
   { to: "/media", label: "Media Gallery" },
   { to: "/tours", label: "3D Virtual Tours" },
   { to: "/search", label: "Search" },
+  { to: "/games/geoquiz", label: "Geography Quiz" },
+  { to: "/games", label: "Games & Quizzes" },
+];
+
+/** Rebuilt from data on the disc that Encarta 2009 itself no longer opens (docs/games.md). */
+export const EXTRAS: { to: string; label: string }[] = [
+  { to: "/games/mindmaze", label: "MindMaze" },
+  { to: "/games/city-climate", label: "City Climate" },
+  { to: "/games/population", label: "Population Chart" },
 ];
 
 function FeaturesMenu() {
@@ -45,6 +54,16 @@ function FeaturesMenu() {
       {open && (
         <ul className="features-menu" role="menu">
           {FEATURES.map((f) => (
+            <li key={f.to} role="none">
+              <Link role="menuitem" to={f.to}>
+                {f.label}
+              </Link>
+            </li>
+          ))}
+          <li role="separator" className="features-menu-group" style={{ margin: "6px 0 2px", padding: "4px 16px 0", borderTop: "1px solid #e1e0da", color: "#6d6d6d", fontSize: 11 }}>
+            Extras
+          </li>
+          {EXTRAS.map((f) => (
             <li key={f.to} role="none">
               <Link role="menuitem" to={f.to}>
                 {f.label}

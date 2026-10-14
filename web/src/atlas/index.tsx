@@ -8,5 +8,6 @@
 export { Atlas } from "./Atlas";
 export type { AtlasLink, AtlasPlace, AtlasProps, AtlasViewState } from "./Atlas";
 export type { Projection } from "./style";
+export type { HitPlace } from "./hit";
 export { MENU_STYLES, MENU_STYLE } from "./catalog";
 export { altitudeForZoom, zoomForAltitude, parseMsEncartaUrl } from "./zoom";

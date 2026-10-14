@@ -25,8 +25,6 @@ export interface HitPlace {
 }
 
 const COUNTRY = /^(Sovereign|CountryRegion)/;
-/** Plain graticule lines (named "15°" …): not places; the named circles and the dateline stay. */
-const GRID = /^Graticule - [\d.]+ deg/;
 const WORLD = /^(World|Ocean|Continent)$/;
 
 function kindOf(f: QueriedFeature): HitPlace["kind"] {
@@ -41,13 +39,14 @@ function areaRank(className: string): number {
   return 0;
 }
 
-/** Hit-only classes that Encarta's menu leaves out unless the style draws them (V11: no time zones in Political). */
-export const THEME_ONLY = /^(Time zone|Daylight time bag|Statistical region - no|LANG - |REL - |ECO|CLIM)/;
-
+/**
+ * The hit list: named features under the cursor whose class is in the style's hit list at this
+ * zoom (`allowed`, from layers.ts `hitRanges`: PDCAltitudeGrid's interactive flag), once per entity.
+ */
 export function rankHits(
   features: readonly QueriedFeature[],
   iconOf?: (f: QueriedFeature) => string | undefined,
-  drawn?: ReadonlySet<number>,
+  allowed?: ReadonlySet<number>,
 ): HitPlace[] {
   const seen = new Map<number, HitPlace>();
   const order: HitPlace[] = [];
@@ -56,8 +55,7 @@ export function rankHits(
     const entity = typeof f.id === "number" ? f.id : Number(f.id);
     const name = typeof p.name === "string" ? p.name : "";
     if (!Number.isFinite(entity) || !name || p.anonymous === true || p.anonymous === 1) continue;
-    if (p.class_name === "International organization" || GRID.test(String(p.class_name ?? ""))) continue;
-    if (drawn && typeof p.class_name === "string" && THEME_ONLY.test(p.class_name) && !(typeof p.class === "number" && drawn.has(p.class))) continue;
+    if (allowed && !(typeof p.class === "number" && allowed.has(p.class))) continue;
     const kind = kindOf(f);
     const prev = seen.get(entity);
     if (prev) {

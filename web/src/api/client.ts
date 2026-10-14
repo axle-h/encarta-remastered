@@ -8,6 +8,7 @@ import type {
   DictLookupResponse,
   DictionaryInfo,
   Edition,
+  Interactive,
   Item,
   PlaceResponse,
   SearchResponse,
@@ -97,11 +98,15 @@ export const api = {
   spell: (p: { q: string; edition?: Edition }, s?: AbortSignal) => getJson<SpellResponse>(`/api/spell${query(p)}`, s),
   dictionaries: (s?: AbortSignal) => getJson<{ dictionaries: DictionaryInfo[] }>(`/api/dictionary`, s),
   dictLookup: (
-    p: { q: string; dict?: string; kind?: string; prefix?: boolean; limit?: number },
+    p: { q: string; dict?: string; kind?: string; prefix?: boolean; limit?: number; around?: number },
     s?: AbortSignal,
   ) => getJson<DictLookupResponse>(`/api/dictionary/lookup${query(p)}`, s),
   dictEntry: (dict: string, id: number | string, s?: AbortSignal) =>
     getJson<DictEntry>(`/api/dictionary/${encodeURIComponent(dict)}/${id}`, s),
+  /** An entry by ref id alone (ids are unique across the dictionaries). */
+  dictEntryById: (id: number | string, s?: AbortSignal) => getJson<DictEntry>(`/api/dictionary/entry/${id}`, s),
+  interactive: (fileName: string, edition?: Edition, s?: AbortSignal) =>
+    getJson<Interactive>(`/api/interactive/${encodeURIComponent(fileName)}${query({ edition: ed(edition) })}`, s),
   timelineMeta: (s?: AbortSignal) => getJson<TimelineMeta>(`/api/timeline/meta`, s),
   timeline: (
     p: {
@@ -113,6 +118,8 @@ export const api = {
       min_importance?: number;
       limit?: number;
       offset?: number;
+      order?: "date" | "importance";
+      text?: boolean;
     },
     s?: AbortSignal,
   ) => getJson<TimelineResponse>(`/api/timeline${query(p)}`, s),

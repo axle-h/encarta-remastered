@@ -19,7 +19,10 @@ npm test                     # vitest: synthetic unit and component tests (+ tou
 npm run build                # tsc --noEmit + vite build → web/dist
 ```
 
-`ENCARTA_SERVER=http://host:port npm run dev` points the proxy at another server. `ENCARTA_DEV_OUT=1`
+`ENCARTA_SERVER=http://host:port npm run dev` points the proxy at another server (`/api`, `/media`, `/fonts`,
+`/healthz`, `/out`). Ruffle (`@ruffle-rs/ruffle` 0.7.1, pinned) is self-hosted: a small Vite plugin serves the
+package's files at `/ruffle/` in dev and copies them (wasm cores and licences included, no source maps) to
+`dist/ruffle/` in the build; nothing loads it until an interactive is opened. `ENCARTA_DEV_OUT=1`
 makes Vite serve `../out` under `/out/` itself, so the tours dev page works without the Rust server.
 For production, the server serves the build: `encarta-server --static web/dist`. Client routes are real
 paths, so the server's `index.html` fallback is required. `/tours.html` (the tour dev page) is also
@@ -36,10 +39,10 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
 | `/item/{id}/media` | Show All Media for an article |
 | `/search?q=&kind=&offset=` | full search with category tabs (facets), did-you-mean and spelling fallback |
 | `/media?q=&type=` | Media Gallery: search restricted to multimedia, by item kind |
-| `/dictionary`, `/thesaurus`, `/translate?pair=`, `/dictionary/{dict}/{id}` | Encarta Dictionaries |
+| `/dictionary`, `/thesaurus`, `/translate?pair=`, `/dictionary/{dict}/{id}`, `/dictionary/entry/{id}` | Encarta Dictionaries (`entry` = any dictionary, by id) |
 | `/timeline?from=&to=&category=&region=&q=` | Timeline |
 | `/tours`, `/tours/{tourId}` | 3D Virtual Tours list and a tour (`mountTour`) |
-| `/atlas`, `/atlas/place/{gid}`, `/atlas?url=msencarta://…`, `/atlas?lat=&lon=&alt=` | World Atlas (`src/atlas/`), or a placeholder listing the place's links when that module is missing |
+| `/atlas`, `/atlas/place/{gid}`, `/atlas?url=msencarta://…`, `/atlas?lat=&lon=&alt=[&style=][&view=flat]` | World Atlas (`src/atlas/`), or a placeholder listing the place's links when that module is missing. The map writes its view back into the URL (`onViewChange`, debounced, replace); only URL changes it did not write remount it |
 | `/kids`, `/kids/browse/{id}`, `/kids/item/{id}`, `/kids/search`, `/kids/dictionary` | Encarta Kids |
 | any route `?media={id}` | the media viewer overlay on top of that page (Back closes it) |
 
@@ -47,12 +50,12 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
 
 | path | role |
 |---|---|
-| `src/main.tsx`, `src/app/` | router, chrome (`Shell`: Back/Forward/Home orbs, Features menu, search), history button state |
+| `src/main.tsx`, `src/app/` | router, chrome (`Shell`: Back/Forward/Home orbs, Features menu, search), history button state, disc fonts (`fonts.ts`) |
 | `src/api/` | typed client for api.md (`client.ts`, in-memory cache, AbortSignal), `useApi` hook, response types |
 | `src/content/` | the content model of content-schema §8 (`model.ts`), React inline renderer (`Inlines.tsx`), link mapping |
 | `src/article/` | article reader: body renderer, layout rules (`layout.ts`), media column boxes, side panels, find bar, pronunciation |
-| `src/media/` | media viewer overlay, players (audio with captions, audio sets, video with WebVTT, MIDI), variant selection (`pick.ts`), MIDI reader and synth |
-| `src/pages/` | home, browse, item dispatcher, search, media gallery, dictionary, timeline (+ pure layout/date helpers), tours, atlas placeholder |
+| `src/media/` | media viewer overlay, players (audio with captions, audio sets, video with WebVTT, MIDI), variant selection (`pick.ts`), MIDI reader and synth, Ruffle loader (`ruffle.ts`) and Flash interactives (`FlashPlayer.tsx`) |
+| `src/pages/` | home, browse, item dispatcher, search, media gallery, dictionary (+ `wordWheel.ts`), timeline (+ pure layout/date helpers), tours, atlas placeholder |
 | `src/kids/` | Kids shell, home screen and article view |
 | `src/styles/` | CSS by area; tokens in `base.css` |
 | `src/tours/` | the tour runtime (Step 6), unchanged |
@@ -65,17 +68,37 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
   its text. Cross-reference prefixes ("See also ", "(" … ")") follow content-schema §2. Other `*_html`
   fragments (captions, tables, dictionary entries, search snippets) are inserted as HTML; clicks on their
   internal links are routed client-side (`components/Html.tsx`).
-- **Placement of `media` blocks** (`article/layout.ts`): facts tables (`table`/`factsandfigures` groups
-  whose data table is `facts`) go to the right column as **Quick Facts**; `tableinline` tables are drawn
-  in the text; everything else goes to the **left media column**. Consecutive media blocks become one box
-  with a row of small thumbnails, as in the VM's Zebra capture (Grévy's zebra + mountain zebra sound).
-  Boxes float into a 248 px gutter beside the paragraph they precede.
-- **Media strip and viewer sequence**: placed body media in reading order, then other shown associations
-  not placed in the body (not maps, weblinks, further reading, contributors). The viewer steps through it.
+- **Page layout** comes from `article.layout` (api.md, content-schema §2): `ArticlePage` → `ArticleByLayout` picks the
+  encyclopedia view, the Kids view (`kids/KidsArticle.tsx`) or the sidebar view, on `/item/…` and `/kids/item/…` alike.
+- **Placement is the converter's** (schema 2, content-schema §2 rules): the client draws a `media` block in the
+  **text column** (`col: "text"`: the `image`, else the picon, scaled to at most 432 px) or as a **margin box**
+  (`col: "margin"`, picon) floated into the 248 px gutter beside the paragraph it precedes, and a `cluster` as one
+  margin box showing one member at a time with a row of thumbnails (VM, Zebra: Grévy's Zebra + Mountain Zebra; Plains
+  Zebra + Zebra Quick Facts). The client does no grouping or width guessing of its own. By group (`article/layout.ts`
+  `placementOf`): a lone facts table (`table`/`factsandfigures` whose data table is `facts`) goes only to the right
+  column as **Quick Facts** (a facts table inside a cluster is also a member of the box, as in the VM); `tableinline`
+  tables are drawn in the text, reaching 90 px into the margin as in the VM (East Timor); `sidebar` items are
+  **sidebar teasers** in the text column (`enc-sidebar-teaser`: blue "Sidebars" bar, the category from the
+  association's `sidebar_category`, the title, its `preview_html`, "open sidebar").
+- **Kids layout**: orange title and "Look at Pictures", no section numbers and no (−)/(+) toggles, and the stored
+  `media-grid` as the two-column tile grid on the left (in its `sequence` order; the viewer steps through the tiles
+  first). Inline tables stay in the text.
+- **Sidebar layout** (VM, Customs of Russia): a purple header band ("Appears In", the "sidebar" banner, the title),
+  then the body with the sidebar's media cluster first (thumbnails above the picture) and the text beside it; no
+  media strip, outline tools or right column. "Appears In" lists the item's `appears_in` (one `/api/item` request,
+  on demand).
+- **Media boxes need no item requests**: picture (`picon`, or `image` for wide boxes), sizes, kind and title come
+  from the article's association rows (api.md `AssocItem`); only audio boxes fetch their item, for the playable
+  files. Kids media tiles do the same.
+- **Media strip and viewer sequence**: placed body media in reading order (`mediaInOrder` walks cluster and grid
+  members in place), then other shown associations not placed in the body (not maps, weblinks, further reading,
+  contributors). The viewer steps through it.
 - **Right column**: World Atlas (first `maps` association; links to `/atlas/place/{geocode}`), Quick
   Facts (a facts table's first five entries, or a Facts and Figures table's entries marked `quick`;
   "More" opens the whole table), Related Articles (the REL tree; headings expand), Further Reading.
   Contributors (`expert` group) print under the text.
+- **"X or Y" titles**: a `title-ref` is drawn from its `title` and `alt` parts as two bold spans joined by a plain
+  " or " (VM: "**East Timor** or **Timor-Leste**, …"); with an empty `alt` it is the title alone.
 - **Outline view** collapses every section to its heading and child headings; the introduction shows a
   three-line preview with "more…". Each section's (−)/(+) toggles it. A deep link `#p{n}` expands the
   sections on its path, scrolls and flashes the paragraph.
@@ -93,25 +116,40 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
   music files, e.g. national anthems) plays through our own SMF reader and a small WebAudio synth
   (oscillator voice per GM family, noise drums); the plan's soundfont synth would replace the voices.
 - **Video**: WebM (VP9) then MP4, the converter's poster, WebVTT captions as a `<track>`.
-- **Dictionary**: the word wheel is a prefix lookup; the entry is the first exact match or an explicit
-  id. Grammar codes (`vi`, `n` …) are spelled out as the VM shows them. Links inside an entry open the
+- **Dictionary**: the word wheel is `lookup?around=8`: the eight headwords before the typed text, then the following
+  ones, in the reader's order (hyphens ignored), homographs numbered "Paris (1)", "Paris (2)" (`wordWheel.ts`), as in
+  the VM's `dict-paris` capture; the entry is the first exact match or an explicit id. An entry whose guessed
+  dictionary is wrong is fetched again by id alone (`/api/dictionary/entry/{id}`). Grammar codes (`vi`, `n` …) are spelled out as the VM shows them. Links inside an entry open the
   same dictionary, or for bilingual translations the reverse pair (`ENG_FRA` → `FRA_ENG`); a link whose id
   is not on the disc falls back to looking up its text.
-- **Timeline**: the band shows the most important events of the window (the importance floor rises until
-  at most 400 remain), in lanes so labels do not overlap; the list below pages through every event in date
-  order. Selecting one shows its text (the event item's article body). Eras jump between windows of very
+- **Timeline**: the band shows the 400 most prominent events of the window (one `order=importance` request), in
+  lanes so labels do not overlap; the list below pages through every event in date order. Both ask for `text=1`, so
+  selecting an event shows its text without fetching its article. The band is black like the VM's view and draws
+  each event by its `display` (timeline.md §3.2): a point is a category-coloured square and the title, sized by
+  `prominence` (importance 1 largest); a period an orange bar from start to end with its boxed upper-case `label`; an
+  essay a two-tone striped bar with "HISTORICAL ESSAY: …". Dates (band tooltips, list, pop-up) are the converter's
+  `date_text` ("4? BC - AD 29?"). Eras jump between windows of very
   different spans (4.7 billion years ago to 2006).
 - **Tours**: `TourView` mounts `mountTour` with `baseUrl: "/out/tours"`, maps the labels checkbox to
   `2D.ON`/`2D.OFF`, and opens `HOTSPOTCLICKED` ids in a side panel (`/api/item/{id}`).
-- Fonts: MS Reference Serif / Sans Serif are named first in the font stacks (they are on the disc but not
-  served); otherwise Lucida Bright/Georgia and Verdana/Tahoma/DejaVu Sans.
+- **Search results and the Media Gallery** draw the hits' `thumb`s (api.md), no per-hit requests.
+- **Interactives** (`.iax`, 860 media items, all `group="flash"`): the viewer runs the disc's own IAF player under
+  Ruffle: `base.swf` from `/media/disc/{edition}/dswMedia/shared/players/IAFPlayer/` with the FlashVar
+  `filePath=/media/disc/{edition}/dswMedia/IAF/a/{id}/{id}.iax`. It reads the `.iax`, loads its control
+  (`SlideShowControl.swf`, `MatchGame.swf` …), skins, `flashvr.swf` and the slide media from that tree by relative URL
+  (found by black-box observation of its requests). The player is created on open and removed on close.
+- Fonts: MS Reference Serif / Sans Serif are named first in the font stacks; when the server lists font files
+  (`/api/meta` `fonts`, served from `out/fonts/`, which the content converter fills) `app/fonts.ts` declares the
+  `REFSER*`/`REFSAN*` faces; without them the fallbacks (Lucida Bright/Georgia and Verdana/Tahoma/DejaVu Sans) are used.
 
 ## Verification
 
-- `npm test`: `src/client.test.ts` (layout, links, media selection, home sections, quick facts, timeline
-  layout and dates, dictionary helpers, WebVTT cues, MIDI reader on a synthetic SMF) and
-  `src/components.test.tsx` (jsdom: inline renderer, article body with grouping, outline and inline
-  tables, search box autocomplete, media viewer URL/keyboard behaviour), all on synthetic data.
+- `npm test`: `src/client.test.ts` (placement by stored column and group, cluster members, Kids grid, sidebar media
+  first, links, media selection, home sections, quick facts, timeline bars/lanes/prominence and dates, dictionary
+  helpers and word-wheel labels, title-ref parts, font faces, atlas URL, IAF player URLs, WebVTT cues, MIDI reader on
+  a synthetic SMF) and `src/components.test.tsx` (jsdom: inline renderer with "X or Y" titles, article body with a
+  cluster box, text-column and margin items, sidebar teasers, the Kids layout, no per-box requests, outline and
+  inline tables, search box autocomplete, media viewer URL/keyboard behaviour), all on synthetic data.
 - In Chrome against the real server: home, History category, Zebra (outline, strip, viewer, audio set,
   Quick Facts, Related Articles, pronunciation), China and East Timor (atlas panel, Facts and Figures
   Quick Facts, inline tables, MIDI anthem), Jim Carrey's sidebar, Zulu Sangoma video, search and
@@ -119,18 +157,30 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
   and Volcanoes, the atlas route. Compared with `fixtures/articles/{761575094,761575094-outline,
   761573055,461510929,kids-701639680,dict-run,dict-trans-house}` and `fixtures/vm/home.png`.
 
+- Follow-ups checked in Chrome against the real server (ports 8091/5191): East Timor (flag-and-anthem box and photos in
+  the text column, "**East Timor** or **Timor-Leste**"), Zebra, Voyage of Vasco da Gama interactive in the viewer,
+  the dictionary wheel for "Paris" (same eight words before as `dict-paris`), `/dictionary/entry/{id}`, the timeline
+  band and event text, search "french rev", the atlas route's URL sync.
+
+- Schema 2 checked in Chrome against the real server (ports 8095/5195, 1256 px wide): Zebra (both clusters and
+  Burchell's Zebra in the text column, as in `761575094`), China (flag-and-anthem box, teasers, clusters), East Timor
+  ("**East Timor** or **Timor-Leste**", inline tables into the margin), Kids Volcanoes (the 8 tiles in the capture's
+  order, no numbers), Customs of Russia (sidebar view, cluster first, "Appears In"), France (media order of the
+  introduction as in `761568934`), the timeline band (periods, essays, "4? BC - AD 29?").
+
 ## Known gaps
 
-- Wide pictures that the VM shows in the text column (China's and East Timor's flag-and-anthem boxes)
-  stay in the left column.
-- The VM's media order within a section differs by a position or two in some articles (content-schema
-  §11.2): the client keeps the converter's order.
-- Interactives (`.iax`, Flash) show their picture and a note; Ruffle is not integrated yet.
+- Placement residue is the converter's (content-schema §11.1): country introductions and items the VM carries into
+  the next section.
+- Essay bars have no thumbnail (the VM shows the essay's picture at the bar's start; the event rows carry no file).
+- Inline tables lack the VM's blue box border; the Quick Facts and atlas panels are unchanged.
+- Interactives under Ruffle 0.7.1, spot-checked only: the slide shows tried run (Vasco da Gama, though its map draws
+  labels but not all fills); in the match game "Brood or Gaggle?" (`MatchGame`) a script hits Ruffle's execution limit
+  and the picture tiles stay empty; the Great Wall panorama (`vrslide`, `flashvr.swf`) loads but showed no picture.
+  Kids copies (`edition=kids`), DragDrop/CrossFade/ZFL/BGA controls, quizzes (SWQUIZ) and timeline pop-ups were not
+  tried. The players ask for "Trebuchet MS" and other device fonts that Ruffle does not have (it substitutes).
 - MIDI uses simple synthesized voices, not a General MIDI soundfont.
-- The dictionary word wheel lists only words after the typed text (the VM also shows the words before).
-- The title-ref "X or Y" prints both titles in bold (the VM bolds only the titles, not "or").
-- Search results have no thumbnails (the API does not return them); a media box needs one
-  `/api/item` request per item to get its gallery picture.
-- Copy, Print and Parental Controls of the dictionary window, Favorites, and the Features menu's
-  games (MindMaze, quizzes) are not implemented (Step 7).
+- Copy, Print and Parental Controls of the dictionary window, and Favorites, are not implemented.
+- Games live under `/games/*` (`web/src/games/`, see [games.md](games.md)); the Geography Quiz feature item
+  701712336 redirects to `/games/geoquiz`. `MatchGame` interactives play natively in the media viewer.
 - Light theme only, like the original.

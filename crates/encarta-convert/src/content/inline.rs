@@ -10,6 +10,8 @@ pub struct Ctx<'a> {
     pub t: &'a mut Tracker,
     /// The item's title, used to fill `<inlinetitle/>`.
     pub title: Option<&'a [Inline]>,
+    /// The item's alternative title (empty when it has none).
+    pub alt_title: &'a [Inline],
     /// Collapse whitespace in text (pretty-printed sources: titles, trees, tables).
     pub squash: bool,
 }
@@ -19,6 +21,7 @@ impl<'a> Ctx<'a> {
         Ctx {
             t,
             title: None,
+            alt_title: &[],
             squash: false,
         }
     }
@@ -72,11 +75,23 @@ fn text(cx: &mut Ctx, s: &str, out: &mut Vec<Inline>) {
     model::push_text(out, &r);
 }
 
+/// In pretty-printed titles a line break between two `<entity/>` characters is layout, not a space
+/// ("<entity tag="Lstrok"/>⏎<entity tag="oacute"/>dź" is "Łódź").
+fn layout_break_between_entities(cx: &Ctx, ns: &[Node], i: usize) -> bool {
+    let is_entity = |n: Option<&Node>| matches!(n, Some(Node::El(e)) if e.name == "entity" && e.children.is_empty());
+    cx.squash
+        && matches!(&ns[i], Node::Text(s) if s.trim().is_empty() && s.contains(['\n', '\r']))
+        && i > 0
+        && is_entity(ns.get(i - 1))
+        && is_entity(ns.get(i + 1))
+}
+
 /// Converts the children of `el` to inline nodes.
 pub fn children(cx: &mut Ctx, el: &Element) -> Vec<Inline> {
     let mut out = Vec::new();
-    for c in &el.children {
+    for (i, c) in el.children.iter().enumerate() {
         match c {
+            Node::Text(_) if layout_break_between_entities(cx, &el.children, i) => {}
             Node::Text(s) => text(cx, s, &mut out),
             Node::El(e) => element(cx, e, &mut out),
         }
@@ -214,11 +229,17 @@ pub fn element(cx: &mut Ctx, e: &Element, out: &mut Vec<Inline>) {
             match cx.title {
                 Some(t) => {
                     cx.t.note("inlinetitle", "filled from item title");
-                    out.push(Inline::TitleRef(t.to_vec()));
+                    out.push(Inline::TitleRef {
+                        title: t.to_vec(),
+                        alt: cx.alt_title.to_vec(),
+                    });
                 }
                 None => {
                     cx.t.note("inlinetitle", "no title available");
-                    out.push(Inline::TitleRef(Vec::new()));
+                    out.push(Inline::TitleRef {
+                        title: Vec::new(),
+                        alt: Vec::new(),
+                    });
                 }
             }
         }
@@ -422,6 +443,7 @@ pub fn title(t: &mut Tracker, e: &Element) -> Vec<Inline> {
     let mut cx = Ctx {
         t,
         title: None,
+        alt_title: &[],
         squash: true,
     };
     children(&mut cx, e)
@@ -439,6 +461,7 @@ mod tests {
         let mut cx = Ctx {
             t: &mut t,
             title: Some(&title),
+            alt_title: &[],
             squash: false,
         };
         children(&mut cx, &d.root)
@@ -449,7 +472,13 @@ mod tests {
         let v = conv(
             r#"<pkey id="1"><inlinetitle/>, a <xref type="8" RefID="12" paraID="3"><i>horse</i></xref> &amp; <fs type="1">p</fs><fs type="2">y</fs><entity tag="eacute"/></pkey>"#,
         );
-        assert_eq!(v[0], Inline::TitleRef(vec![Inline::Text("Zebra".into())]));
+        assert_eq!(
+            v[0],
+            Inline::TitleRef {
+                title: vec![Inline::Text("Zebra".into())],
+                alt: vec![]
+            }
+        );
         match &v[2] {
             Inline::Link(l) => {
                 assert_eq!(l.kind, LinkKind::Qv);
@@ -478,6 +507,13 @@ mod tests {
         }
         assert!(matches!(&v[1], Inline::List { style: "bullet", items } if items.len() == 2));
         assert!(matches!(&v[2], Inline::Link(l) if l.kind == LinkKind::Web));
+    }
+
+    #[test]
+    fn pretty_printed_entities_join() {
+        let d = xml::parse("<title>\r\n  <entity tag=\"Lstrok\"/>\r\n  <entity tag=\"oacute\"/>d<entity tag=\"zacute\"/> x</title>").unwrap();
+        let mut t = Tracker::default();
+        assert_eq!(model::plain(&title(&mut t, &d.root)), "Łódź x");
     }
 
     #[test]

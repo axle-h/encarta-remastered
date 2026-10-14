@@ -58,7 +58,7 @@ pub fn timeline(extracted: &Path, sink: &Sink, t: &mut Tracker) -> Result<(usize
                     db::i(r.ref_id),
                     db::s(table),
                     db::i(r.kind),
-                    db::ne(plain),
+                    db::ne(plain.clone()),
                     db::ne(html),
                     sy,
                     sm,
@@ -75,6 +75,12 @@ pub fn timeline(extracted: &Path, sink: &Sink, t: &mut Tracker) -> Result<(usize
                     db::s(tl.category_names(r.category_mask).join(", ")),
                     db::s(tl.region_names(r.region_mask).join(", ")),
                     db::i(r.flags),
+                    db::os(timeline_display(r)),
+                    db::os(timeline_label(r, &plain)),
+                    db::os(timeline_date_text(r)),
+                    db::os(r.start.as_ref().map(|d| date_text(d, false))),
+                    db::os(r.end.as_ref().map(|d| date_text(d, r.start.is_some_and(|s| s.year < 0) && d.year > 0))),
+                    db::i(timeline_prominence(r.importance)),
                 ],
             );
         }
@@ -99,6 +105,65 @@ pub fn timeline(extracted: &Path, sink: &Sink, t: &mut Tracker) -> Result<(usize
         );
     }
     Ok((tl.events.len() + tl.items.len(), tl.terms.len()))
+}
+
+/// How the Timeline view draws a record (VM: flag 0x01 is an orange period bar; kind 3 is a
+/// striped essay bar whatever its flags; everything else is a point, a square and its title).
+pub fn timeline_display(r: &timeline::Record) -> Option<&'static str> {
+    match r.kind {
+        0 => None,
+        3 => Some("essay"),
+        _ if r.span => Some("period"),
+        _ => Some("point"),
+    }
+}
+
+/// The boxed upper-case label of a bar ("WORLD WAR II", "HISTORICAL ESSAY: RISE OF PASTORALISM IN ASIA").
+pub fn timeline_label(r: &timeline::Record, plain: &str) -> Option<String> {
+    match timeline_display(r)? {
+        "essay" => Some(format!("HISTORICAL ESSAY: {}", plain.to_uppercase())),
+        "period" => Some(plain.to_uppercase()),
+        _ => None,
+    }
+}
+
+/// Title size rank: importance 1 is drawn with the largest title, 5 the smallest (0 = unranked).
+pub fn timeline_prominence(importance: u16) -> i64 {
+    if (1..=5).contains(&importance) { 6 - importance as i64 } else { 0 }
+}
+
+const MONTHS: [&str; 12] = [
+    "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November",
+    "December",
+];
+
+/// One date as the pop-up prints it. Circa is a trailing "?" on the year (VM: "4? BC"); `ad`
+/// prefixes "AD" (used for the end of a range that starts BC). Month and day, and the wording of
+/// geologic dates, are our own (not observed).
+pub fn date_text(d: &timeline::Date, ad: bool) -> String {
+    let q = if d.circa { "?" } else { "" };
+    let mag = d.year.unsigned_abs();
+    if d.year < 0 && mag >= 1_000_000 {
+        let (n, unit) = if mag >= 1_000_000_000 { (mag as f64 / 1e9, "billion") } else { (mag as f64 / 1e6, "million") };
+        let n = format!("{n:.3}");
+        let n = n.trim_end_matches('0').trim_end_matches('.');
+        return format!("{n}{q} {unit} years ago");
+    }
+    let year = if d.year < 0 { format!("{mag}{q} BC") } else if ad { format!("AD {mag}{q}") } else { format!("{mag}{q}") };
+    match (d.month, d.day) {
+        (m @ 1..=12, day @ 1..=31) => format!("{} {day}, {year}", MONTHS[m as usize - 1]),
+        (m @ 1..=12, _) => format!("{} {year}", MONTHS[m as usize - 1]),
+        _ => year,
+    }
+}
+
+/// The pop-up date line: "4? BC - AD 29?" (VM, Jesus Christ), or one date.
+pub fn timeline_date_text(r: &timeline::Record) -> Option<String> {
+    let s = r.start.as_ref()?;
+    Some(match &r.end {
+        Some(e) => format!("{} - {}", date_text(s, false), date_text(e, s.year < 0 && e.year > 0)),
+        None => date_text(s, false),
+    })
 }
 
 pub fn mindmaze(extracted: &Path, sink: &Sink, t: &mut Tracker, articles: &HashSet<u32>) -> Result<(usize, usize)> {
@@ -195,6 +260,8 @@ pub fn statistics(extracted: &Path, sink: &Sink) -> Result<(usize, usize)> {
                     db::i(it.year),
                     db::i(it.col_c),
                     db::s(it.note.clone()),
+                    db::i(it.year_end()),
+                    db::s(it.period_text()),
                 ],
             );
         }
@@ -462,4 +529,46 @@ pub fn interactives(srcs: &[super::sources::Source], sink: &Sink, trackers: &mut
         trackers.push((s.label.clone(), t));
     }
     Ok(n)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn date(year: i64, month: u16, day: u16, circa: bool) -> timeline::Date {
+        timeline::Date { year, month, day, circa, thousands: false, raw_year: year.unsigned_abs() as u32 }
+    }
+
+    fn rec(kind: u16, span: bool, start: timeline::Date, end: Option<timeline::Date>) -> timeline::Record {
+        timeline::Record {
+            flags: 0,
+            title: "Synthetic Era".into(),
+            title_offset: 0,
+            title_len: 0,
+            start: Some(start),
+            end,
+            span,
+            importance: 2,
+            category_mask: 1,
+            region_mask: 1,
+            seq: 1,
+            ref_id: 1,
+            kind,
+        }
+    }
+
+    #[test]
+    fn timeline_strings() {
+        let r = rec(1, false, date(-4, 0, 0, true), Some(date(29, 0, 0, true)));
+        assert_eq!(timeline_date_text(&r).as_deref(), Some("4? BC - AD 29?"));
+        assert_eq!(timeline_display(&r), Some("point"));
+        let r = rec(1, true, date(1939, 9, 1, false), Some(date(1945, 9, 2, false)));
+        assert_eq!(timeline_date_text(&r).as_deref(), Some("September 1, 1939 - September 2, 1945"));
+        assert_eq!(timeline_label(&r, "Synthetic Era").as_deref(), Some("SYNTHETIC ERA"));
+        let r = rec(3, false, date(-3000, 0, 0, false), None);
+        assert_eq!(timeline_label(&r, "Rise of X").as_deref(), Some("HISTORICAL ESSAY: RISE OF X"));
+        assert_eq!(date_text(&date(-4_700_000_000, 0, 0, false), false), "4.7 billion years ago");
+        assert_eq!(timeline_prominence(1), 5);
+        assert_eq!(timeline_prominence(0), 0);
+    }
 }

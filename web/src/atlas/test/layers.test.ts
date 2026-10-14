@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LayerSpecification } from "maplibre-gl";
-import { classNames, hitLayers, isHoverLayer, layerClasses, layerState, statLayer } from "../layers";
+import { classNames, hitClassesAt, hitLayers, hitRanges, interactiveRanges, isHoverLayer, layerClasses, layerState, statLayer } from "../layers";
 import { syntheticStyle } from "./fixtures";
 
 const s = syntheticStyle();
@@ -30,6 +30,11 @@ describe("class overrides (mad-styling.md §4.3)", () => {
     expect(st.visible).toBe(true);
     expect(st.filter).toEqual(["==", ["get", "class"], 64]);
   });
+  it("keeps the draw-over mask test when narrowing the class test", () => {
+    const l = byId("line-lines-11");
+    expect(layerState(l, { on: new Set(), off: new Set() }).filter).toEqual(["all", ["==", ["get", "class"], 70], ["==", ["get", "water"], true]]);
+    expect(layerClasses(l).ids).toEqual([70]);
+  });
   it("turns a class off, hiding the layer when nothing is left", () => {
     const l = byId("line-lines-7");
     expect(layerState(l, { on: new Set(), off: new Set([80]) }).filter).toEqual(["==", ["get", "class"], 81]);
@@ -38,11 +43,23 @@ describe("class overrides (mad-styling.md §4.3)", () => {
 });
 
 describe("added layers", () => {
-  it("adds named-area hit layers per vector source, theme areas only where drawn", () => {
-    expect(JSON.stringify(hitLayers(s, [7])[0])).toContain('"literal",[7]');
-    const h = hitLayers(s);
-    expect(h.map((l) => l.id)).toEqual(["encarta-hit-areas-earth", "encarta-hit-areas-earth-detail"]);
-    expect((h[0] as { paint: Record<string, unknown> }).paint["fill-opacity"]).toBe(0);
+  it("hit-tests the classes the rules make interactive", () => {
+    expect(interactiveRanges(s).get(64)).toEqual([[0.97, 5, 2]]);
+    const none = { on: new Set<number>(), off: new Set<number>() };
+    const r = hitRanges(s, none);
+    // 62 by default; 64 only when turned on; 999 even though no layer draws it (V11).
+    expect(r.get(62)).toEqual([[0.97, 16.59]]);
+    expect(r.has(64)).toBe(false);
+    expect(r.has(999)).toBe(true);
+    expect(hitClassesAt(r, 2).has(80)).toBe(true);
+    expect(hitClassesAt(r, 0.5).has(62)).toBe(false);
+    const on = hitRanges(s, { on: new Set([64]), off: new Set() });
+    expect(on.get(64)).toEqual([[0.97, 5]]);
+    expect(hitRanges(s, { on: new Set(), off: new Set([62]) }).has(62)).toBe(false);
+    const h = hitLayers(s, r);
+    expect(h.map((l) => l.id)).toContain("encarta-hit-areas-earth-0");
+    expect(h.every((l) => (l as { paint: Record<string, unknown> }).paint["fill-opacity"] === 0)).toBe(true);
+    expect(JSON.stringify(h.find((l) => (l as { minzoom?: number }).minzoom === 0.97))).toContain('"literal",[62]');
   });
   it("colours countries from feature-state", () => {
     const l = statLayer("earth") as { paint: Record<string, unknown>; "source-layer": string };

@@ -157,6 +157,8 @@ export interface GeoPlace {
   east?: number;
   north?: number;
   goto_km?: number;
+  /** The five answer buttons (this place among them), in display order. */
+  choices: { entity: number; name: string }[];
 }
 
 export interface GeoGame {
@@ -305,12 +307,12 @@ export function playableAudio(info: MediaInfo | null | undefined): string | unde
   const v = info?.variants ?? {};
   for (const k of ["opus", "aac", "mp3"]) {
     const x = v[k];
-    if (x && probe.canPlayType?.(x.mime) !== "") return x.url;
+    if (x && probe.canPlayType?.(x.mime ?? "") !== "") return x.url;
   }
   return urls[urls.length - 1];
 }
 
-/** Every `?`-free MIDI original (MindMaze music). */
+/** The MIDI original (MindMaze music), played by the synth in `sound.ts`. */
 export function midiUrl(info: MediaInfo | null | undefined): string | undefined {
   return info?.variants?.original?.url;
 }

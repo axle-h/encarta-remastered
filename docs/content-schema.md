@@ -59,7 +59,7 @@ item has no body (the 13,061 timeline topics).
 | `i`, `b`, `sub`, `sup`, `smallcaps` | inline styles | `em`, `strong`, `sub`, `sup`, `smallcaps` |
 | `br` | line break (mostly in verse quotes) | `br` |
 | `xref type RefID [paraID] [URL]` | cross-reference, see the table below | `link` |
-| `inlinetitle` | always empty; the reader shows the item's title (bold) — **confirmed in the VM** (Zebra 761575094 starts with "**Zebra**,"). The XSL also appends " or ‹alttitle›" when the item has one | `title-ref` filled with title (+ " or " + alt title) |
+| `inlinetitle` | always empty; the reader shows the item's title (bold) — **confirmed in the VM** (Zebra 761575094 starts with "**Zebra**,"). With an alternative title both are bold, joined by a plain " or ": East Timor 461510929 shows "**East Timor** or **Timor-Leste**, independent republic …" (VM) | `title-ref` with separate `title` and `alt` parts (§8) |
 | `inlinebmp id type` | inline picture `‹id›.gif` from baggage; 27 centred block, 28 in the line, 29 right, 30 left | `img` |
 | `fs type` | text typed in a private font (§7) | converted to Unicode / `frac` / `stack` … |
 | `quote type` | verse or block quotation; 27 centre, 29 right, 30 left, 38 justify | `quote` |
@@ -85,19 +85,70 @@ Cross-reference types (`xref@type`; prefixes are what the reader prints, from th
 `RefID="0"` is a dead link (text only).
 
 **Media placement.** The body does not contain media; the reader inserts the item's DATA `forward`
-associations with `sec` = section id. Observed in the VM on 20 articles: groups `media`, `audio`,
-`audionested`, `video`, `flash`, `table`, `tableinline`, `sidebar`, `composite`, `virttour`,
-`factsandfigures`, `timeevent`, `timetopic` are placed (quotation, archive, weblink, furtherread, expert,
-maps, livemedia are not); items with `hideappears="1"` are not; within a section they go in `sequence`
-order (sidebars after media) **before** paragraphs, spread over the section's paragraphs (fewer items than
-paragraphs: one every m/n paragraphs; more: ceil(remaining/remaining) per paragraph). This reproduces the
-VM order exactly for Zebra, Optics, Quagga and to within one or two positions elsewhere (the original
-lays out by rendered height). Kids articles list their media after the text.
+associations with `sec` = section id. Placed groups: `media`, `audio`, `audionested`, `video`, `flash`,
+`table`, `tableinline`, `sidebar`, `composite`, `virttour`, `factsandfigures`, `timeevent`, `timetopic`
+(quotation, archive, weblink, furtherread, expert, maps, livemedia are not); items with `hideappears="1"`
+are not. The original computes the layout in native code before its templates run (the templates receive
+`assoc` and `cluster` elements already interleaved with the paragraphs), so the rules below are inferred
+from the 33 article captures (1,657 placed items). Per section, with *m* = the section's own paragraphs
+(`pkey`/`intro`, not those of subsections) and the items in `sequence` order:
 
-**Checked against the VM captures** (`fixtures/articles/`, 33 so far): every paragraph's text of every
-captured encyclopedia and Kids article appears verbatim in the capture, except paragraphs with
-Specialty-font fractions (the capture's text dump shows the raw font characters), and the sidebar captures
-that came out empty.
+1. Three streams: **sidebars**, **timeline** items (`timeevent`, `timetopic`), and the **primary** stream
+   (everything else). Sequence numbers are only compared within a stream.
+2. Sidebars are spread from paragraph 1 (paragraph 0 when there is no primary item): item *k* of *n* goes
+   before paragraph `start + k·span/n`, `span` = m − 1 (m when starting at 0, at least 1); with more
+   sidebars than `span` they take consecutive paragraphs.
+3. Timeline items start one paragraph after the first sidebar (or where sidebars would start), moved back
+   so that they fit (`start = min(start, max(first, m − n))`), spaced `max(m − start, 1)/n`.
+4. The primary items share the remaining paragraphs ("free slots"; at least slot 0). When there are more
+   items than free slots, consecutive items are grouped front-loaded (each slot takes
+   ceil(remaining / remaining slots)); a group whose members are all *clusterable* (`media`, `audio`,
+   `audionested`, `flash`, `table`, `composite`) becomes a **cluster** — one box in the margin showing one
+   item at a time with a strip of thumbnails; other groups stay separate items in the same slot. Video,
+   timeline items, inline tables, Facts and Figures and virtual tours never cluster.
+5. The primary units then go `step = max(1, ⌊free/units⌋)` slots apart from the first free slot (with more
+   units than slots, several per slot, front-loaded). In one slot: primary first, then the sidebar, then the
+   timeline item. Slot *m* (after the last paragraph) goes before the section's subsections.
+6. **Column.** Sidebar teasers and video span the **text** column; a `media` picture spans the text column
+   when its `files/image` is at least 360 px wide and it is not `NoSquish="1"`, otherwise it is drawn in the
+   left **margin** column (192 px picon); an audio set (`audionested`) follows its picture member (by that
+   rule, or text when the member has no `image` file and a 216-px picon); everything else, and every
+   cluster, is in the margin.
+
+Against the captures this gives the VM's paragraph for 95.7 % of the items, the VM's order for 98.4 %, the
+column for 97.8 % and the cluster grouping for 98.2 % (the old "spread evenly" rule: 66 %, 89 %, — , 89 %).
+The rest are mostly country introductions, where the right-column modules change the flow, and items the
+original moves to the next section when a section is full (not reproduced).
+
+**Sidebar teasers** (`sidebar` placed in an article) are boxes in the text column: header "Sidebars", the
+category by the sidebar's DATA `type` (VM: `SBD` HISTORIC DOCUMENTS, `SBG` GREAT MOMENTS IN SPORTS, `SBH`
+HISTORIC HEADLINES, `SBI` INTERVIEWS, `SBL` GREAT WORKS OF LITERATURE, `SBO` HISTORIC SPEECHES, `SBS` WORLD OF
+SCIENCE, `SBZ` POINTS OF THE COMPASS, `SHE` HISTORICAL ESSAYS, `SPC` POINT/COUNTERPOINT; `SBX`, `SBC`, `CUS`,
+`ZPA`, lower-case `sbl` and codes not seen show SIDEBAR; stored as `item.meta_json.sidebar_category`), the
+title, the preview text and "open sidebar".
+
+**Sidebar view** (items of group `sidebar`, VM: two frames): a header frame (72 pt; "Appears In", the
+banner, the title) and a body frame: intro (italic), rule, headline, by-line, then the paragraphs and
+headings in source order. All the sidebar's own placed media are in **one cluster** floated at the top
+left of the body (Customs of Russia 631522251: two pictures), not beside their sections.
+
+**Kids articles** (layout `kids`, VM): orange title (MS Reference Sans Serif 20 pt) top left and a "Look at
+Pictures"/"Read Article" button; text on the right in large type; the introduction has no heading; the
+other sections have orange upper-case headings and **no section numbers**; the media are a two-column grid
+of tiles on the left (rounded orange border, blue caption, badge: speaker = audio, "+" = picture, hand =
+interactive) in `sequence` order (all 3 captures), scrolling with the text; an inline table (`tableinline`,
+"Facts About France", green header) sits in the text at the end of its section. Below the text: "Also in
+Encarta Kids" (the related-articles tree) and "On the Web" (web links).
+
+**Checked against the VM captures** (`fixtures/articles/`, all 60 folders): paragraph for paragraph (each
+`P id=pN` of the capture, frames included, against our `paragraph` row), 4,795 of the 4,796 captured
+paragraphs of the 29 encyclopedia articles, 3 sidebars and 3 Kids articles are identical, after mapping
+the raw private-font characters of the capture's DOM through our tables (§7). The one difference is
+deliberate: the original prints `<notation type="fraction">` 7 over 2 as plain "72" (no template), we keep a
+fraction. Tables, Quick Facts and Facts and Figures: every text run of our table HTML occurs in the capture;
+media items: titles and captions present; dictionary entries: every text run of the displayed homograph.
+Not comparable: the yearbook article and the quotation (their captures have no body text), the two timeline
+views (native), the outline views (only the outline is in the DOM).
 
 ## 3. Metadata dialect (DATA)
 
@@ -142,6 +193,29 @@ aboutmap → `map-about`, media, audio, audionested → `audio-set`, video, flas
 `composite-media`, surround → `panorama`, virttour/vtour → `virtual-tour-node`/`virtual-tour`,
 maptrektour/maptrekstop, weblink, livemedia → `live-link`, home/hsbg/hthm → `home-page`/`home-background`/
 `home-theme`, feat → `feature`, indx → `index-term`, TBD → `unclassified`.
+
+### 3.1 Associations (`forward`/`reverse` `assoc`, table `assoc`)
+
+`forward` rows list what an item shows: `sec` is the section the reader places it in, `sequence` its order there
+(see §2 "Media placement"). `reverse` rows list where an item appears, and come in two kinds:
+
+- with `sec` set (and `appears` empty): the mirror of the target's forward row, i.e. "placed in section `sec` of
+  article `refid`" (272,081 rows);
+- with `sec` empty and **`appears` set** (99,781 rows): an entry of the item's "Appears in" list. `appears` is the
+  **content id of the item that the target article actually shows for this one**: the item itself (52,830 rows,
+  `appears` = own id) or **another copy of the same media** (46,951 rows). Copies exist because the Premium and Kids
+  editions, and several articles, have their own records for one picture or sound: Grévy's Zebra 461550745 appears in
+  the Kids article Zebras 701639707 as the Kids item 701667164, and that one appears in Premium Zebra 761575094 as
+  461550745; the audio set 461517535 (Mountain Zebra) appears in Mammal 761561349 as the set 461556091, which has the
+  same children. Checked on the whole database: of 33,873 distinct (item, `appears`) pairs with a different id,
+  33,756 (99.7 %) share a DATA file (`image`, `picon`, `audio`, `video` or `thumb`) with the item; the rest point
+  from a composite or audio set to the composite that holds it, or to an interactive that uses the picture.
+  In 97 % of the rows the target article has a forward association to `appears`.
+
+So a client that opens an "Appears in" entry should open article `target_ref_id` and highlight (or open in the
+viewer) `appears`, not the item's own id. Forward rows never carry `appears`, and no row has `appears` = 0 (items
+kept out of the body are marked by the target's DATA `hideappears="1"`). `par` occurs on 12 rows only, timeline events
+without a `sec` in six articles (values 1 and 2; meaning unconfirmed).
 
 ## 4. Trees (REL, DATAF)
 
@@ -203,16 +277,26 @@ File name = entry ref id. `$_EDictSignature2007_$` gives the dictionary's names 
   `startcomma`. Unknown tags are reported (none remain).
 - **`<fs type>` font runs** (text typed in a private font, mapped per character):
   - 1 Symbol: Adobe Symbol encoding (`p` π, `S` Σ, 0xC5 ⊕ …).
-  - 2 MS Reference Specialty (`REFSPCL.TTF`): built-up fractions (`y` ½, 0x82 ¼ …) → `frac`; stacked
-    numbers without bar (time signatures ¾, nuclides ²³⁵₉₂) → `stack`; radicals (√2) → `radical`;
-    vinculum (s‑a) → `overline`; vectors (AB⃗) → `vector`; chemical bonds — = ≡; voice-leading arrow pairs;
+  - 2 MS Reference Specialty (`REFSPCL.TTF`): the text holds Latin-1 code points that the font draws as
+    whole notations, so they must be mapped through the font's glyph table, never shown as the Latin-1
+    character. Built-up fractions with a bar (`y` 1/2, 0x82 1/4, 0x88 1/8, `w` 1/16, 0x80 1/3 …) → `frac`;
+    stacked numbers without bar (time signatures: U+00BD `½` is a stacked **6 over 8**, U+00AC `¬` **2 over
+    4**, `¶` 3/8, `º` 4/8, `»` 5/8 — confirmed in the VM, Musical Rhythm 761553014; nuclides ²³⁵₉₂) → `stack`; radicals (√2) → `radical`;
+    vinculum (s‑a) → `overline`; (0xC1 √−1, 0xC2 √16, 0xC3 √2 in Algebra/Mathematics read correctly in
+    context: "x = 1/2", "a cube root of 1/8", "the imaginary number √−1") vectors (AB⃗) → `vector`; chemical bonds — = ≡; voice-leading arrow pairs;
     a Phoenician and an Egyptian letter.
   - 3 MS PGothic, 8 MS Reference Serif: already Unicode (font hint only).
   - 6 MS Reference 1: ♯ ♭ ⓪①②③ ↗; 7 MS Reference 2: `i` = 2/8 stack.
 - **Private-use code points** (U+F6FE–F7DA) of the MS Reference text fonts: letters with diacritics that
   had no code point (ḫ, z̧, s̆, œ̆, ų …). Identified by rendering `GRGAREF.TTF` and reading the words
-  (`Petaḫ Tiqwa`, `Muḩāfaz̧at`, `Lågen`, `a ∉ S`). Uncertain: U+F73D (Ϝ?), U+F73E (Ⅎ?), U+F71B (ć; also in
-  "flèche"), U+F700 (å; glyph shows a dot).
+  (`Petaḫ Tiqwa`, `Muḩāfaz̧at`, `Lågen`, `a ∉ S`). Confirmed in the VM (`fixtures/articles/glyphs/`): U+F73D
+  and U+F73E are two archaic digamma forms in the article F → Ϝ (U+03DC) and Ͷ (U+0376, Pamphylian digamma),
+  the nearest Unicode letters; U+F71B is ć ("Milošević"); U+F700 is å ("Lågen").
+- **`<entity>` tags do not occur in article bodies**; they are in REL/DATAF tree titles, DATA titles,
+  sidebar files and the search exports. Of the 49 tags in the related-article titles of the captured
+  articles, 25 could be matched letter for letter in the capture's DOM (the others' titles are not
+  rendered there); none disagrees with the table. A line break between two `<entity/>` elements in a
+  pretty-printed title is layout ("Ł⏎ódź" is "Łódź").
 - MindMaze text is code page 437 with SGML entities (decoded by `encarta_formats::mindmaze`).
 
 ## 8. Our model (JSON and HTML)
@@ -225,7 +309,7 @@ File name = entry ref id. `$_EDictSignature2007_$` gives the dictionary's names 
 | `smallcaps` | `c` | `<span class="enc-sc">` |
 | `br` | | `<br>` |
 | `link` | `kind` (§2), `ref`, `para`, `url`, `c` | `<a class="enc-link enc-‹kind›" href="/item/‹ref›#p‹para›" data-ref data-para>`; web: `enc-web`; `msencarta://` app URLs: `enc-app data-app-url`; prefixes in `<span class="enc-see">` |
-| `title-ref` | `c` (filled title) | `<span class="enc-title-ref">` |
+| `title-ref` | `title` (inline array), `alt` (inline array, `[]` when none); `c` repeats `title` (schema 1 readers) | `<span class="enc-title-ref">East Timor</span> or <span class="enc-title-ref enc-alt-title">Timor-Leste</span>` — both bold, " or " plain |
 | `img` | `id`, `placement` | `<img class="enc-inline-img enc-place-‹p›" src="/media/file/‹id›.gif">` |
 | `frac` | `num`, `den` | `<span class="enc-frac"><sup>…</sup>⁄<sub>…</sub></span>` |
 | `stack` | `top`, `bottom` | `<span class="enc-stack">` |
@@ -238,24 +322,32 @@ File name = entry ref id. `$_EDictSignature2007_$` gives the dictionary's names 
 
 **Blocks** (`article.body_json` is an array of blocks): `{"t":"p","id","c"}`, `intro`, `byline`,
 `heading` (`level`, `align`), `rule`, `bib` (`author title series publisher edition volumes date
-annotation`), `media` (`ref`, `group`, `seq`), `section` (`id kind type level number title blocks`).
+annotation`), `media` (`ref`, `group`, `seq`, `col`: `text` | `margin`), `cluster` (`col` = `margin`,
+`items`: `[{ref, group, seq}]`, shown as one box), `media-grid` (Kids tiles, `items` as for clusters,
+at the end of the body), `section` (`id kind type level number title blocks`). `article.layout`
+(`encyclopedia`, `kids`, `sidebar`) says which page layout (§2) to use.
 
 **Article HTML**: `<article class="enc-article" data-ref>` with `<section class="enc-section enc-‹kind›
 enc-level-‹n›" id="s‹id›">`, `<h2..6 class="enc-section-title"><span class="enc-secnum">II</span> …`,
 paragraphs `<p id="p‹id›" class="enc-p">` (a `<div>` when they contain a quote/list/formula), intro
 `id="i‹id›"`, by-line `id="b‹id›"`, headings `id="h‹id›"`, media
-`<figure class="enc-media" data-ref data-group><a href="/item/‹id›"><img class="enc-thumb"
-src="/media/file/‹thumb›"></a><figcaption>…`. Links go to `/item/‹refId›` and `/media/file/‹baggage key›`
+`<figure class="enc-media enc-media-‹group› enc-col-‹col›" data-ref data-group><a href="/item/‹id›"><img
+class="enc-thumb" src="/media/file/‹file›"></a><figcaption>…` (text column: the `image` file, else the
+picon; margin and grid: the picon, else the thumb); clusters `<div class="enc-media-cluster enc-col-margin"
+data-refs="‹id› ‹id›">` around the members' figures; Kids `<div class="enc-media-grid">`; sidebar teasers
+`<aside class="enc-media enc-sidebar-teaser enc-col-text" data-ref data-group="sidebar"><a href>` with
+`enc-sb-hdr`, `enc-sb-cat`, `enc-sb-title`, `enc-sb-body`, `enc-sb-open` spans. Links go to `/item/‹refId›` and `/media/file/‹baggage key›`
 (server routes to define; the client may rewrite).
 
 ## 9. Database (`out/content.sqlite`)
 
-Built into `content.sqlite.partial` and renamed (idempotent). Rows from the current disc in brackets.
+Built into `content.sqlite.partial` and renamed over the old file (idempotent; a server that has the old
+file open keeps reading it until it reopens). Rows from the current disc in brackets.
 
 | table | key | contents |
 |---|---|---|
 | `item` [483,267] | `ref_id` | every DATA id: `kind`, `source_group`, `title`, `title_html`, `sort_title`/`display_title_html` (PFX entry matching the title), full/alt titles, `in_deluxe`/`in_kids`, AKC package names, `media_type` (ticon), `subgroup`, `subtype`, `style`, `geocode`, `origin`, `revision`, `word_count`, `caption_html`, `credit`(`_html`), `preview_html`, `meta_json` (everything else, §3) |
-| `article` [102,223] | `ref_id` | `source` (`content` or `sidebar-xml`), `source_file`, `body_json`, `html`, `outline_json`, counts |
+| `article` [102,223] | `ref_id` | `source` (`content` or `sidebar-xml`), `source_file`, `body_json`, `html`, `outline_json`, counts, `layout` (`encyclopedia` 98,890, `kids` 637, `sidebar` 2,696) |
 | `section` [198,678] | `(ref_id, section_id)` | parent, level, number label, plain title, type code |
 | `paragraph` [663,219] | `(ref_id, kind, para_id)` | plain text per paragraph (`kind` p/heading/intro/byline: separate id spaces) — the search-index source |
 | `link` [225,225] | | every cross-reference: from paragraph, kind, target ref/para, url, text |
@@ -270,16 +362,20 @@ Built into `content.sqlite.partial` and renamed (idempotent). Rows from the curr
 | `search_entry` [3,084,729] | `(edition, entry_id)` | IdXE records: ref, content type, section or paragraph range, display text/HTML, parents |
 | `search_word` [1,175,993] | | IdxW vocabulary (word groups = synonyms) |
 | `dictionary` [13], `dict_entry` [292,642], `dict_form` [409,010], `dict_audio` [54,865] | | §6: headword, variety, summary, body JSON, HTML; lookup forms (headword, inflection, run-on, phrase, variant); pronunciation audio files |
-| `timeline_category`/`_region`/`_event` [16,465]/`_term` [22,749] | | `TIMELINE.DAT` (dates decoded, masks expanded) + term texts from `TIMELINE.EIT` |
+| `timeline_category`/`_region`/`_event` [16,465]/`_term` [22,749] | | `TIMELINE.DAT` (dates decoded, masks expanded) + term texts from `TIMELINE.EIT`. Display columns (VM, `timeline.md` §3.2): `display` (`point` 3,259, `period` 110 = orange bar, `essay` 35 = striped bar, NULL for item-table rows), `label` (boxed upper-case bar label, "HISTORICAL ESSAY: …" for essays), `date_text` (pop-up date line, "4? BC - AD 29?"), `start_text`, `end_text`, `prominence` (title size rank, 5 = importance 1 = largest; 0 unranked) |
 | `mindmaze_question` [8,020], `mindmaze_answer` [32,080] | | answers with `article_exists` (67 point at ids not on this disc) |
-| `stat_*` | | `MSWORLD.SDB` countries, categories, qualifiers, units, 363 indicators, 57,347 values (with rank) |
+| `stat_*` | | `MSWORLD.SDB` countries, categories, qualifiers, units, 363 indicators, 57,347 values (with rank); `stat_value.col_c` is the year span: `year_end` = year + C, `period` = "1990-2005" (C > 0) or "1995" — what the atlas prints in parentheses |
 | `geoquiz_level` [4], `geoquiz_place` [1,372] | | `D1–4.TXT`, `D1–4PLACES.TXT` |
-| `place_link` [16,122] | | `P2MTBL.DAT` place → content links with kind labels |
+| `place_link` [16,122] | | `P2MTBL.DAT` place → content links with kind labels (`p2mtbl.md`; 13 `maptrek-stop`, 14 `flag`, 15 `anthem`, 16 `about-map`) |
 | `atlas_media` [5,413] | `ref_id` | `MSWORLD.ITR` media catalog: place, files, paired item, legacy id, **credit** |
 | `lexicon` [12], `lexicon_word` [783,245] | | every `*.LEX` word list |
 | `quiz` [3,622] | `(quiz_id, edition)` | SWQUIZ `*.iax` as JSON (`@attr` keys, HTML text fragments) |
 | `interactive` [721] | `(file_name, edition)` | other `*.iax` definitions as JSON |
-| `meta` | `key` | schema version, converter, SDB revision |
+| `meta` | `key` | schema version (**2**: `title-ref` parts, `cluster`/`media-grid` blocks, `media.col`, `article.layout`, timeline and statistics display columns), converter, SDB revision |
+
+The same step copies the disc's MS Reference Serif and Sans text fonts (`AREF/FONTS/REFSER*.TTF`,
+`REFSAN*.TTF`, 8 files) to `out/fonts/` (each written to `‹name›.partial` and renamed); the server serves
+them as `/fonts/{file}` and lists them in `/api/meta`.
 
 ## 10. Completeness
 
@@ -294,12 +390,14 @@ JSON tables, everything else → media converter via `baggage`/`item_file.file_n
 
 ## 11. Open questions for the VM
 
-1. `title-ref` with an alternative title: does the reader print "East Timor or Timor-Leste, …"? (XSL says so.)
-2. Media placement: exact rule (the set of placed items matches all captured encyclopedia articles; the
-   exact order matches 10 of 33 captures, the rest differ by one or two positions).
-3. Sidebar captures (461575610, 631522251) came out empty: re-capture to check sidebar layout.
-4. Kids section headings and the media list layout (captures show `SecHeader` blocks and `kidsmm` lists).
-5. Private-use glyphs U+F73D, U+F73E, U+F71B, U+F700 (§7) — compare with the rendered article.
-6. DATAF `pn`, REL/DATAF editions `STE`/`STC` meaning; `section@type` vs heading look (type 6 at top level).
-7. Paragraphs with Specialty-font fractions: the VM text dump shows the raw font characters (`y` for ½);
-   check the screen shows ½.
+Answered by the VM captures (`docs/vm-findings.md`): the alternative title (§2, §8), the Specialty and
+private-use glyphs (§7), sidebar layout (§2), Kids layout (§2), and the media placement rules (§2).
+Still open:
+
+1. Media placement residue (§2): the country-article introductions (flag and anthem, then the right-column
+   modules) and items carried into the next section when a section has no free paragraph.
+2. Sidebar categories `SBA`, `SBP` (not in the captures; the Dutch strings suggest sport and popular culture).
+3. Timeline pop-up wording of full dates and geologic dates (only "4? BC - AD 29?" was observed).
+4. DATAF `pn`, REL/DATAF editions `STE`/`STC` meaning; `section@type` vs heading look (type 6 at top level).
+5. The right-column modules of an article (World Atlas map, Quick Facts, Related Articles, Web Sites):
+   which DATA records feed them and in which order.

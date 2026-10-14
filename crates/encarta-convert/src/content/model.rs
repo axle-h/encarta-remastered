@@ -121,8 +121,10 @@ pub enum Inline {
     Style(Style, Vec<Inline>),
     Break,
     Link(Link),
-    /// The item's own title, inserted where the source has an empty `<inlinetitle/>`.
-    TitleRef(Vec<Inline>),
+    /// The item's own title, inserted where the source has an empty `<inlinetitle/>`. The reader
+    /// shows the title in bold and, when the item has an alternative title, " or " (plain) and the
+    /// alternative title in bold: "**East Timor** or **Timor-Leste**, …".
+    TitleRef { title: Vec<Inline>, alt: Vec<Inline> },
     /// Inline picture (`inlinebmp`): file stem in baggage and placement.
     Image { id: String, placement: &'static str },
     Frac(String, String),
@@ -176,7 +178,8 @@ impl Inline {
                 m.insert("c".into(), arr(&l.c));
                 Value::Object(m)
             }
-            Inline::TitleRef(c) => json!({"t": "title-ref", "c": arr(c)}),
+            // `c` repeats `title` for readers written against schema version 1.
+            Inline::TitleRef { title, alt } => json!({"t": "title-ref", "title": arr(title), "alt": arr(alt), "c": arr(title)}),
             Inline::Image { id, placement } => {
                 json!({"t": "img", "id": id, "placement": placement})
             }
@@ -223,11 +226,16 @@ fn plain_into(v: &[Inline], s: &mut String) {
     for n in v {
         match n {
             Inline::Text(t) => s.push_str(t),
-            Inline::Style(_, c)
-            | Inline::TitleRef(c)
-            | Inline::Place { c, .. }
-            | Inline::Formula(c)
-            | Inline::Unknown { c, .. } => plain_into(c, s),
+            Inline::Style(_, c) | Inline::Place { c, .. } | Inline::Formula(c) | Inline::Unknown { c, .. } => {
+                plain_into(c, s)
+            }
+            Inline::TitleRef { title, alt } => {
+                plain_into(title, s);
+                if !alt.is_empty() {
+                    s.push_str(" or ");
+                    plain_into(alt, s);
+                }
+            }
             Inline::Quote { c, .. } => {
                 s.push(' ');
                 plain_into(c, s);
@@ -301,11 +309,14 @@ pub fn squash_inlines(v: &mut Vec<Inline>) {
                     *t = s;
                 }
                 Inline::Style(_, c)
-                | Inline::TitleRef(c)
                 | Inline::Place { c, .. }
                 | Inline::Formula(c)
                 | Inline::Unknown { c, .. }
                 | Inline::Quote { c, .. } => walk(c),
+                Inline::TitleRef { title, alt } => {
+                    walk(title);
+                    walk(alt);
+                }
                 Inline::Link(l) => walk(&mut l.c),
                 Inline::List { items, .. } => items.iter_mut().for_each(|i| walk(i)),
                 _ => {}

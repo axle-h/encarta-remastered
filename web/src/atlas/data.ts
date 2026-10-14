@@ -240,8 +240,10 @@ const KIND_LABELS: Record<string, string> = {
   article: "Article",
   "flag-and-anthem": "Flag and anthem",
   "facts-and-figures": "Facts and figures",
-  "flag-media": "Flag",
-  "flag-companion-media": "Flag",
+  flag: "Flag",
+  anthem: "National anthem",
+  "maptrek-stop": "Map Trek",
+  "about-map": "About this map",
   music: "Music",
 };
 
@@ -282,6 +284,9 @@ export interface StatValue {
   value?: number | null;
   value_text?: string | null;
   year?: number | string | null;
+  year_end?: number | null;
+  /** Display span, e.g. "1990-2005" (or "1995" for a single year). */
+  period?: string | null;
 }
 
 export function loadStats(ep: Endpoints, signal?: AbortSignal): Promise<StatsIndex> {

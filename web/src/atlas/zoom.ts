@@ -1,21 +1,35 @@
 /**
- * Camera altitude ↔ MapLibre zoom, as the converter compiles it into the styles
- * (docs/atlas-output.md "Bands and zooms", mad-styling.md §2.2):
+ * Camera altitude ↔ MapLibre zoom.
  *
- *   zoom(a) = log2(40075.017 · (P/m) / (512 · 2.5 · a))      a = altitude in km
+ * Encarta draws `P / (2.5·m·a)` pixels per km at the view centre (mad-styling.md §2.1), the true
+ * ground scale, isotropic, at any latitude (VM V1/V2, docs/vm-findings.md). `P/m` grows with the
+ * map pane: 3135 for its maximised 812 × 518 pane, `P/m ≈ 6.05 × pane height`. MapLibre (globe and
+ * Mercator alike) draws `512·2^z / (40075.017·cos φ)` pixels per km at latitude φ, so
  *
- * The styles are compiled at latitude 0, so the client uses the same latitude-free mapping for
- * everything (altitude readout, `alt=` in place links, the zoom slider). That keeps the rule that
- * MapLibre applies at a zoom equal to the rule Encarta applies at the displayed altitude. The cost:
- * away from the equator the view is magnified by 1/cos φ against Encarta's (0.5 zoom at 45°).
+ *   zoom(a, φ) = log2(40075.017 · cos φ · (P/m) / (512 · 2.5 · a))      a = altitude in km
+ *
+ * The converter compiles the styles' zoom ranges at φ = 0 for the reference pane
+ * (`encarta:view_p_over_m`, docs/atlas-output.md). The client shifts every layer by
+ * `zoom(a, φ, P/m of its own pane) − zoom(a, 0, reference P/m)` ([`zoomShift`]), so that MapLibre
+ * applies, at the displayed ground scale, the rule Encarta applies at that altitude.
  */
 
 export const EARTH_CIRCUMFERENCE_KM = 40075.017;
-/** Working value of `P/m` until the VM measures it; styles carry their own in `encarta:view_p_over_m`. */
-export const DEFAULT_P_OVER_M = 2400;
+/** `P/m` of Encarta's maximised map pane (812 × 518), measured in the VM; the styles carry it as `encarta:view_p_over_m`. */
+export const DEFAULT_P_OVER_M = 3135;
+/** `P/m` per pixel of pane height (VM: 3133 / 518 and 2891 / 477). */
+export const P_OVER_M_PER_HEIGHT_PX = 6.05;
 const TILE = 512;
 const FACTOR = 2.5;
+/** cos φ is not allowed below this near the poles. */
+const MIN_COS = 0.05;
 
+/** `P/m` for a map pane `heightPx` tall. */
+export function pOverMForPane(heightPx: number, perPx = P_OVER_M_PER_HEIGHT_PX): number {
+  return heightPx > 0 ? perPx * heightPx : DEFAULT_P_OVER_M;
+}
+
+/** Zoom of altitude `altitudeKm` at the equator (the converter's mapping). */
 export function zoomForAltitude(altitudeKm: number, pOverM = DEFAULT_P_OVER_M): number {
   return Math.log2((EARTH_CIRCUMFERENCE_KM * pOverM) / (TILE * FACTOR * Math.max(altitudeKm, 1e-6)));
 }
@@ -25,17 +39,34 @@ export function altitudeForZoom(zoom: number, pOverM = DEFAULT_P_OVER_M): number
 }
 
 /**
- * The flat (Miller) view draws `P / (5·m·a)` pixels per km, half the globe's `P / (2.5·m·a)`
- * (mad-styling.md §2.1), so the same altitude is one zoom level further out on the flat map.
+ * The flat (Miller) view draws `P / (5·m·a)` pixels per km along the equator, half the globe's
+ * (mad-styling.md §2.1, from the code; the VM did not measure it), so the same altitude is one zoom
+ * level further out. The Miller map's scale is fixed per zoom, so the flat view has no cos φ term.
  */
 export const FLAT_ZOOM_OFFSET = -1;
 
-export function zoomForView(altitudeKm: number, flat: boolean, pOverM = DEFAULT_P_OVER_M): number {
-  return zoomForAltitude(altitudeKm, pOverM) + (flat ? FLAT_ZOOM_OFFSET : 0);
+const latTerm = (flat: boolean, lat: number) => (flat ? FLAT_ZOOM_OFFSET : Math.log2(Math.max(Math.cos((lat * Math.PI) / 180), MIN_COS)));
+
+/** MapLibre zoom showing `altitudeKm` at latitude `lat` (globe: true ground scale). */
+export function zoomForView(altitudeKm: number, flat: boolean, pOverM = DEFAULT_P_OVER_M, lat = 0): number {
+  return zoomForAltitude(altitudeKm, pOverM) + latTerm(flat, lat);
 }
 
-export function altitudeForView(zoom: number, flat: boolean, pOverM = DEFAULT_P_OVER_M): number {
-  return altitudeForZoom(zoom - (flat ? FLAT_ZOOM_OFFSET : 0), pOverM);
+export function altitudeForView(zoom: number, flat: boolean, pOverM = DEFAULT_P_OVER_M, lat = 0): number {
+  return altitudeForZoom(zoom - latTerm(flat, lat), pOverM);
+}
+
+/**
+ * How far the style's zoom ranges (compiled at φ = 0 with `stylePOverM`) move for this view:
+ * add it to every layer's minzoom/maxzoom.
+ */
+export function zoomShift(flat: boolean, pOverM: number, stylePOverM: number, lat = 0): number {
+  return Math.log2(pOverM / stylePOverM) + latTerm(flat, lat);
+}
+
+/** A shift rounded to 0.05 zoom, so small moves do not restyle the map. */
+export function quantiseShift(s: number): number {
+  return Math.round(s * 20) / 20;
 }
 
 /** Encarta keeps `floor(altitude)` and compares that integer with its rule ranges (mad-styling.md §2.1). */

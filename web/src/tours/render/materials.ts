@@ -104,7 +104,9 @@ export function impostorMaterial(): THREE.RawShaderMaterial {
         float ty = floor(index / uW);
         float tx = index - ty * uW;
         float depth = (z0 * uCos - u0 * uSin) * 64.0 + 65536.0;
-        gl_Position = vec4((tx + 0.5) / uW * 2.0 - 1.0, (ty + 0.5) / uH * 2.0 - 1.0, clamp(depth / 131072.0, 0.0, 1.0) * 2.0 - 1.0, 1.0);
+        // Surface row 0 is the bottom row of the image (tour-scene.md: v' = 1 − v), so row ty goes
+        // to texture row H − 1 − ty of the render target, whose first row is v = 0.
+        gl_Position = vec4((tx + 0.5) / uW * 2.0 - 1.0, 1.0 - (ty + 0.5) / uH * 2.0, clamp(depth / 131072.0, 0.0, 1.0) * 2.0 - 1.0, 1.0);
         gl_PointSize = 1.0;
         vColor = color.rgb;
       }`,

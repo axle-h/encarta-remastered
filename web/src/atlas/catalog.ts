@@ -46,12 +46,15 @@ export const MENU_STYLES: readonly MenuStyle[] = [
 ];
 
 /**
- * `msencarta://…/style=<n>` → MapStyle id, from the V4 shots. Numbers that showed no distinct look
- * (18, 21–23, 26–33) are left out; callers fall back to the default style.
+ * `msencarta://…/style=<n>` → MapStyle id, from the V4 shots (docs/vm-findings.md, "V4, style id →
+ * menu name"). Numbers 27–33 are style 0 in Encarta (fallback). Numbers Encarta uses outside its
+ * menu (4 relief only, 18 symbols only, 21–23 the Moon without labels, 26 physical with borders)
+ * have no MapStyle identified yet and are left out; callers fall back to the default style.
  */
 export const MENU_STYLE: Readonly<Record<number, number>> = {
-  0: 0, 1: 10, 2: 2, 3: 9, 4: 12, 5: 7, 6: 8, 7: 4, 8: 1, 9: 25, 10: 23, 11: 24, 12: 6, 13: 5, 14: 12,
+  0: 0, 1: 10, 2: 2, 3: 9, 5: 7, 6: 8, 7: 4, 8: 1, 9: 25, 10: 23, 11: 24, 12: 6, 13: 5, 14: 12,
   15: 3, 16: 22, 17: 13, 19: 11, 20: 16, 24: 21, 25: 26,
+  27: 0, 28: 0, 29: 0, 30: 0, 31: 0, 32: 0, 33: 0,
 };
 
 export const MOON_STYLE_ID = 16;

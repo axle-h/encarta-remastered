@@ -9,7 +9,8 @@ export type RGB = [number, number, number];
 export interface TourScene {
   format: "encarta-tour-scene";
   version: number;
-  tour: { id: string; contentId: number; name: string };
+  /** `title`: the tour record's title (e.g. "Acropolis, 400 BC"), null without content.sqlite. */
+  tour: { id: string; contentId: number; name: string; title?: string | null };
   files: { glb: string; pvs: string };
   camera: CameraInfo;
   scene: SceneSwitches;
@@ -22,7 +23,17 @@ export interface TourScene {
   hud: Hud;
   cursors: Cursors;
   hotspots: HotspotLink[];
+  /** Tour Stops in menu order, from the tour's content record (§4.3); empty without the catalog. */
+  stops?: TourStop[];
+  /** The stop the host moves to after `WORLDLOADED` (the tour record's `default/@refid`). */
+  defaultStop?: number | null;
+  /** Every hotspot of every stop with the media it opens. */
+  hotspotTargets?: HotspotTarget[];
   siteMap: SiteMap;
+  /** Site-map images with their locations; [] without content.sqlite. */
+  sites?: SiteMapImage[];
+  /** The tour record's article (the credits); null without content.sqlite. */
+  article?: number | null;
   macros: MacroDef[];
   alarms: AlarmDef[];
   events: { origin: string; text: string; name: string; pairs: [string, string][] }[];
@@ -278,6 +289,43 @@ export interface HotspotLink {
   icon: number;
   anchor: Vec3;
   anchored: boolean;
+  /** `destmedia` of the hotspot's content record: the media page a click opens (null when unknown). */
+  destMedia?: number | null;
+  destGroup?: string | null;
+}
+
+export interface TourStop {
+  id: number;
+  title: string;
+  /** The stop's `coord3d`: the camera command string the host sends (disc coordinates). */
+  command: string | null;
+  hotspots: number[];
+  /** The stop's site map (`sites[].id`); one per floor in multi-floor tours. */
+  site?: number | null;
+  /** The stop text shown below the site map (an article id). */
+  article?: number | null;
+}
+
+/** A site map (tours-3d.md §4.2): the stop's `children/site` record. */
+export interface SiteMapImage {
+  id: number;
+  /** The disc's baggage file, e.g. `00068668.dib`. */
+  file: string | null;
+  /** PNG under the tour directory: left half the plain map, right half the map as tinted inside the view wedge. */
+  image: string | null;
+  size: [number, number];
+  /** Named locations: `x`, `y` = top-left pixel of the location's box in the site-map window. */
+  locations: { id: number; title: string; stop: number | null; x: number | null; y: number | null }[];
+}
+
+export interface HotspotTarget {
+  id: number;
+  title: string;
+  destMedia: number | null;
+  destGroup: string | null;
+  destKind: string | null;
+  destTitle: string | null;
+  stops: number[];
 }
 
 export interface SiteMap {

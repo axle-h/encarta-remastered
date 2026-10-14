@@ -81,14 +81,14 @@ export function PlaceMenu({ ep, x, y, hits, onHover, onGoTo, onOpen, onClose }: 
             {isOpen && (
               <div className="enc-atlas-menu__sub" role="menu">
                 {l === "loading" && <div className="enc-atlas-menu__note">Loading…</div>}
+                <button type="button" role="menuitem" onClick={() => onGoTo(h)}>
+                  Map
+                </button>
                 {list.map((link) => (
                   <button key={`${link.kind}-${link.ref_id}`} type="button" role="menuitem" onClick={() => onOpen(link, h)}>
                     {linkLabel(link)}
                   </button>
                 ))}
-                <button type="button" role="menuitem" onClick={() => onGoTo(h)}>
-                  Go to {h.name}
-                </button>
               </div>
             )}
           </div>

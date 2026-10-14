@@ -8,7 +8,7 @@ import { cursorZone, followGround, mouseVector, newCamera, stepMove, stepPitch, 
 import { collide, slideMove } from "./sim/collision";
 import { chunkVisible, cloudPhi, Filmstrip, flickerColour, flickerFactor, FlickerLight, lcg, rasteriseCloud, Ripple } from "./sim/effects";
 import { WalkMap, WalkMapSet, type Segment } from "./sim/walkmap";
-import { parseWorldLoaded, siteMapMarker } from "./sitemap";
+import { markerMoved, parseWorldLoaded, siteMapMarker, wedgeAngles } from "./sitemap";
 import type { Cell, ElementDef, LayerFile, Step, StepOf, WalkMapFile } from "./types";
 
 // ------------------------------------------------------------------ synthetic fixtures
@@ -447,5 +447,18 @@ describe("site map (§4.2)", () => {
     expect(siteMapMarker(rot, 0, 5, 0)).toEqual({ px: 25, py: 100, heading: 180 });
     expect(siteMapMarker({ ...cfg, xExtent: 0 }, 0, 0, 0)).toBeNull();
     expect(parseWorldLoaded([]).fieldOfViewDeg).toBe(120);
+  });
+
+  it("redraws only past 2° or 2 px, and opens the wedge around the heading", () => {
+    const m = { px: 50, py: 50, heading: 90 };
+    expect(markerMoved(null, m)).toBe(true);
+    expect(markerMoved(m, { px: 52, py: 48, heading: 92 })).toBe(false);
+    expect(markerMoved(m, { px: 53, py: 50, heading: 90 })).toBe(true);
+    expect(markerMoved(m, { px: 50, py: 50, heading: 93 })).toBe(true);
+    expect(markerMoved({ ...m, heading: 359 }, { ...m, heading: 1 })).toBe(false);
+    // Yaw 0 looks up the map: heading 90, so the wedge is centred on canvas angle −90° (up).
+    const [a0, a1] = wedgeAngles(90, 80);
+    expect(((a0 + a1) / 2) * (180 / Math.PI)).toBeCloseTo(-90);
+    expect((a1 - a0) * (180 / Math.PI)).toBeCloseTo(80);
   });
 });

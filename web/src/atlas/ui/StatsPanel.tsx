@@ -53,7 +53,7 @@ export function StatsPanel({ index, error, indicator, values, colours, hoverCoun
           <span className="enc-atlas-stats__value">
             {hovered.country}: {hovered.value_text ?? hovered.value}
             {hovered.rank ? ` (rank ${hovered.rank})` : ""}
-            {hovered.year ? `, ${hovered.year}` : ""}
+            {hovered.period ? `, ${hovered.period}` : hovered.year ? `, ${hovered.year}` : ""}
           </span>
         )}
         {error && <span className="enc-atlas-note">{error}</span>}

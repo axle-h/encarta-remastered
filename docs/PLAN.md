@@ -50,7 +50,9 @@ One command: `encarta-convert --iso <path> --out out/`. It is idempotent and res
 - **Database** (SQLite): articles in our own normalised schema (structured JSON plus pre-rendered
   HTML fragments), outlines, related articles, media metadata (captions, credits, sizes),
   dictionary/thesaurus/bilingual dictionaries, timeline, quizzes, statistics, gazetteer. **Done**: `encarta-convert content`
-  → `out/content.sqlite` (schema in [content-schema.md](content-schema.md); 634,247 catalog ids, 0 unexplained).
+  → `out/content.sqlite` (schema v2 in [content-schema.md](content-schema.md); 634,247 catalog ids, 0 unexplained).
+  Against 60 VM captures: 4,795 of 4,796 paragraphs identical; inline media in the right paragraph 95.7 %, order
+  98.4 %, column 97.8 %, cluster 98.2 %. Open: country-article introductions, overflow into the next section.
 - **Media** (content-addressed under `out/media/`):
   - images keep their original bytes, plus WebP/AVIF derivatives;
   - WAV/WMA → Opus (+ AAC fallback); WMV → MP4/H.264 + WebM; SAMI captions → WebVTT;
@@ -60,8 +62,8 @@ One command: `encarta-convert --iso <path> --out out/`. It is idempotent and res
     sources, 0 failed, 0 unexplained. AVIF for JPEG sources only, MP3 kept as is, the two Director charts as JSON.
 - **Atlas**: raster and vector tiles in PMTiles, a MapLibre style, glyphs from the disc fonts, a symbol sprite sheet.
   **Done**: `encarta-convert atlas` → `out/atlas/` (PMTiles rasters and MVT, `gazetteer.sqlite`, 33 MapLibre
-  styles, sprites, SDF glyphs; layout in [atlas-output.md](atlas-output.md); 0 unexplained MAD sections). Zooms use a
-  working P/m = 2400 until measured in the VM.
+  styles, sprites, SDF glyphs; layout in [atlas-output.md](atlas-output.md); 0 unexplained MAD sections). Zooms use
+  P/m = 3135 as measured in the VM (6.05 × map pane height).
 - **3D tours**: glTF scenes plus a JSON scene description (scripts, hotspots, lights, walk maps, HUD). **Done**: `encarta-convert tours`
   → `out/tours/<id>/` (scene.glb, scene.json, pvs.bin; schema in [tour-scene.md](tour-scene.md)).
 - **Search**: a tantivy index carrying Encarta's aliases and section titles. **Done**: `encarta-convert search`
@@ -79,16 +81,19 @@ Home, article reader (our renderer for the content schema: quick-verify links, s
 pronunciations, media galleries, outlines), media browser, video with captions, dictionary,
 thesaurus and translation, search with autocomplete, timeline, interactives (`.iax` + Ruffle),
 Encarta Kids mode.
-**Mostly done** ([web-client.md](web-client.md)): React 18 SPA in `web/`. Open: Ruffle for interactives, a MIDI
-soundfont, wide-picture placement, word-wheel words before the typed one, Favorites and dictionary Copy/Print.
+**Mostly done** ([web-client.md](web-client.md)): React 18 SPA in `web/`; interactives run the disc's own IAF player
+under Ruffle; word wheel and wide-picture placement match the VM. Open: Ruffle issues (Vasco da Gama map fills,
+Great Wall panorama), consuming the converter's stored clusters and columns, a MIDI soundfont, Favorites, dictionary Copy/Print.
 
 ## Step 5 — Atlas
 MapLibre globe and map: every raster look (terrain, satellite, night, moon, tectonic, climate,
 population), the vector map with Encarta styling and labels, place search, links between places and
 articles, statistics overlays, Geography Quiz.
 **Done** except the Geography Quiz (Step 7) ([atlas-client.md](atlas-client.md)): `<Atlas />` in `web/src/atlas/`.
-Open: a Miller flat projection, P/m from the VM (V4 suggests ~3,200, not 2,400), per-style interactive classes,
-highlight tint, cell seams in highlights.
+Miller flat view, measured P/m, per-style interactive classes, tint, seamless outlines, draw-over masks and the
+abbreviation fallback are in. `<Atlas />` has quiz props (`highlightEntity`, `quizMode`, `onPlaceClick`) so the
+Geography Quiz can move onto it. Open: time zones in the click menu (V11 shows none), the alternate label style (w6),
+area-pen masks, the road-shield source, flat-view re-tiling off the main thread.
 
 ## Step 6 — 3D virtual tours (full interactivity)
 three.js runtime: scene loading, first-person walking with collision and gravity, flickering lights,
@@ -96,8 +101,20 @@ point-cloud statues, sky and water, HUD, hotspots that open articles and media, 
 script behaviours. Checked side by side with the VM.
 **Done** (VM side-by-side still open): `web/src/tours/` (`mountTour`), dev page `web/tours.html`; all 7 tours
 load and walk; design and parity choices in [tour-runtime.md](tour-runtime.md).
+VM parity: all 47 captured views (40 Tour Stops + 7 start poses) match the VM read-back; speeds, pitch, FOV, events,
+command replies, captions and hotspot → media page (Back restores the pose) follow `vm-findings.md`. `encarta-convert
+tours` reads `out/content.sqlite` (stops, hotspot destinations), so `content` runs first. Texture surfaces are bottom-up,
+so the converter flips V (tours-3d.md §5.6); cloud orientation confirmed; the tour page has Encarta's layout, a Tour
+Stops menu and a site map (marker, wedge, floors, clickable locations). Open: the pitch-limit float arithmetic (needs
+a VM log), rotated site maps and the highlighted-location look in the VM, Music / Start Over / Appears in, and the
+remaining [VM] items in tours-3d.md §10.
 
 ## Step 7 — Games and remaining extras
+The VM shows that Encarta 2009 cannot reach MindMaze, City Climate or Population Chart (no feature or media record
+leads to them), so the Geography Quiz and the quizzes are the parity items; the other three are extras built from the data.
+**Done** ([games.md](games.md)): Geography Quiz (VM parity), the SWQUIZ quizzes, all 64 match games; extras MindMaze,
+City Climate and Population Chart. Open: the board-game engine (`BGAControl`, Flash boards → Ruffle), the Geography
+Quiz's locator globe, zoom slider and hand tool, and its after-answer and end screens (never captured in the VM).
 MindMaze, quizzes (`SWQUIZ`), Geography Quiz, City Climate and Population Chart (rebuilt from the 1.8 data).
 
 ## Step 8 — Parity audit

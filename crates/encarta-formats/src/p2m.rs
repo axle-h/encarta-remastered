@@ -47,8 +47,8 @@ pub fn kind_label(kind: u32) -> &'static str {
     match kind {
         8 => "article",
         1 => "flag-and-anthem",
-        14 => "flag-media",
-        15 => "flag-companion-media",
+        14 => "flag",
+        15 => "anthem",
         2 => "facts-and-figures",
         12 => "music",
         5 => "photo:general",
@@ -57,8 +57,8 @@ pub fn kind_label(kind: u32) -> &'static str {
         101 => "photo:people",
         133 => "photo:architecture",
         165 => "photo:animals",
-        13 => "unknown-13",
-        16 => "unknown-16",
+        13 => "maptrek-stop",
+        16 => "about-map",
         _ => "unknown",
     }
 }

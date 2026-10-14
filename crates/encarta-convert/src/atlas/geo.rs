@@ -37,9 +37,16 @@ pub fn tile_bounds(z: u8, x: u32, y: u32) -> (f64, f64, f64, f64) {
 /// Altitude → zoom: the single place where Encarta's camera altitudes become MapLibre zooms
 /// (mad-styling.md §2.2). For 512-px tiles at the equator,
 /// `zoom(a) = log2(40075.017 · (P/m) / (512 · 2.5 · a))`. `P/m` (the view constants of
-/// mad-styling.md §2.1) is not yet measured in the reference VM; 2400 is the working value of the
-/// styling spec. Change [`VIEW_P_OVER_M`] when docs/vm-findings.md has the measurement.
-pub const VIEW_P_OVER_M: f64 = 2400.0;
+/// mad-styling.md §2.1) was measured in the reference VM (docs/vm-findings.md, V1/V2): 3135 for
+/// Encarta's maximised 812 × 518 map pane, and it scales with the pane height
+/// (`P/m ≈ 6.05 × height`). The styles are compiled for that pane at latitude 0; the client
+/// shifts their zoom ranges for its own pane height and latitude (Encarta's scale is the true
+/// ground scale at the view centre).
+pub const VIEW_P_OVER_M: f64 = 3135.0;
+/// `P/m` per pixel of map pane height (VM V1: 3133/518 = 6.05, 2891/477 = 6.06).
+pub const VIEW_P_OVER_M_PER_HEIGHT_PX: f64 = 6.05;
+/// The pane height the styles are compiled for.
+pub const REFERENCE_PANE_HEIGHT_PX: f64 = 518.0;
 pub const EARTH_CIRCUMFERENCE_KM: f64 = 40_075.017;
 
 /// Altitude in km at which `zoom` applies (equator).
@@ -68,9 +75,10 @@ mod tests {
 
     #[test]
     fn altitude_zoom() {
-        // mad-styling.md §2.2 worked example: 150 km → zoom 8.97, 4000 km → 4.23.
-        assert!((zoom_for_altitude(150.0) - 8.97).abs() < 0.01);
-        assert!((zoom_for_altitude(4000.0) - 4.23).abs() < 0.01);
+        // mad-styling.md §2.2 worked example with the VM's P/m = 3135: 150 km → zoom 9.35, 4000 km → 4.62.
+        assert!((zoom_for_altitude(150.0) - 9.354).abs() < 0.01);
+        assert!((zoom_for_altitude(4000.0) - 4.617).abs() < 0.01);
+        assert!((VIEW_P_OVER_M_PER_HEIGHT_PX * REFERENCE_PANE_HEIGHT_PX - VIEW_P_OVER_M).abs() < 0.01 * VIEW_P_OVER_M);
         assert!((altitude_km(zoom_for_altitude(777.0)) - 777.0).abs() < 1e-6);
     }
 }

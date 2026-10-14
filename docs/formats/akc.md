@@ -669,8 +669,9 @@ Open points (none block decoding):
 - Kinds 5, 6, 8, kind 9 with `n > 0`, the sparse code-length mode's corner cases and the flat mode are
   specified from the reader's behaviour but are not exercised by this disc (except 4 sparse codes).
 - `<inlinetitle>` is empty in the records and is filled by the app: the reference VM shows the article
-  title there in bold (Zebra 761575094 starts with "**Zebra**," then the text). The converter fills it
-  from the item title.
+  title there in bold (Zebra 761575094 starts with "**Zebra**," then the text); with a DATA `<alttitle>`
+  both titles are bold, joined by a plain " or " (East Timor 461510929: "**East Timor** or **Timor-Leste**,").
+  The converter fills it from the item's title and alternative title (`content-schema.md` §8).
 
 ## 15. Implementation
 

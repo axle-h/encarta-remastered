@@ -119,7 +119,7 @@ export class WalkMap {
     if (!bucket) return null;
     for (const e of bucket) {
       if (gx < e.minX || gx > e.maxX || gz < e.minZ || gz > e.maxZ) continue;
-      for (const q of e.polys) if (insideConvex(q, gx, gz)) return e.cell as CellOf<K>;
+      for (const q of e.polys) if (coversGridCell(q, gx, gz)) return e.cell as CellOf<K>;
     }
     return null;
   }
@@ -181,7 +181,7 @@ export class WalkMap {
     const out: CellOf<"collision">[] = [];
     for (const e of bucket ?? []) {
       if (g[0] < e.minX || g[0] > e.maxX || g[1] < e.minZ || g[1] > e.maxZ) continue;
-      if (e.polys.some((q) => insideConvex(q, g[0], g[1]))) out.push(e.cell as CellOf<"collision">);
+      if (e.polys.some((q) => coversGridCell(q, g[0], g[1]))) out.push(e.cell as CellOf<"collision">);
     }
     return out;
   }
@@ -193,6 +193,33 @@ export class WalkMap {
 }
 
 /** Inclusive point-in-convex-polygon on integer coordinates (either winding; degenerate polygons count their edges). */
+/**
+ * Whether a quantised convex polygon covers grid cell (gx, gz) under the scan-line rule: on row gz
+ * the polygon spans [xl, xr], and the cell belongs to it when that span overlaps [gx, gx + 1).
+ * Matches the VM where the inclusive point test did not: a Colosseum Tour Stop standing on a thin
+ * slanted seating step, whose left edge crosses its row at x = gx + 0.44, settles on that step
+ * (tours-3d.md §6.14).
+ */
+export function coversGridCell(q: Int32Array, gx: number, gz: number): boolean {
+  const n = q.length / 2;
+  let xl = Infinity, xr = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const ax = q[2 * i] ?? 0, az = q[2 * i + 1] ?? 0;
+    const j = (i + 1) % n;
+    const bx = q[2 * j] ?? 0, bz = q[2 * j + 1] ?? 0;
+    if (gz < Math.min(az, bz) || gz > Math.max(az, bz)) continue;
+    if (az === bz) {
+      xl = Math.min(xl, ax, bx);
+      xr = Math.max(xr, ax, bx);
+    } else {
+      const x = ax + ((bx - ax) * (gz - az)) / (bz - az);
+      xl = Math.min(xl, x);
+      xr = Math.max(xr, x);
+    }
+  }
+  return xl < gx + 1 && xr >= gx;
+}
+
 export function insideConvex(q: Int32Array, x: number, z: number): boolean {
   const n = q.length / 2;
   let pos = false, neg = false;

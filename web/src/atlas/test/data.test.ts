@@ -48,6 +48,6 @@ describe("place links", () => {
     expect(linkLabel(links[0]!)).toBe("Flag of Testland");
     expect(linkLabel({ kind: 5, kind_label: "photo:general", ref_id: 5, title: "Photo of hills" })).toBe("Photo of hills");
     expect(sortLinks(links).map((l) => l.ref_id)).toEqual([2, 1, 3]);
-    expect(linkLabel({ kind: 16, kind_label: "unknown-16", ref_id: 4 })).toBe("Media");
+    expect(linkLabel({ kind: 99, kind_label: "unknown-99", ref_id: 4 })).toBe("Media");
   });
 });

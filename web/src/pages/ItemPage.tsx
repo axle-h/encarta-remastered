@@ -8,9 +8,10 @@ import { useDocumentTitle } from "../components/useDocumentTitle";
 import { itemHref } from "../content/links";
 import { MediaStage } from "../media/MediaViewer";
 import { mediaClass, tourIdFor, uniqueByRef } from "../media/pick";
-import { KidsArticle } from "../kids/KidsArticle";
 import { BrowseContent } from "./BrowsePage";
-import { formatEventDate } from "./timelineDates";
+import { eventDateText } from "./timelineDates";
+
+const GEOQUIZ_FEATURE_ID = 701712336;
 
 /** `/item/{id}`: the target of every content link. Picks the view from the item's kind. */
 export function ItemPage({ kids = false }: { kids?: boolean }) {
@@ -18,6 +19,8 @@ export function ItemPage({ kids = false }: { kids?: boolean }) {
   const res = useApi((s) => api.item(id, s), [id]);
   const item = res.data;
   if (!Number.isFinite(id)) return <Navigate to="/" replace />;
+  // The Geography Quiz feature item opens the game.
+  if (id === GEOQUIZ_FEATURE_ID) return <Navigate to="/games/geoquiz" replace />;
   if (res.error) {
     return (
       <div className="enc-page-error">
@@ -32,7 +35,8 @@ export function ItemPage({ kids = false }: { kids?: boolean }) {
   if (!kids && eds.length === 1 && eds[0] === "kids") return <Navigate to={`/kids/item/${id}`} replace />;
   if (item.kind === "home-page") return <BrowseContent item={item} kids={kids} />;
   if (item.has_article) {
-    return kids ? <KidsArticle id={id} /> : <ArticlePage id={id} />;
+    // The article picks its page layout (encyclopedia, Kids, sidebar) from `article.layout`.
+    return <ArticlePage id={id} kids={kids} />;
   }
   return <ItemView item={item} kids={kids} />;
 }
@@ -51,7 +55,7 @@ function ItemView({ item, kids }: { item: Item; kids: boolean }) {
       </h1>
       {ev && (
         <p className="itempage-date">
-          {formatEventDate(ev)} · <Link to={`/timeline?year=${ev.start.year}`}>Show on the Timeline</Link>
+          {eventDateText(ev)} · <Link to={`/timeline?year=${ev.start.year}`}>Show on the Timeline</Link>
         </p>
       )}
       <div className="itempage-stage">

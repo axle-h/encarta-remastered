@@ -31,7 +31,9 @@ export function syntheticStyle(): StyleSpecification {
       "encarta:minzoom": 0.59,
       "encarta:maxzoom": 8.97,
       "encarta:space_colour": "#000000",
-      "encarta:view_p_over_m": 2400,
+      "encarta:view_p_over_m": 3135,
+      "encarta:view_p_over_m_per_height_px": 6.05,
+      "encarta:interactive": { "62": [[0.97, 16.59, 1]], "64": [[0.97, 5, 2]], "0": [[0, 24, 1]], "80": [[0, 24, 1]], "999": [[0, 24, 1]] },
       "encarta:min_rects": [{ bbox: [12.2, 45.3, 12.5, 45.5], maxzoom: 13.88, min_altitude_km: 5 }],
     },
     sources: {
@@ -54,6 +56,11 @@ export function syntheticStyle(): StyleSpecification {
       }),
       layer("line-lines-6", "line", "lines", [70], ["Sovereign - boundary"], { minzoom: 3, paint: { "line-color": "#000000", "line-width": 1, "line-dasharray": [7, 5] } }),
       layer("line-lines-7", "line", "lines", [80, 81], ["River", "Railroad - minor"], { paint: { "line-color": "#4b64f7", "line-width": 2 } }),
+      layer("line-lines-11", "line", "lines", [70], ["Sovereign - boundary"], {
+        minzoom: 3,
+        filter: ["all", ["==", ["get", "class"], 70], ["==", ["get", "water"], true]],
+        paint: { "line-color": "#d4c8ce", "line-width": 3 },
+      }),
       layer("symbol-points-8", "symbol", "points", [0], ["PPL - non-capital million+ city"], {
         layout: { "icon-image": "bm10", "text-field": ["coalesce", ["get", "name"], ""], "text-font": ["MS Reference Sans Serif Regular"], "text-size": 14 },
         paint: { "text-color": "#000000", "text-halo-color": "#ffffff" },

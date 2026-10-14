@@ -109,7 +109,13 @@ pub fn inline(n: &Inline, out: &mut String) {
             out.push_str("</a>");
             out.push_str(l.kind.suffix());
         }
-        Inline::TitleRef(c) => wrap("span", Some("enc-title-ref"), c, out),
+        Inline::TitleRef { title, alt } => {
+            wrap("span", Some("enc-title-ref"), title, out);
+            if !alt.is_empty() {
+                out.push_str(" or ");
+                wrap("span", Some("enc-title-ref enc-alt-title"), alt, out);
+            }
+        }
         Inline::Image { id, placement } => {
             let _ = write!(
                 out,

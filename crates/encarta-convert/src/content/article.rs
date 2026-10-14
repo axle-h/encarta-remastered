@@ -49,7 +49,13 @@ pub enum Block {
         ref_id: u32,
         group: String,
         sequence: i64,
+        col: Column,
     },
+    /// Several media items shown in one box in the margin column (one at a time, with a strip of
+    /// thumbnails to switch).
+    Cluster(Vec<MediaRef>),
+    /// Encarta Kids media tiles (two-column grid beside the text).
+    MediaGrid(Vec<MediaRef>),
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -334,7 +340,7 @@ fn collect_links(
                 ));
             }
             Inline::Style(_, c)
-            | Inline::TitleRef(c)
+            | Inline::TitleRef { title: c, .. }
             | Inline::Place { c, .. }
             | Inline::Formula(c)
             | Inline::Unknown { c, .. }
@@ -407,13 +413,76 @@ fn bib(cx: &mut Ctx, e: &Element) -> Bib {
     b
 }
 
+/// Which page layout the reader uses for the item (`article.layout`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Layout {
+    /// Encyclopedia article: text column with media in the text column (wide pictures, sidebar
+    /// teasers) and in the left margin column, placed beside the paragraphs of their section.
+    Encyclopedia,
+    /// Encarta Kids article: text on the right, a grid of media tiles on the left; only inline
+    /// tables (`tableinline`, the "Facts About …" table) sit in the text, at the end of their section.
+    Kids,
+    /// Sidebar view: header frame (banner, title) and body frame; all media in one cluster at the
+    /// top left of the body.
+    Sidebar,
+}
+
+impl Layout {
+    pub fn name(self) -> &'static str {
+        match self {
+            Layout::Encyclopedia => "encyclopedia",
+            Layout::Kids => "kids",
+            Layout::Sidebar => "sidebar",
+        }
+    }
+}
+
+/// Where a placed item is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Column {
+    /// Spans the text column (wide pictures, video, sidebar teasers, Kids inline tables).
+    Text,
+    /// Left margin column (small pictures, audio, interactives, tables, timeline items, clusters).
+    Margin,
+    /// Kids media tile grid.
+    Grid,
+}
+
+impl Column {
+    pub fn name(self) -> &'static str {
+        match self {
+            Column::Text => "text",
+            Column::Margin => "margin",
+            Column::Grid => "grid",
+        }
+    }
+}
+
+/// One item the article places (from its DATA forward associations).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Placement {
+    pub sec: u32,
+    pub ref_id: u32,
+    pub group: String,
+    pub sequence: i64,
+    pub col: Column,
+}
+
+/// A member of a cluster or of the Kids media grid.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MediaRef {
+    pub ref_id: u32,
+    pub group: String,
+    pub sequence: i64,
+}
+
 /// What the article converter needs to know about the item.
 pub struct ItemInfo<'a> {
     pub title: Option<&'a [Inline]>,
-    /// `(section id, media ref, group, sequence)` from the item's forward associations.
-    pub placements: &'a [(u32, u32, String, i64)],
-    /// Interleave media with the text (encyclopedia); Kids articles list them after the text.
-    pub inline_media: bool,
+    /// The item's alternative title (empty when it has none).
+    pub alt_title: &'a [Inline],
+    pub placements: &'a [Placement],
+    pub layout: Layout,
 }
 
 /// Converts a `<content>` record (or a sidebar `<text>` root).
@@ -439,6 +508,7 @@ pub fn convert(t: &mut Tracker, root: &Element, info: &ItemInfo) -> Article {
         cx: Ctx {
             t,
             title: info.title,
+            alt_title: info.alt_title,
             squash: false,
         },
         art: &mut art,
@@ -447,22 +517,81 @@ pub fn convert(t: &mut Tracker, root: &Element, info: &ItemInfo) -> Article {
         loose_bib: false,
     };
     let mut blocks = b.blocks(text, None, 0, &[]);
-    if info.inline_media {
-        place_media(&mut blocks, info.placements);
-    } else {
-        let mut v: Vec<_> = info.placements.iter().filter(|p| is_inline_group(&p.2)).collect();
-        v.sort_by_key(|p| (p.3, p.1));
-        blocks.extend(v.into_iter().map(|(_, r, g, q)| Block::Media {
-            ref_id: *r,
-            group: g.clone(),
-            sequence: *q,
-        }));
+    let mut placed: Vec<Placement> = info.placements.iter().filter(|p| is_inline_group(&p.group)).cloned().collect();
+    placed.sort_by_key(|p| (p.sequence, p.ref_id));
+    match info.layout {
+        Layout::Encyclopedia => place_media(&mut blocks, &placed),
+        Layout::Sidebar => {
+            let mut items: Vec<Block> = Vec::new();
+            if placed.len() == 1 {
+                let mut m = media_block(&placed[0]);
+                if let Block::Media { col, .. } = &mut m {
+                    *col = Column::Margin;
+                }
+                items.push(m);
+            } else if !placed.is_empty() {
+                items.push(Block::Cluster(placed.iter().map(media_ref).collect()));
+            }
+            blocks.splice(0..0, items);
+        }
+        Layout::Kids => {
+            let (inline, grid): (Vec<Placement>, Vec<Placement>) =
+                placed.into_iter().partition(|p| p.group == "tableinline");
+            for p in inline {
+                let mut b = media_block(&p);
+                if let Block::Media { col, .. } = &mut b {
+                    *col = Column::Text;
+                }
+                if let Some(b) = append_to_section(&mut blocks, p.sec, b) {
+                    let at = blocks.iter().rposition(|b| !matches!(b, Block::Section { .. })).map_or(0, |i| i + 1);
+                    blocks.insert(at, b);
+                }
+            }
+            if !grid.is_empty() {
+                blocks.push(Block::MediaGrid(grid.iter().map(media_ref).collect()));
+            }
+        }
     }
     art.blocks = blocks;
     art
 }
 
-/// Groups that the article shows inline beside its text (checked against the reference VM on 20
+fn media_ref(p: &Placement) -> MediaRef {
+    MediaRef {
+        ref_id: p.ref_id,
+        group: p.group.clone(),
+        sequence: p.sequence,
+    }
+}
+
+fn media_block(p: &Placement) -> Block {
+    Block::Media {
+        ref_id: p.ref_id,
+        group: p.group.clone(),
+        sequence: p.sequence,
+        col: p.col,
+    }
+}
+
+/// Appends a block after the paragraphs of section `sec` (before its subsections). Returns the
+/// block back when the section does not exist.
+fn append_to_section(blocks: &mut [Block], sec: u32, b: Block) -> Option<Block> {
+    let mut b = Some(b);
+    for x in blocks.iter_mut() {
+        if let Block::Section { id, blocks: inner, .. } = x {
+            if *id == sec {
+                let at = inner.iter().rposition(|b| !matches!(b, Block::Section { .. })).map_or(0, |i| i + 1);
+                inner.insert(at, b.take().unwrap());
+                return None;
+            }
+            b = append_to_section(inner, sec, b.take().unwrap());
+            b.as_ref()?;
+        }
+    }
+    b
+}
+
+/// Groups that the article shows inline beside its text (checked against the reference VM on 33
 /// articles); the other associations (quotations, yearbook articles, web links, further reading,
 /// contributors, maps, live links) are article resources shown elsewhere.
 pub fn is_inline_group(g: &str) -> bool {
@@ -473,43 +602,128 @@ pub fn is_inline_group(g: &str) -> bool {
     )
 }
 
-/// How many of `n` items go before each of `m` paragraphs. Observed in the reference VM: with
-/// fewer items than paragraphs they are spread evenly (one every m/n paragraphs); with more,
-/// each paragraph takes ceil(remaining items / remaining paragraphs).
+/// Groups that may share one cluster box (the reader shows one at a time with a thumbnail strip).
+pub fn is_clusterable(g: &str) -> bool {
+    matches!(g, "media" | "audio" | "audionested" | "flash" | "table" | "composite")
+}
+
+fn is_timeline(g: &str) -> bool {
+    matches!(g, "timeevent" | "timetopic")
+}
+
+/// Splits `n` items over `m` slots front-loaded: each slot takes ceil(remaining / remaining slots).
 pub fn distribute(n: usize, m: usize) -> Vec<usize> {
     let mut out = vec![0; m];
-    if m == 0 {
-        return out;
-    }
-    if n <= m {
-        for k in 0..n {
-            out[k * m / n] += 1;
-        }
-    } else {
-        let mut left = n;
-        for (i, slot) in out.iter_mut().enumerate() {
-            let c = left.div_ceil(m - i);
-            *slot = c;
-            left -= c;
-        }
+    let mut left = n;
+    for (i, slot) in out.iter_mut().enumerate() {
+        let c = left.div_ceil(m - i);
+        *slot = c;
+        left -= c;
     }
     out
 }
 
-/// Inserts media/sidebar placements into their section, interleaved before its paragraphs in
-/// sequence order. Placements for a section that does not exist (articles without sections) go
-/// to the top-level paragraphs.
-fn place_media(blocks: &mut Vec<Block>, placements: &[(u32, u32, String, i64)]) {
-    let mut by_sec: std::collections::BTreeMap<u32, Vec<Block>> = Default::default();
-    let mut sorted: Vec<_> = placements.iter().filter(|p| is_inline_group(&p.2)).cloned().collect();
-    // Sidebars follow the media of their section (as in the reference app).
-    sorted.sort_by_key(|p| (p.0, p.2 == "sidebar", p.3, p.1));
-    for (sec, r, g, seq) in sorted {
-        by_sec.entry(sec).or_default().push(Block::Media {
-            ref_id: r,
-            group: g,
-            sequence: seq,
-        });
+/// Evenly spaced slots for `n` secondary items starting at `start`, over a section of `m` slots.
+fn spread(n: usize, start: usize, m: usize) -> Vec<usize> {
+    let span = if start == 0 { m.max(1) } else { m.saturating_sub(1).max(1) };
+    if n <= span {
+        (0..n).map(|k| start + k * span / n).collect()
+    } else {
+        (0..n).map(|k| start + k).collect()
+    }
+}
+
+/// A placement unit: one item, or several clusterable items shown in one box.
+#[derive(Debug)]
+enum Unit {
+    One(Placement),
+    Cluster(Vec<Placement>),
+}
+
+/// The reader's layout of one section's items over its `m` paragraphs (inferred from the VM captures;
+/// rules in `docs/content-schema.md` §2). Returns `(slot, unit)`; slot `k < m` means "before
+/// paragraph k", `m` means after the last paragraph.
+fn layout_section(items: Vec<Placement>, m: usize) -> Vec<(usize, Unit)> {
+    let mut sidebars = Vec::new();
+    let mut timeline = Vec::new();
+    let mut primary = Vec::new();
+    for p in items {
+        if p.group == "sidebar" {
+            sidebars.push(p);
+        } else if is_timeline(&p.group) {
+            timeline.push(p);
+        } else {
+            primary.push(p);
+        }
+    }
+    let first = usize::from(!primary.is_empty());
+    let mut out: Vec<(usize, u8, Unit)> = Vec::new();
+    let sp = spread(sidebars.len(), first, m);
+    let mut used: std::collections::HashSet<usize> = sp.iter().copied().collect();
+    for (pos, p) in sp.into_iter().zip(sidebars) {
+        out.push((pos, 1, Unit::One(p)));
+    }
+    if !timeline.is_empty() {
+        let n = timeline.len();
+        let start = if out.is_empty() { first } else { first + 1 };
+        let start = start.min(first.max(m.saturating_sub(n)));
+        let span = m.saturating_sub(start).max(1);
+        for (k, p) in timeline.into_iter().enumerate() {
+            let pos = start + k * span / n;
+            used.insert(pos);
+            out.push((pos, 2, Unit::One(p)));
+        }
+    }
+    let mut free: Vec<usize> = (0..m.max(1)).filter(|i| !used.contains(i)).collect();
+    if free.is_empty() {
+        free.push(0);
+    }
+    // More items than free slots: pack consecutive clusterable items into clusters, front-loaded.
+    let mut units = Vec::new();
+    if primary.len() > free.len() {
+        let mut it = primary.into_iter();
+        for size in distribute(it.len(), free.len()) {
+            let group: Vec<Placement> = it.by_ref().take(size).collect();
+            if group.len() > 1 && group.iter().all(|p| is_clusterable(&p.group)) {
+                units.push(Unit::Cluster(group));
+            } else {
+                units.extend(group.into_iter().map(Unit::One));
+            }
+        }
+    } else {
+        units.extend(primary.into_iter().map(Unit::One));
+    }
+    if units.len() > free.len() {
+        let counts = distribute(units.len(), free.len());
+        let mut it = units.into_iter();
+        for (slot, c) in free.iter().zip(counts) {
+            for u in it.by_ref().take(c) {
+                out.push((*slot, 0, u));
+            }
+        }
+    } else if !units.is_empty() {
+        let step = (free.len() / units.len()).max(1);
+        for (k, u) in units.into_iter().enumerate() {
+            out.push((free[k * step], 0, u));
+        }
+    }
+    out.sort_by_key(|x| (x.0, x.1));
+    out.into_iter().map(|(s, _, u)| (s, u)).collect()
+}
+
+fn unit_block(u: Unit) -> Block {
+    match u {
+        Unit::One(p) => media_block(&p),
+        Unit::Cluster(v) => Block::Cluster(v.iter().map(media_ref).collect()),
+    }
+}
+
+/// Inserts media/sidebar placements into their sections. Placements for a section that does not
+/// exist (articles without sections) go to the top-level paragraphs.
+fn place_media(blocks: &mut Vec<Block>, placements: &[Placement]) {
+    let mut by_sec: std::collections::BTreeMap<u32, Vec<Placement>> = Default::default();
+    for p in placements {
+        by_sec.entry(p.sec).or_default().push(p.clone());
     }
     let mut left = Vec::new();
     for (sec, items) in by_sec {
@@ -518,43 +732,41 @@ fn place_media(blocks: &mut Vec<Block>, placements: &[(u32, u32, String, i64)]) 
         }
     }
     if !left.is_empty() {
+        left.sort_by_key(|p| (p.sequence, p.ref_id));
         interleave(blocks, left);
     }
 }
 
-fn interleave(blocks: &mut Vec<Block>, items: Vec<Block>) {
+fn interleave(blocks: &mut Vec<Block>, items: Vec<Placement>) {
     let paras: Vec<usize> = blocks
         .iter()
         .enumerate()
         .filter(|(_, b)| matches!(b, Block::Para { .. } | Block::Intro { .. }))
         .map(|(i, _)| i)
         .collect();
-    if paras.is_empty() {
-        let at = blocks.iter().take_while(|b| matches!(b, Block::Media { .. })).count();
-        for (k, m) in items.into_iter().enumerate() {
-            blocks.insert(at + k, m);
-        }
-        return;
+    let m = paras.len();
+    let mut at: std::collections::BTreeMap<usize, Vec<Block>> = Default::default();
+    for (slot, u) in layout_section(items, m) {
+        at.entry(slot.min(m)).or_default().push(unit_block(u));
     }
-    let counts = distribute(items.len(), paras.len());
-    let mut it = items.into_iter();
-    let mut out = Vec::with_capacity(blocks.len() + counts.iter().sum::<usize>());
+    let mut out = Vec::with_capacity(blocks.len() + at.len());
     let mut pi = 0;
     for (i, b) in std::mem::take(blocks).into_iter().enumerate() {
-        if pi < paras.len() && paras[pi] == i {
-            for _ in 0..counts[pi] {
-                out.extend(it.next());
-            }
+        if pi < m && paras[pi] == i {
+            out.extend(at.remove(&pi).unwrap_or_default());
             pi += 1;
         }
         out.push(b);
     }
-    out.extend(it);
+    // After the last paragraph, before the subsections.
+    let tail: Vec<Block> = at.into_values().flatten().collect();
+    let k = out.iter().rposition(|b| !matches!(b, Block::Section { .. })).map_or(0, |i| i + 1);
+    out.splice(k..k, tail);
     *blocks = out;
 }
 
 /// Returns the items back when the section is not found.
-fn insert_into_section(blocks: &mut [Block], sec: u32, items: Vec<Block>) -> Option<Vec<Block>> {
+fn insert_into_section(blocks: &mut [Block], sec: u32, items: Vec<Placement>) -> Option<Vec<Placement>> {
     let mut items = Some(items);
     for b in blocks.iter_mut() {
         if let Block::Section { id, blocks: inner, .. } = b {
@@ -622,7 +834,10 @@ pub fn block_json(b: &Block) -> Value {
             ref_id,
             group,
             sequence,
-        } => json!({"t": "media", "ref": ref_id, "group": group, "seq": sequence}),
+            col,
+        } => json!({"t": "media", "ref": ref_id, "group": group, "seq": sequence, "col": col.name()}),
+        Block::Cluster(items) => json!({"t": "cluster", "col": "margin", "items": items.iter().map(media_ref_json).collect::<Vec<_>>()}),
+        Block::MediaGrid(items) => json!({"t": "media-grid", "col": "grid", "items": items.iter().map(media_ref_json).collect::<Vec<_>>()}),
         Block::Section {
             id,
             type_code,
@@ -643,6 +858,10 @@ pub fn block_json(b: &Block) -> Value {
     }
 }
 
+fn media_ref_json(m: &MediaRef) -> Value {
+    json!({"ref": m.ref_id, "group": m.group, "seq": m.sequence})
+}
+
 pub fn blocks_json(v: &[Block]) -> Value {
     Value::Array(v.iter().map(block_json).collect())
 }
@@ -651,8 +870,17 @@ pub fn blocks_json(v: &[Block]) -> Value {
 pub struct MediaInfo {
     pub title_html: String,
     pub caption_html: String,
+    /// 64-pixel thumbnail (`files/thumb`, else `picon`).
     pub thumb: Option<String>,
+    /// Margin-column picture (`files/picon`, about 192 px wide).
+    pub picon: Option<String>,
+    /// Full picture (`files/image`), shown when the item spans the text column.
+    pub image: Option<String>,
     pub group: String,
+    /// Sidebar teaser body (the sidebar's DATA preview).
+    pub preview_html: String,
+    /// Sidebar category label ("HISTORIC DOCUMENTS"), for sidebar teasers.
+    pub category: Option<&'static str>,
 }
 
 pub fn render_blocks(v: &[Block], media: &dyn Fn(u32) -> Option<MediaInfo>, out: &mut String) {
@@ -709,38 +937,21 @@ pub fn render_block(b: &Block, media: &dyn Fn(u32) -> Option<MediaInfo>, out: &m
         }
         Block::Rule => out.push_str("<hr class=\"enc-rule\">"),
         Block::Bib(b) => render_bib(b, out),
-        Block::Media {
-            ref_id,
-            group,
-            ..
-        } => {
-            let info = media(*ref_id);
-            let g = info.as_ref().map_or(group.as_str(), |i| i.group.as_str());
-            let _ = write!(
-                out,
-                "<figure class=\"enc-media enc-media-{}\" data-ref=\"{ref_id}\" data-group=\"{}\">",
-                render::escaped(g),
-                render::escaped(group)
-            );
-            if let Some(i) = info {
-                let _ = write!(out, "<a href=\"{}\">", render::item_href(*ref_id, None));
-                if let Some(th) = &i.thumb {
-                    let _ = write!(
-                        out,
-                        "<img class=\"enc-thumb\" src=\"/media/file/{0}\" data-file=\"{0}\" alt=\"\">",
-                        render::escaped(th)
-                    );
-                }
-                out.push_str("</a><figcaption>");
-                if !i.title_html.is_empty() {
-                    let _ = write!(out, "<span class=\"enc-media-title\">{}</span>", i.title_html);
-                }
-                if !i.caption_html.is_empty() {
-                    let _ = write!(out, "<span class=\"enc-media-caption\">{}</span>", i.caption_html);
-                }
-                out.push_str("</figcaption>");
+        Block::Media { ref_id, group, col, .. } => render_media(*ref_id, group, *col, media, out),
+        Block::Cluster(items) => {
+            let refs: Vec<String> = items.iter().map(|m| m.ref_id.to_string()).collect();
+            let _ = write!(out, "<div class=\"enc-media-cluster enc-col-margin\" data-refs=\"{}\">", refs.join(" "));
+            for m in items {
+                render_media(m.ref_id, &m.group, Column::Margin, media, out);
             }
-            out.push_str("</figure>");
+            out.push_str("</div>");
+        }
+        Block::MediaGrid(items) => {
+            out.push_str("<div class=\"enc-media-grid\">");
+            for m in items {
+                render_media(m.ref_id, &m.group, Column::Grid, media, out);
+            }
+            out.push_str("</div>");
         }
         Block::Section {
             id,
@@ -768,6 +979,63 @@ pub fn render_block(b: &Block, media: &dyn Fn(u32) -> Option<MediaInfo>, out: &m
     }
 }
 
+fn render_media(ref_id: u32, group: &str, col: Column, media: &dyn Fn(u32) -> Option<MediaInfo>, out: &mut String) {
+    let info = media(ref_id);
+    let href = render::item_href(ref_id, None);
+    if group == "sidebar" {
+        // Sidebar teaser: a box in the text column with the category, title and preview.
+        let _ = write!(
+            out,
+            "<aside class=\"enc-media enc-sidebar-teaser enc-col-{}\" data-ref=\"{ref_id}\" data-group=\"sidebar\"><a href=\"{href}\">",
+            col.name()
+        );
+        out.push_str("<span class=\"enc-sb-hdr\">Sidebars</span>");
+        if let Some(i) = &info {
+            if let Some(c) = i.category {
+                let _ = write!(out, "<span class=\"enc-sb-cat\">{}</span>", render::escaped(c));
+            }
+            let _ = write!(out, "<span class=\"enc-sb-title\">{}</span>", i.title_html);
+            if !i.preview_html.is_empty() {
+                let _ = write!(out, "<span class=\"enc-sb-body\">{}</span>", i.preview_html);
+            }
+        }
+        out.push_str("<span class=\"enc-sb-open\">open sidebar</span></a></aside>");
+        return;
+    }
+    let g = info.as_ref().map_or(group, |i| i.group.as_str());
+    let _ = write!(
+        out,
+        "<figure class=\"enc-media enc-media-{} enc-col-{}\" data-ref=\"{ref_id}\" data-group=\"{}\">",
+        render::escaped(g),
+        col.name(),
+        render::escaped(group)
+    );
+    if let Some(i) = info {
+        let _ = write!(out, "<a href=\"{href}\">");
+        let pic = match col {
+            Column::Text => i.image.as_ref().or(i.picon.as_ref()).or(i.thumb.as_ref()),
+            Column::Margin => i.picon.as_ref().or(i.thumb.as_ref()),
+            Column::Grid => i.picon.as_ref().or(i.thumb.as_ref()),
+        };
+        if let Some(th) = pic {
+            let _ = write!(
+                out,
+                "<img class=\"enc-thumb\" src=\"/media/file/{0}\" data-file=\"{0}\" alt=\"\">",
+                render::escaped(th)
+            );
+        }
+        out.push_str("</a><figcaption>");
+        if !i.title_html.is_empty() {
+            let _ = write!(out, "<span class=\"enc-media-title\">{}</span>", i.title_html);
+        }
+        if !i.caption_html.is_empty() {
+            let _ = write!(out, "<span class=\"enc-media-caption\">{}</span>", i.caption_html);
+        }
+        out.push_str("</figcaption>");
+    }
+    out.push_str("</figure>");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -778,12 +1046,62 @@ mod tests {
 <pkey id="6">Text <i>x</i>.</pkey><section type="6" id="3"><sectiontitle>Sub</sectiontitle><pkey id="7">Deep.</pkey><sec>II</sec><seca>A</seca></section>
 <sec>II</sec></section></text></content>"#;
 
+    fn pl(sec: u32, r: u32, g: &str, seq: i64, col: Column) -> Placement {
+        Placement {
+            sec,
+            ref_id: r,
+            group: g.into(),
+            sequence: seq,
+            col,
+        }
+    }
+
+    fn slots(v: &[(usize, Unit)]) -> Vec<(usize, Vec<u32>)> {
+        v.iter()
+            .map(|(s, u)| {
+                let ids = match u {
+                    Unit::One(p) => vec![p.ref_id],
+                    Unit::Cluster(c) => c.iter().map(|p| p.ref_id).collect(),
+                };
+                (*s, ids)
+            })
+            .collect()
+    }
+
     #[test]
-    fn distributes_like_the_reference_app() {
+    fn distributes_front_loaded() {
         assert_eq!(distribute(5, 3), vec![2, 2, 1]);
-        assert_eq!(distribute(6, 4), vec![2, 2, 1, 1]);
-        assert_eq!(distribute(4, 8), vec![1, 0, 1, 0, 1, 0, 1, 0]);
+        assert_eq!(distribute(10, 7), vec![2, 2, 2, 1, 1, 1, 1]);
         assert_eq!(distribute(1, 3), vec![1, 0, 0]);
+    }
+
+    #[test]
+    fn section_layout_rules() {
+        use Column::*;
+        // Few items: spaced floor(m / n) paragraphs apart from the first paragraph.
+        let v = vec![pl(1, 1, "media", 1, Margin), pl(1, 2, "media", 2, Text), pl(1, 3, "media", 3, Margin)];
+        assert_eq!(slots(&layout_section(v, 7)), vec![(0, vec![1]), (2, vec![2]), (4, vec![3])]);
+        // A sidebar takes the second paragraph; the other items spread over the remaining ones.
+        let v = vec![pl(1, 1, "media", 1, Text), pl(1, 9, "sidebar", 1, Text), pl(1, 2, "media", 2, Text)];
+        assert_eq!(slots(&layout_section(v, 7)), vec![(0, vec![1]), (1, vec![9]), (4, vec![2])]);
+        // Timeline items follow the sidebar; more items than free slots pack into clusters.
+        let v = vec![
+            pl(1, 1, "media", 1, Text),
+            pl(1, 2, "media", 2, Margin),
+            pl(1, 3, "audio", 3, Margin),
+            pl(1, 7, "sidebar", 7, Text),
+            pl(1, 8, "timeevent", 1, Margin),
+        ];
+        assert_eq!(
+            slots(&layout_section(v, 3)),
+            vec![(0, vec![1, 2, 3]), (1, vec![7]), (2, vec![8])]
+        );
+        // Only sidebars: from the first paragraph.
+        let v = vec![pl(1, 9, "sidebar", 1, Text)];
+        assert_eq!(slots(&layout_section(v, 1)), vec![(0, vec![9])]);
+        // Video does not cluster.
+        let v = vec![pl(1, 1, "video", 1, Text), pl(1, 2, "media", 2, Margin), pl(1, 3, "media", 3, Margin)];
+        assert_eq!(slots(&layout_section(v, 1)), vec![(0, vec![1]), (0, vec![2]), (0, vec![3])]);
     }
 
     #[test]
@@ -791,19 +1109,21 @@ mod tests {
         let d = xml::parse(SAMPLE).unwrap();
         let mut t = Tracker::default();
         let title = vec![Inline::Text("Zebra".into())];
-        let placements = vec![(2, 461, "media".to_string(), 1)];
+        let alt = vec![Inline::Text("Equus".into())];
+        let placements = vec![pl(2, 461, "media", 1, Column::Margin)];
         let a = convert(
             &mut t,
             &d.root,
             &ItemInfo {
                 title: Some(&title),
+                alt_title: &alt,
                 placements: &placements,
-                inline_media: true,
+                layout: Layout::Encyclopedia,
             },
         );
         assert_eq!(a.blocks.len(), 2);
         assert_eq!(a.paragraphs.len(), 3);
-        assert_eq!(a.paragraphs[0].3, "Zebra, a horse.");
+        assert_eq!(a.paragraphs[0].3, "Zebra or Equus, a horse.");
         assert_eq!(a.links.len(), 1);
         assert_eq!(a.links[0].3, Some(7));
         assert_eq!(a.sections.len(), 3);
@@ -824,9 +1144,41 @@ mod tests {
         }
         let mut h = String::new();
         render_blocks(&a.blocks, &|_| None, &mut h);
-        assert!(h.contains("<p id=\"p1\" data-para=\"1\" class=\"enc-p\"><span class=\"enc-title-ref\">Zebra</span>, a <a class=\"enc-link enc-qv\" href=\"/item/7\" data-ref=\"7\">horse</a>.</p>"));
+        assert!(h.contains("<p id=\"p1\" data-para=\"1\" class=\"enc-p\"><span class=\"enc-title-ref\">Zebra</span> or <span class=\"enc-title-ref enc-alt-title\">Equus</span>, a <a class=\"enc-link enc-qv\" href=\"/item/7\" data-ref=\"7\">horse</a>.</p>"));
         assert!(h.contains("<span class=\"enc-secnum\">A</span> Sub"));
         let j = blocks_json(&a.blocks);
         assert_eq!(j[0]["kind"], "introduction");
+        let tr = &j[0]["blocks"][0]["c"][0];
+        assert_eq!(tr["t"], "title-ref");
+        assert_eq!(tr["title"], json!(["Zebra"]));
+        assert_eq!(tr["alt"], json!(["Equus"]));
+        assert_eq!(j[1]["blocks"][0]["col"], "margin");
+    }
+
+    #[test]
+    fn kids_and_sidebar_layouts() {
+        let d = xml::parse(SAMPLE).unwrap();
+        let placements = vec![
+            pl(1, 5, "tableinline", 3, Column::Margin),
+            pl(2, 6, "media", 1, Column::Text),
+            pl(2, 7, "audio", 2, Column::Margin),
+        ];
+        let conv = |layout| {
+            let mut t = Tracker::default();
+            convert(&mut t, &d.root, &ItemInfo { title: None, alt_title: &[], placements: &placements, layout })
+        };
+        let k = conv(Layout::Kids);
+        match (&k.blocks[0], k.blocks.last().unwrap()) {
+            (Block::Section { blocks, .. }, Block::MediaGrid(g)) => {
+                assert!(matches!(blocks.last(), Some(Block::Media { ref_id: 5, col: Column::Text, .. })));
+                assert_eq!(g.iter().map(|m| m.ref_id).collect::<Vec<_>>(), vec![6, 7]);
+            }
+            o => panic!("{o:?}"),
+        }
+        let s = conv(Layout::Sidebar);
+        assert!(matches!(&s.blocks[0], Block::Cluster(c) if c.len() == 3 && c[0].ref_id == 6));
+        let mut h = String::new();
+        render_blocks(&s.blocks, &|_| None, &mut h);
+        assert!(h.starts_with("<div class=\"enc-media-cluster enc-col-margin\" data-refs=\"6 7 5\">"));
     }
 }

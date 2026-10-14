@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { query } from "./api/client";
 import type { AssocItem, DataTable, Item, TimelineEvent } from "./api/types";
-import { firstParagraph, mediaInOrder, mediaSequence, placementOf, runsOf, sectionPathOf } from "./article/layout";
+import { clusterMembers, firstParagraph, gridItems, mediaFirst, mediaInOrder, mediaSequence, placementOf, sectionPathOf } from "./article/layout";
 import { quickEntries } from "./article/SidePanels";
 import { appUrlHref, itemHref, rewriteHref } from "./content/links";
 import { linkPrefix, linkSuffix, plainText, walkSections, type Block } from "./content/model";
@@ -15,9 +15,15 @@ import { GRAMMAR_CODES } from "./pages/dictCodes";
 import { reversePair } from "./pages/DictionaryPage";
 import { homeLinkHref, homeSections, themeIcons } from "./pages/home";
 import { formatDate, formatEventDate, yearLabel } from "./pages/timelineDates";
-import { categoryIndex, pan, placeEvents, ticks, tickStep, zoom } from "./pages/timelineLayout";
+import { categoryIndex, displayOf, pan, placeEvents, prominenceOf, ticks, tickStep, titleSize, zoom } from "./pages/timelineLayout";
 import { kidsUrl } from "./components/SearchBox";
-import { atlasInitialPlace } from "./app/App";
+import { atlasInitialPlace, atlasViewSearch } from "./app/App";
+import { fontFaceCss } from "./app/fonts";
+import { fitWidth } from "./article/MediaBox";
+import { htmlText, titleRefParts } from "./content/model";
+import { iafPlayer } from "./media/ruffle";
+import { wheelRows } from "./pages/wordWheel";
+import type { DictLookupEntry } from "./api/types";
 
 const body: Block[] = [
   {
@@ -28,10 +34,9 @@ const body: Block[] = [
     number: ["I"],
     title: ["INTRODUCTION"],
     blocks: [
-      { t: "media", ref: 100, group: "media", seq: 1 },
-      { t: "media", ref: 101, group: "audionested", seq: 2 },
+      { t: "cluster", col: "margin", items: [{ ref: 100, group: "media", seq: 1 }, { ref: 101, group: "audionested", seq: 2 }] },
       { t: "p", id: 1, c: ["First ", { t: "em", c: ["para"] }] },
-      { t: "media", ref: 102, group: "table", seq: 3 },
+      { t: "media", ref: 102, group: "table", seq: 3, col: "margin" },
       { t: "p", id: 2, c: ["Second"] },
     ],
   },
@@ -44,9 +49,10 @@ const body: Block[] = [
     title: ["MORE"],
     blocks: [
       { t: "section", id: 3, kind: "minor", level: 2, number: ["II", "A"], title: ["Sub"], blocks: [{ t: "p", id: 7, c: ["Deep"] }] },
-      { t: "media", ref: 103, group: "tableinline" },
+      { t: "media", ref: 103, group: "tableinline", col: "margin" },
     ],
   },
+  { t: "media-grid", col: "grid", items: [{ ref: 107, group: "media", seq: 1 }] },
 ];
 
 const facts: DataTable = { ref_id: 102, kind: "facts", json: { entries: [] }, html: "" };
@@ -54,31 +60,34 @@ const inline: DataTable = { ref_id: 103, kind: "table", json: {}, html: "<table>
 
 describe("article layout", () => {
   const assoc = new Map<number, AssocItem>([[100, { ref_id: 100, group: "media" }]]);
-  const tables = new Map<number, DataTable>([
-    [102, facts],
-    [103, inline],
-  ]);
 
-  it("places facts tables right, inline tables inline, the rest left", () => {
-    expect(placementOf({ t: "media", ref: 102, group: "table" }, undefined, facts)).toBe("right");
-    expect(placementOf({ t: "media", ref: 103, group: "tableinline" }, undefined, inline)).toBe("inline");
-    expect(placementOf({ t: "media", ref: 100, group: "media" }, undefined, undefined)).toBe("left");
-    expect(placementOf({ t: "media", ref: 9, group: "table" }, undefined, inline)).toBe("left");
+  it("places items by their stored column, tables and sidebars by group", () => {
+    expect(placementOf({ ref: 102, group: "table" }, undefined, facts)).toBe("right");
+    expect(placementOf({ ref: 103, group: "tableinline", col: "margin" }, undefined, inline)).toBe("inline");
+    expect(placementOf({ ref: 100, group: "media", col: "margin" }, undefined, undefined)).toBe("margin");
+    expect(placementOf({ ref: 100, group: "media", col: "text" }, undefined, undefined)).toBe("text");
+    expect(placementOf({ ref: 100, group: "media" }, undefined, undefined)).toBe("margin");
+    expect(placementOf({ ref: 9, group: "table" }, undefined, inline)).toBe("margin");
+    expect(placementOf({ ref: 8, group: "sidebar", col: "text" }, undefined, undefined)).toBe("teaser");
+    expect(placementOf({ ref: 100, group: "media", col: "text" }, { ref_id: 100, group: "media", appears: 0 }, undefined)).toBe("hidden");
   });
 
-  it("groups consecutive media blocks into one box", () => {
-    const s = body[0] as Extract<Block, { t: "section" }>;
-    const runs = runsOf(s.blocks, assoc, tables);
-    expect(runs.map((r) => (r.t === "media" ? `${r.placement}:${r.items.map((i) => i.ref).join("+")}` : r.block.t))).toEqual([
-      "left:100+101",
-      "p",
-      "right:102",
-      "p",
-    ]);
+  it("keeps every cluster member, facts tables included, except hidden ones", () => {
+    const c = { t: "cluster" as const, items: [{ ref: 100, group: "media" }, { ref: 102, group: "table" }, { ref: 9, group: "media" }] };
+    const hidden = new Map<number, AssocItem>([...assoc, [9, { ref_id: 9, group: "media", appears: 0 }]]);
+    expect(clusterMembers(c, hidden).map((m) => m.ref)).toEqual([100, 102]);
+  });
+
+  it("finds the Kids grid and moves a sidebar's media first", () => {
+    expect(gridItems(body).map((m) => m.ref)).toEqual([107]);
+    const sb: Block[] = [{ t: "intro", id: 1, c: ["Intro"] }, { t: "cluster", col: "margin", items: [{ ref: 5, group: "media" }] }, { t: "p", id: 2, c: ["x"] }];
+    expect(mediaFirst(sb).map((b) => b.t)).toEqual(["cluster", "intro", "p"]);
+    expect(mediaFirst(body)).toBe(body);
   });
 
   it("orders the media sequence by reading order, then other shown associations", () => {
-    expect(mediaInOrder(body).map((m) => m.ref)).toEqual([100, 101, 102, 103]);
+    // Cluster and grid members are walked in place.
+    expect(mediaInOrder(body).map((m) => m.ref)).toEqual([100, 101, 102, 103, 107]);
     const media: AssocItem[] = [
       { ref_id: 104, group: "video" },
       { ref_id: 101, group: "audionested", title: "Song" },
@@ -86,7 +95,7 @@ describe("article layout", () => {
       { ref_id: 106, group: "maps" },
     ];
     const seq = mediaSequence(body, media);
-    expect(seq.map((m) => m.ref_id)).toEqual([100, 101, 102, 103, 104]);
+    expect(seq.map((m) => m.ref_id)).toEqual([100, 101, 102, 103, 107, 104]);
     expect(seq[1]?.title).toBe("Song");
   });
 
@@ -249,7 +258,7 @@ describe("quick facts", () => {
 });
 
 describe("timeline", () => {
-  const ev = (seq: number, year: number, importance = 0): TimelineEvent => ({ seq, title: `E${seq}`, start: { year }, importance });
+  const ev = (seq: number, year: number, prominence = 0): TimelineEvent => ({ seq, title: `E${seq}`, start: { year }, prominence });
 
   it("formats dates", () => {
     expect(formatDate({ year: 1789, month: 7, day: 14 })).toBe("July 14, 1789");
@@ -266,7 +275,7 @@ describe("timeline", () => {
     expect(ticks(1900, 2000, 5)).toEqual([1900, 1920, 1940, 1960, 1980, 2000]);
   });
 
-  it("puts overlapping labels in different lanes, most important first", () => {
+  it("puts overlapping labels in different lanes, most prominent first", () => {
     const { placed, hidden } = placeEvents([ev(1, 1900), ev(2, 1901, 5), ev(3, 1950)], 1900, 2000, 1000, 170, 2);
     const lane = (s: number) => placed.find((p) => p.ev.seq === s)?.lane;
     expect(lane(2)).toBe(0);
@@ -277,9 +286,28 @@ describe("timeline", () => {
     expect(tight.hidden).toHaveLength(1);
   });
 
+  it("draws periods and essays as bars clipped to the window", () => {
+    const war: TimelineEvent = { seq: 9, title: "War", start: { year: 1939 }, end: { year: 1945 }, display: "period", label: "WAR", prominence: 5 };
+    const { placed } = placeEvents([war, ev(1, 1940, 4)], 1900, 2000, 1000, 170, 3);
+    const bar = placed.find((p) => p.ev.seq === 9)!;
+    expect([bar.x, bar.w, bar.lane]).toEqual([390, 60, 0]);
+    // The point under the bar's label goes to the next lane.
+    expect(placed.find((p) => p.ev.seq === 1)?.lane).toBe(1);
+    const long = placeEvents([{ ...war, start: { year: 1800 }, end: { year: 2100 } }], 1900, 2000, 1000).placed[0]!;
+    expect([long.x, long.w]).toEqual([0, 1000]);
+    // Before schema 2: kind 3 is an essay, prominence is 6 − importance.
+    expect(displayOf({ seq: 1, title: "", start: { year: 1 }, kind: 3 })).toBe("essay");
+    expect(displayOf({ seq: 1, title: "", start: { year: 1 }, kind: 1 })).toBe("point");
+    expect(prominenceOf({ seq: 1, title: "", start: { year: 1 }, importance: 1 })).toBe(5);
+    expect(prominenceOf({ seq: 1, title: "", start: { year: 1 }, importance: 0 })).toBe(0);
+    expect(titleSize(5)).toBeGreaterThan(titleSize(3));
+  });
+
   it("keeps labels inside the band", () => {
     const { placed } = placeEvents([ev(1, 1800), ev(2, 2000)], 1900, 2000, 1000, 170, 3);
-    expect(placed.map((p) => p.x)).toEqual([0, 830]);
+    // Unranked titles are 11 px: 156 px of the 170 px a 12 px title reserves.
+    expect(placed.map((p) => [p.x, p.lw])).toEqual([[0, 156], [844, 156]]);
+    expect(placeEvents([ev(1, 1950, 5)], 1900, 2000, 1000).placed[0]!.lw).toBe(269);
   });
 
   it("zooms and pans within the data range", () => {
@@ -349,5 +377,52 @@ describe("MIDI reader", () => {
   it("knows note frequencies", () => {
     expect(midiFrequency(69)).toBe(440);
     expect(midiFrequency(81)).toBeCloseTo(880);
+  });
+});
+
+describe("follow-ups: title-ref, picture sizes, word wheel, fonts, atlas URL, Flash", () => {
+  it("reads the title and the alternative title from a title-ref", () => {
+    const tr = { t: "title-ref" as const, title: ["East Timor"], alt: ["Timor-Leste"], c: ["East Timor"] };
+    expect(titleRefParts(tr)).toEqual({ title: ["East Timor"], alt: ["Timor-Leste"] });
+    expect(plainText([tr, ", republic"])).toBe("East Timor or Timor-Leste, republic");
+    // Without an alternative title (or from a schema 1 node with only `c`) it is the title alone.
+    expect(titleRefParts({ t: "title-ref", title: ["Zebra"], alt: [] })).toEqual({ title: ["Zebra"], alt: [] });
+    expect(titleRefParts({ t: "title-ref", c: ["Zebra"] })).toEqual({ title: ["Zebra"], alt: [] });
+    expect(htmlText("<em>Winged</em> Victory &amp; &#233;")).toBe("Winged Victory & é");
+  });
+
+  it("scales pictures to the text column", () => {
+    const img = (width: number) => ({ file_name: "x.jpg", url: "/x", width, height: 300 });
+    expect(fitWidth(img(556), 432)).toEqual({ width: 432, height: 233 });
+    expect(fitWidth(img(365), 432)).toEqual({ width: 365, height: 300 });
+  });
+
+  it("labels homographs in the word wheel", () => {
+    const e = (ref_id: number, headword: string): DictLookupEntry => ({ dictionary: "DICTA", kind: "dictionary", ref_id, headword, form: headword });
+    const rows = wheelRows([e(1, "paring knife")], [e(2, "Paris"), e(3, "Paris"), e(4, "Paris Commune")]);
+    expect(rows.map((r) => r.label)).toEqual(["paring knife", "Paris (1)", "Paris (2)", "Paris Commune"]);
+    expect(rows.map((r) => r.after)).toEqual([false, true, true, true]);
+  });
+
+  it("declares the disc fonts the server offers", () => {
+    const css = fontFaceCss(["/fonts/REFSAN.TTF", "/fonts/REFSERBI.TTF", "/fonts/OTHER.TTF"]);
+    expect(css).toContain('font-family:"MS Reference Sans Serif"');
+    expect(css).toContain('url("/fonts/REFSERBI.TTF")');
+    expect(css).toContain("font-weight:700;font-style:italic");
+    expect(css.split("@font-face")).toHaveLength(3);
+    expect(fontFaceCss([])).toBe("");
+  });
+
+  it("writes the atlas view into the URL the route reads back", () => {
+    const q = atlasViewSearch({ lat: 48.86272, lon: 2.34375, altitudeKm: 200.4, style: "atlas-political", projection: "flat" });
+    expect(q).toBe("lat=48.8627&lon=2.3438&alt=200&style=atlas-political&view=flat");
+    expect(atlasInitialPlace("", new URLSearchParams(q))).toEqual({ lat: 48.8627, lon: 2.3438, altitudeKm: 200 });
+  });
+
+  it("runs an .iax through the disc's IAF player", () => {
+    expect(iafPlayer("0018888F.IAX", "deluxe")).toEqual({
+      url: "/media/disc/deluxe/dswMedia/shared/players/IAFPlayer/base.swf",
+      filePath: "/media/disc/deluxe/dswMedia/IAF/a/0018888f/0018888f.iax",
+    });
   });
 });

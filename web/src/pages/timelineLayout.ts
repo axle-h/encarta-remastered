@@ -39,13 +39,36 @@ export function ticks(from: number, to: number, count = 8): number[] {
 
 export interface Placed {
   ev: TimelineEvent;
+  /** Left edge (px) of the square and title, or of the bar. */
   x: number;
+  /** Bar width (px) for periods and essays; 0 for points. */
+  w: number;
+  /** Width (px) reserved for the label: labels are clipped to it. */
+  lw: number;
   lane: number;
 }
 
+/** How the Timeline draws an event (timeline.md §3.2); servers before schema 2 send no `display`. */
+export function displayOf(ev: TimelineEvent): "point" | "period" | "essay" {
+  return ev.display ?? (ev.kind === 3 ? "essay" : "point");
+}
+
+/** Title size rank, 5 = largest; derived from `importance` (1 = most prominent) when absent. */
+export function prominenceOf(ev: TimelineEvent): number {
+  if (ev.prominence !== undefined) return ev.prominence;
+  return ev.importance ? Math.max(0, 6 - ev.importance) : 0;
+}
+
+/** Point label font size (px) by prominence: the VM draws importance 1 largest. */
+export function titleSize(prominence: number): number {
+  return [11, 11, 12, 14, 16, 19][Math.max(0, Math.min(5, prominence))]!;
+}
+
 /**
- * Places events (most important first) in the first lane where their label (`labelWidth` px from
- * x) does not overlap. Events that do not fit in `maxLanes` are returned in `hidden`.
+ * Places events (most prominent first) in the first lane where they do not overlap: a point takes
+ * its label (`labelWidth` px from x at the 12 px title size, wider for larger titles), a bar its
+ * span or its label, whichever is longer. Events that
+ * do not fit in `maxLanes` are returned in `hidden`.
  */
 export function placeEvents(
   events: TimelineEvent[],
@@ -56,16 +79,28 @@ export function placeEvents(
   maxLanes = 9,
 ): { placed: Placed[]; hidden: TimelineEvent[] } {
   const span = Math.max(1e-9, to - from);
-  const order = [...events].sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0) || a.start.year - b.start.year);
+  const xOf = (year: number) => ((year - from) / span) * width;
+  const order = [...events].sort((a, b) => prominenceOf(b) - prominenceOf(a) || a.start.year - b.start.year);
   const lanes: [number, number][][] = [];
   const placed: Placed[] = [];
   const hidden: TimelineEvent[] = [];
   for (const ev of order) {
-    // Labels stay inside the band: events that began before the window start at its left edge,
-    // and labels near the right edge are pulled in.
-    const x = Math.max(0, Math.min(width - labelWidth, ((ev.start.year - from) / span) * width));
+    const bar = displayOf(ev) !== "point" && !!ev.end;
+    let x: number;
+    let w = 0;
+    const lw = bar ? labelWidth : Math.round((labelWidth * titleSize(prominenceOf(ev))) / 12);
+    if (bar) {
+      // A bar is clipped to the window; its label starts at the visible start.
+      x = Math.max(0, xOf(ev.start.year));
+      w = Math.max(4, Math.min(width, xOf(ev.end!.year)) - x);
+      x = Math.min(x, width - 4);
+    } else {
+      // Labels stay inside the band: events that began before the window start at its left edge,
+      // and labels near the right edge are pulled in.
+      x = Math.max(0, Math.min(width - lw, xOf(ev.start.year)));
+    }
     const a = x;
-    const b = x + labelWidth;
+    const b = x + Math.max(w, lw);
     let lane = -1;
     for (let i = 0; i < maxLanes; i++) {
       const used = (lanes[i] ??= []);
@@ -76,7 +111,7 @@ export function placeEvents(
       }
     }
     if (lane < 0) hidden.push(ev);
-    else placed.push({ ev, x, lane });
+    else placed.push({ ev, x, w, lw, lane });
   }
   placed.sort((p, q) => p.x - q.x);
   return { placed, hidden };

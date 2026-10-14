@@ -1,7 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { appUrlHref, itemHref } from "./links";
-import { linkPrefix, linkSuffix, type Inline, type InlineNode } from "./model";
+import { linkPrefix, linkSuffix, titleRefParts, type Inline, type InlineNode } from "./model";
 
 export interface RenderOptions {
   kids?: boolean;
@@ -113,12 +113,25 @@ export function InlineView({ n, opts = {} }: { n: Inline; opts?: RenderOptions }
           <Inlines c={n.c} opts={opts} />
         </span>
       );
-    case "title-ref":
+    case "title-ref": {
+      // Both titles are bold, the joining " or " is plain (VM: "East Timor or Timor-Leste").
+      const { title, alt } = titleRefParts(n);
       return (
-        <span className="enc-title-ref">
-          <Inlines c={n.c} opts={opts} />
-        </span>
+        <>
+          <span className="enc-title-ref">
+            <Inlines c={title} opts={opts} />
+          </span>
+          {alt.length > 0 && (
+            <>
+              {" or "}
+              <span className="enc-title-ref enc-alt-title">
+                <Inlines c={alt} opts={opts} />
+              </span>
+            </>
+          )}
+        </>
       );
+    }
     case "br":
       return <br />;
     case "link":

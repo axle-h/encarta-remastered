@@ -11,6 +11,7 @@ use encarta_formats::tours::walkmap::CellData;
 use serde_json::{Value, json};
 
 use super::actions::{self, Action, Ctx, ImageRequest, Step};
+use super::content::TourContent;
 use super::geometry::{Geometry, LOD_SWITCH_DISTANCE};
 use super::sim::{LoadState, SeqEntry};
 
@@ -99,7 +100,17 @@ fn pvs_runs(entries: &[encarta_formats::tours::walkmap::VisibilityEntry], g: &Ge
 }
 
 /// Builds the scene description. Images it names are added to `images`.
-pub fn build(tour: &Tour, id: &str, seq: &[SeqEntry], state: &LoadState, g: &Geometry, images: &RefCell<BTreeSet<ImageRequest>>, cursor_info: &BTreeMap<String, Value>) -> SceneOutput {
+#[allow(clippy::too_many_arguments)]
+pub fn build(
+    tour: &Tour,
+    id: &str,
+    seq: &[SeqEntry],
+    state: &LoadState,
+    g: &Geometry,
+    images: &RefCell<BTreeSet<ImageRequest>>,
+    cursor_info: &BTreeMap<String, Value>,
+    record: Option<&TourContent>,
+) -> SceneOutput {
     let x = &tour.model.as_ref().expect("model").data;
     let final_layer = state.current_layer().and_then(|l| tour.layers.iter().find(|t| t.file == l.file)).map(|l| &l.data);
     let ctx = Ctx { tour, layer: final_layer, images };
@@ -402,10 +413,14 @@ pub fn build(tour: &Tour, id: &str, seq: &[SeqEntry], state: &LoadState, g: &Geo
                         && ev == "HOTSPOTCLICKED"
                         && let Some(id) = pairs.iter().find(|kv| kv[0].eq_ignore_ascii_case("HOTSPOTID"))
                     {
+                        let content_id = id[1].parse::<u64>().ok();
+                        let target = content_id.and_then(|c| record.and_then(|r| r.target(c)));
                         hotspots.push(json!({
                             "element": name,
                             "event": event,
-                            "contentId": id[1].parse::<u64>().ok(),
+                            "destMedia": target.and_then(|t| t.dest_media),
+                            "destGroup": target.and_then(|t| t.dest_group.clone()),
+                            "contentId": content_id,
                             "contentIdText": id[1],
                             "title": es.text,
                             "icon": es.icon,
@@ -540,6 +555,7 @@ pub fn build(tour: &Tour, id: &str, seq: &[SeqEntry], state: &LoadState, g: &Geo
             "fromOriginal": "x' = x, y' = y, z' = -z (tours-3d.md §5.6)",
             "yaw": "degrees in the original convention: look direction (sin yaw, 0, -cos yaw) in glTF space; three.js rotation.y = -yaw * PI / 180",
             "pitch": "degrees, positive looks up",
+            "uv": "u' = u, v' = 1 - v: the engine's texture surfaces hold the image bottom row first (tours-3d.md §5.6)",
         },
         "files": { "glb": "scene.glb", "pvs": "pvs.bin" },
         "camera": camera,
@@ -554,6 +570,9 @@ pub fn build(tour: &Tour, id: &str, seq: &[SeqEntry], state: &LoadState, g: &Geo
         "cursors": cursors,
         "hotspots": hotspots,
         "unresolvedHotspots": unresolved_hotspots,
+        "stops": record.map_or(json!([]), |r| json!(r.stops)),
+        "defaultStop": record.and_then(|r| r.default_stop),
+        "hotspotTargets": record.map_or(json!([]), |r| json!(r.hotspots)),
         "siteMap": site_map,
         "macros": macros,
         "alarms": state.alarms,

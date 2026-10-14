@@ -21,8 +21,8 @@ out/atlas/
   raster/<raster>/index.equirect.png
   raster/palettes.json                  every LOOK of every raster: colour, shade, pixel class per value; RCT legend
   vector/earth.pmtiles                  MVT, GeoGem bands 0–7, z0–8
-  vector/earth-detail.pmtiles           MVT, GeoGem bands 8–9, z9–12
-  vector/moon.pmtiles                   MVT, the lunar classes, z0–2
+  vector/earth-detail.pmtiles           MVT, GeoGem bands 8–9, z10–12
+  vector/moon.pmtiles                   MVT, the lunar classes, z0–3
   gazetteer.sqlite                      places, names (FTS5), links, SDB countries, quiz pools
   styles/<map style>.json               MapLibre style per MapStyle record; styles/index.json
   sprites/sprite{,@2x}.{png,json}       the 149 Bitmap symbols as "bm<id>"
@@ -82,27 +82,33 @@ can draw any LOOK, or a statistics overlay, by mapping values through `palettes.
 
 GeoFaceScale bands are camera-altitude ranges (mad-styling.md §1). Altitude becomes zoom through one function,
 `atlas::geo::zoom_for_altitude`, with `zoom = log2(40075.017 · (P/m) / (512 · 2.5 · altitude_km))`
-(mad-styling.md §2.2). `P/m = 2400` is the spec's working value until the VM measures it
-(`geo::VIEW_P_OVER_M`). Tile zoom `z` takes the band whose range contains the altitude at `z`, the highest
-altitude shown with that tile. So a tile is never denser than Encarta anywhere in its zoom range.
+(mad-styling.md §2.2). `P/m = 3135` was measured in the reference VM for Encarta's maximised 812 × 518 map
+pane (`geo::VIEW_P_OVER_M`; docs/vm-findings.md V1/V2; it grows with the pane height, `P/m ≈ 6.05 × height`).
+Everything is compiled for that pane at latitude 0; the client moves the zoom ranges for its own pane and the
+latitude ([atlas-client.md](atlas-client.md)). Tile zoom `z` takes the band whose range contains the altitude
+at `z`, the highest altitude shown with that tile. So a tile is never denser than Encarta anywhere in its zoom
+range.
 
 | Band | Altitude (km) | Zoom range | Cells/octant | Tile zooms |
 |---|---|---|---|---|
-| 0 | 50,000–40,000 | 0.59–0.91 | 1 | 0 |
-| 1 | 39,999–20,000 | 0.91–1.91 | 1 | 1 |
-| 2 | 19,999–14,000 | 1.91–2.42 | 1 | 2 |
-| 3 | 13,999–8,000 | 2.42–3.23 | 2 | 3 |
-| 4 | 7,999–4,000 | 3.23–4.23 | 4 | 4 |
-| 5 | 3,999–2,000 | 4.23–5.23 | 8 | 5 |
-| 6 | 1,999–800 | 5.23–6.55 | 16 | 6 |
-| 7 | 799–150 | 6.55–8.97 | 64 | 7, 8 (`earth` maxzoom) |
-| 8 | 149–30 | 8.97–11.29 | 256 | 9, 10, 11 (`earth-detail`) |
-| 9 | 29–1 | 11.29–16.2 | 1024 | 12 (`earth-detail` maxzoom) |
+| 0 | 50,000–40,000 | 0.97–1.30 | 1 | 0, 1 |
+| 1 | 39,999–20,000 | 1.30–2.30 | 1 | 2 |
+| 2 | 19,999–14,000 | 2.30–2.81 | 1 | none (z3 is already in band 3) |
+| 3 | 13,999–8,000 | 2.81–3.62 | 2 | 3 |
+| 4 | 7,999–4,000 | 3.62–4.62 | 4 | 4 |
+| 5 | 3,999–2,000 | 4.62–5.62 | 8 | 5 |
+| 6 | 1,999–800 | 5.62–6.94 | 16 | 6 |
+| 7 | 799–150 | 6.94–9.35 | 64 | 7, 8 (`earth` maxzoom; z9 is overzoomed) |
+| 8 | 149–30 | 9.35–11.68 | 256 | 10, 11 (`earth-detail`) |
+| 9 | 29–1 | 11.68–16.58 | 1024 | 12 (`earth-detail` maxzoom) |
 
 Bands 8–9 hold only what Encarta adds below 150 km (city insets, city limits, urban areas, street-level roads
 for the VE styles and the MinRect boxes), not a full map. So `earth-detail` is an extra source drawn over the
-overzoomed `earth` source. Extent 4096 at the maximum zooms keeps every GeoGem coordinate exact (band 7 at z8:
-0.0014° cells / 1023 vs 0.00034° per tile unit; band 9 at z12 likewise).
+overzoomed `earth` source (the styles switch to it at z10, `vector::detail_from_zoom`). Extent 4096 at the
+maximum zooms keeps every GeoGem coordinate exact (band 7 at z8: 0.0014° cells / 1023 vs 0.00034° per tile
+unit, which is why `earth` stops at z8 although band 7 reaches z9.35; band 9 at z12 likewise). The Moon's data
+stops at band 2, so `moon` runs z0–3 with z3 holding band 2. Each style's vector sources state these
+`minzoom`/`maxzoom` (the PMTiles header gives MapLibre the same; the client's flat view needs them).
 
 ### Layers and properties
 
@@ -112,21 +118,35 @@ overzoomed `earth` source. Extent 4096 at the maximum zooms keeps every GeoGem c
 | `lines` | (multi)linestrings | line classes |
 | `points` | (multi)points | point and radius-point classes (a radius-point part is a set of points) |
 | `labels` | points | one anchor per named area feature and band: the GeoObj "go to" point when it lies in the feature, else an interior point of its largest ring |
+| `outlines` | (multi)linestrings | the rings of area classes that a rule strokes (outline pens w8…, stroke highlights b16 = 1/2), without the GeoGem cell edges |
 
 Every feature has the MVT id = entity id (so `feature-state` hover works per entity) and the properties
 `class` (PDCAttribute row), `class_name`, `entity`, `name` (display name: the first U+0004 alternative without
 its U+0002 abbreviation), `abbr`, `alt_names` ("; "-joined), `name_0009` (the LCID 0x0009 name where it
 differs), `anonymous` (`{RESERVED}` placeholder names, which are dropped), and on points/labels `priority`
-(PDCAttribute b13, the `symbol-sort-key`) and on labels `goto_km`. Within a tile, the parts of one object and
-class are merged into one feature.
+(PDCAttribute b13, the `symbol-sort-key`) and on labels `goto_km`; `width_z10` on the labels of areas with an
+abbreviation (the area's east–west extent in px at zoom 10, for the abbreviation fallback); `water: true` on
+the line runs over water (draw-over masks, below). Within a tile, the parts of one object, class and side
+(water/land) are merged into one feature.
 
 **Polygons.** GeoGem area rings carry no meaningful orientation (both windings occur). Inside one object, class
 and cell, a ring inside an odd number of other rings is a hole (Encarta fills with GDI's even-odd rule). The
 converter nests the rings that way and writes exteriors with positive area (MVT spec), holes negative. Rings are
 clipped per tile (Sutherland–Hodgman, 64-unit buffer), lines likewise (Liang–Barsky). Areas are also clipped at
 GeoGem cell edges in the source data, so fills abut cell by cell. The styles set `fill-antialias: false` to avoid
-hairline seams. Outlines of areas show those cell edges: borders and coasts are separate line classes, and (in
-bands 3–8 over Europe) the land/sea edge is the boundary between `Ocean`/bathymetric and hypsometric areas.
+hairline seams. A ring edge whose two ends lie on the same cell border (x or y = 0 or 1023) is such a cut; the
+`outlines` layer is each stroked area's rings with those edges dropped (`vector::ring_outline`; 86,396 edges in
+band 7), and outline pens and stroke highlights draw it instead of the polygons, so they no longer show the cell
+seams. Borders and coasts are separate line classes, and (in bands 3–8 over Europe) the land/sea edge is the
+boundary between `Ocean`/bathymetric and hypsometric areas.
+
+**Draw-over masks** (mad-styling.md §5.2). Lines of the classes that some rule draws with a restricted pen
+(`over` ≠ all; boundaries, graticules, time zones, reefs, urban inset boundaries) are split where they cross
+between water and land of the HYPSO raster (CMT `kind` 0 = water), at the HYPSO level of the band's finest tile
+zoom, with crossings found by bisection (`pixel::split_line`). The styles then draw each pen only on the runs
+its mask allows for the style's raster (below). Simplification: the class under a line comes from the raster
+alone, not from the area fills drawn before it (for HYPSO the same classes: water areas use `b14 = 1`, land
+fills `b14 = 0`). Area pens' masks are not applied (that needs polygon clipping).
 GeoGem cells never straddle ±180°. Features near the antimeridian are also written, shifted by ±360°, into the
 buffers of the edge tiles. Latitudes beyond ±85.05° are clipped by the tile bounds.
 
@@ -179,15 +199,27 @@ follows mad-styling.md §14.1:
 | line pens: width, dashes (`line-dasharray` from the bit mask), offset, edge-only pens (`passes < width` → two 1-px lines) | §5.1 |
 | point symbols: `icon-image` = bitmap of pen w7, symbol and label together (`icon-optional: false`); radius points as circles | §7.4, §8 |
 | labels: GeoLabel font/size/colour, bold/italic → face, rule halo colour, 1-px halo; line labels along lines, area labels on `labels` | §7 |
-| highlight pens (b15/b16/w17) as `feature-state: hover` layers | §4.1 |
+| highlight pens (b15/b16/w17) as `feature-state: hover` layers (the client uses them for the selected place; Encarta highlights nothing on hover, V11) | §4.1 |
+| draw-over masks of line pens: filter `["all", <class test>, ["==", ["get","water"], true]]` (or `!=`), pen dropped where it may draw nowhere | §5.2 |
+| tint colours (fills, lines, highlights): the ramp entry `tint_index(L)` for the mean land luminance `L` of the style's raster LOOK (`encarta:surface`); highlight fills at 60 % | §6 |
+| area labels: abbreviation (U+0002) where `length(name) · size · 0.6 em` exceeds the area's width at the current zoom (`width_z10 · 2^(z−10)`), tested every half zoom in a `step` | §7.3 |
+| per class, the zoom ranges where the rules make it interactive (`b4`): `metadata["encarta:interactive"] = {class: [[minzoom, maxzoom, tri-state]…]}` | §4.1 |
 | MinRect boxes and the style's altitude limits as `metadata` (`encarta:min_rects`, `encarta:minzoom/maxzoom`) | §3, §13.2 |
+| `encarta:view_p_over_m` 3135, `encarta:view_p_over_m_per_height_px` 6.05, `encarta:reference_pane_height_px` 518 | §2 |
+
+`encarta:surface` gives the pixel classes that the style's raster puts under water and land and the mean land
+luminance, measured at 4,096 points spread over the sphere and classified by HYPSO (`pixel::calibrate`): HYPSO
+LOOKs water class 1 / land class 4, the climate rasters class 0 on both, the Moon 4/4. Luminance is Rec. 601
+luma (the spec says only "luminance"; an assumption).
 
 Placeholders (layer `metadata["encarta:placeholder"]`): GeoTrans tint ramps over the hill shading are drawn as a
-50 % fill of the ramp's middle colour (§6: exact needs baking into the raster); GeoLabel upper case (byte 11) and
-letter spacing (byte 10) are hypotheses; area outline pens show cell seams. Not yet modelled: the pixel-class
-"draw over" masks (§5.2: e.g. boundaries not drawn over the sea), the alternate label style w6, label
-abbreviation fallback (U+0002) and the GeoLabel bytes still open in §7.2. Layers with identical paint and zoom
-range are merged with a class filter, which gives 1024 layers for Atlas Default.
+50 % fill of one ramp entry (§6: exact needs baking into the raster, per pixel); highlight fills with a ramp
+likewise at 60 % (the "relative" highlight variant's per-colour offsets are not specified); GeoLabel upper
+case (byte 11) and letter spacing (byte 10) are hypotheses. The abbreviation test's 0.6 em per character is a
+hypothesis (the spec says only "when the full name does not fit"); it gives "NETH." and "LUX." over Europe at
+3,000 km, as V3/V11 show. Not modelled, because the spec does not say when it applies: the alternate label
+style w6 (§4.1: "when it is used is open"), and the GeoLabel bytes still open in §7.2. Layers with identical
+paint, filter and zoom range are merged with a class filter (1,153 layers for Atlas Political, 13,390 in all).
 
 **Sprites**: one sprite per Bitmap record, `bm<id>` (id = key − 0x10000), palette from BitmapPalette with its
 transparent entry, at 1x and 2x (pixel-doubled).
@@ -207,8 +239,11 @@ Microsoft fonts: the output stays in `out/`.
 - `miller/`: the 11 flat-map rasters (MillerTerrainGrid) assembled per level (512 × 384 … 3328 × 2295), as
   index PNG and LOOK WebP, with the fitted Miller projection in `miller/index.json` (mad-styling.md §12).
 - `mad-tables.json`: GeoFaceScale with zoom ranges, PDCAttribute, the class-use summary, GeoPenDef, GeoLabel,
-  Label Font, ShieldId, BitmapPalette/Color/DimDir, GeoTrans, MinRect, Unicode Attributes, Font Conv, LegendGrid,
-  MapStyle (raw), PDCAltitudeGrid (all rules), LangId.
+  Label Font (`{font, charset, name}`), ShieldId, BitmapPalette/Color/DimDir, GeoTrans, MinRect, Unicode
+  Attributes, Font Conv, LegendGrid, MapStyle (raw), PDCAltitudeGrid (all rules), LangId. All of these are parsed
+  by `encarta_formats::mad::tables` (the converter has no table parsers of its own).
+- MapStyle names are char[32] (mad-styling.md §3): style 28 is "Atlas Physical Features-No HS"
+  (`styles/atlas-physical-features-no-hs.json`); the 26-byte read before cut it to "…-No".
 
 ## Completeness (`out/report/atlas.json` → `completeness`)
 
@@ -227,11 +262,17 @@ without bathymetry), GeoGem bands 0–7 and 31,662 entities, all of which are in
   8-px projection interpolation).
 - `tools/atlas-maplibre/`: `server.js` (Range-capable static server for `out/`), `index.html` (MapLibre GL JS
   5.6 + pmtiles 4.3 viewer, absolutises sprite/glyph URLs) and `shoot.mjs` (headless Chromium via the DevTools
-  protocol, waits for the map's `idle` event, saves a PNG; renders kept in `out/report/atlas-preview/maplibre/`).
-  The converted styles render as atlas pages (Atlas
-  Default and Political over Europe, Satellite Day, Time Zone, the Moon, VE Road over Paris at z11).
+  protocol, waits for the map's `idle` event, saves a PNG; renders kept in `out/report/atlas-preview/maplibre/`,
+  the previous round's in `maplibre-before/`). The converted styles render as atlas pages: Atlas Default,
+  Political and Satellite Day over Europe (10° E 50° N z4.5), Time Zone (90° W 40° N z2.7), the Moon, the globe,
+  Atlas Default over Paris (z8.6) and Trondheim (z7, draw-over masks over the fjord), VE Road over Paris at z11.
+  Against the previous renders: at the same zoom the rules are those of a 1.31× higher altitude (P/m 3135, not
+  2400), so slightly sparser; country names fall back to their abbreviations where they do not fit ("Neth.",
+  "Lux.", "Bosnia & Herz."); boundaries crossing water draw their light water pen instead of the orange land
+  ribbon; graticules are blue over water and grey over land.
 - Unit tests: PMTiles writer/reader round trip (with leaf directories, runs, dedup), Hilbert ids, MVT encode/decode
-  of synthetic geometry (holes, orientation, clipping), clipping, even-odd nesting, projection interpolation,
-  zoom/level choice, altitude→zoom, dash arrays, SDF, name conventions. Disc tests (skipped without
+  of synthetic geometry (holes, orientation, clipping), clipping, even-odd nesting, seam-free outlines, zoom bands
+  (earth stops at z8, Moon to band 2), projection interpolation, zoom/level choice, altitude→zoom, dash arrays,
+  pixel classes and pen masks, water/land line splitting, SDF, name conventions. Disc tests (skipped without
   `extracted/`): HYPSO ocean value at 0° N 140° W through a Mercator tile and a PMTiles round trip; band-7
-  Denmark tile with Copenhagen and exterior-first polygons.
+  Denmark tile with Copenhagen, exterior-first polygons, dropped seam edges and water runs.

@@ -4,8 +4,10 @@
  * handshake of §2.2 played automatically unless `autoLoad` is false.
  */
 import { TourControl, type ControlOptions } from "./control";
+import { currentPose, hotspotDestination, playHostStart, poseCommand, type Pose } from "./host";
 import { CAPTION_FONT_STACK, LayerPainter } from "./hud/draw";
 import { parseEvent } from "./script/parse";
+import { FixedTicker } from "./sim/clock";
 import { TourView, type ViewOptions } from "./render/view";
 import type { TourScene } from "./types";
 
@@ -15,6 +17,8 @@ export interface TourEvent {
   /** Upper-cased event name (`WORLDLOADED`, `USERLOCUPDATE`, `HOTSPOTCLICKED`, `USERLEVELCHANGE`, …). */
   name: string;
   pairs: [string, string][];
+  /** `HOTSPOTCLICKED` only: the media the host opens (`destmedia`), when the converted data has it. */
+  destMedia?: number | null;
 }
 
 export interface MountOptions {
@@ -24,8 +28,21 @@ export interface MountOptions {
   onEvent?: (event: TourEvent) => void;
   /** Play the host handshake and start `load.3sc` (default true). */
   autoLoad?: boolean;
+  /**
+   * After loading, put the camera here instead of at the default Tour Stop (returning to a tour
+   * from a hotspot's media page). Only with `autoLoad`.
+   */
+  initialPose?: Pose | null;
+  /** Send the default stop's camera command after `WORLDLOADED`, as Encarta does (default true). */
+  defaultStop?: boolean;
   control?: ControlOptions;
   view?: ViewOptions;
+  /**
+   * Fixed control size in pixels, e.g. `[616, 420]` (Encarta's, measured in the VM). The 2D layer,
+   * the loading screen and the field of view are laid out for this size, and the control is
+   * scaled to fit the container, letterboxed. Default: the container's own size.
+   */
+  controlSize?: [number, number] | null;
 }
 
 export interface TourHandle {
@@ -36,6 +53,12 @@ export interface TourHandle {
   /** Resolves after `WORLDLOADED`. */
   readonly loaded: Promise<void>;
   stats(): { fps: number; drawCalls: number; triangles: number; pvsCell: number | null };
+  /** The camera pose in disc coordinates, with the active walk map. */
+  pose(): Pose;
+  /** Moves to a pose (as the stop commands do); returns the replies. */
+  goTo(pose: Pose): string;
+  /** Sends a Tour Stop's camera command; null when the stop has none. */
+  goToStop(stopId: number): string | null;
   /** Runs `ticks` simulation ticks and draws one frame, independent of requestAnimationFrame (tests, hidden pages). */
   advance(ticks: number): void;
   destroy(): void;
@@ -68,8 +91,14 @@ export async function mountTour(container: HTMLElement, options: MountOptions): 
   const loaded = new Promise<void>((r) => (resolveLoaded = r));
   control.events.onEvent = (text) => {
     const ev = parseEvent(text);
-    if (ev.name.toUpperCase() === "WORLDLOADED") resolveLoaded();
-    options.onEvent?.({ text, name: ev.name.toUpperCase(), pairs: ev.pairs });
+    const name = ev.name.toUpperCase();
+    if (name === "WORLDLOADED") resolveLoaded();
+    const event: TourEvent = { text, name, pairs: ev.pairs };
+    if (name === "HOTSPOTCLICKED") {
+      const id = Number(ev.pairs.find(([k]) => k.toUpperCase() === "HOTSPOTID")?.[1]);
+      event.destMedia = Number.isFinite(id) ? hotspotDestination(scene, id) : null;
+    }
+    options.onEvent?.(event);
   };
   control.modelReady = () => view.ready;
 
@@ -83,16 +112,30 @@ export async function mountTour(container: HTMLElement, options: MountOptions): 
   });
 
   // ------------------------------------------------------------ sizing
-  let cssW = 0, cssH = 0;
+  // cssW × cssH is the control's own pixel size; `scale` maps it to CSS pixels of the frame.
+  let cssW = 0, cssH = 0, scale = 1, offX = 0, offY = 0;
   const dpr = view.options.pixelRatio;
+  let hudScale = dpr;
+  const fixed = options.controlSize ?? null;
   const resize = () => {
     const r = root.getBoundingClientRect();
-    cssW = Math.max(1, Math.round(r.width));
-    cssH = Math.max(1, Math.round(r.height));
+    if (fixed) {
+      [cssW, cssH] = fixed;
+      scale = Math.max(0.1, Math.min(r.width / cssW, r.height / cssH));
+      const fw = cssW * scale, fh = cssH * scale;
+      offX = Math.round((r.width - fw) / 2);
+      offY = Math.round((r.height - fh) / 2);
+      for (const c of [glCanvas, hud]) c.style.cssText = `position:absolute;left:${offX}px;top:${offY}px;width:${fw}px;height:${fh}px;display:block`;
+      view.renderer.setPixelRatio(dpr * scale);
+    } else {
+      cssW = Math.max(1, Math.round(r.width));
+      cssH = Math.max(1, Math.round(r.height));
+    }
+    hudScale = dpr * scale;
     control.viewport = { w: cssW, h: cssH };
     view.resize(cssW, cssH);
-    hud.width = Math.round(cssW * dpr);
-    hud.height = Math.round(cssH * dpr);
+    hud.width = Math.round(cssW * hudScale);
+    hud.height = Math.round(cssH * hudScale);
   };
   resize();
   const ro = new ResizeObserver(resize);
@@ -101,7 +144,7 @@ export async function mountTour(container: HTMLElement, options: MountOptions): 
   // ------------------------------------------------------------ input
   const local = (e: PointerEvent | MouseEvent) => {
     const r = root.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+    return { x: (e.clientX - r.left - offX) / scale, y: (e.clientY - r.top - offY) / scale };
   };
   const onDown = (e: PointerEvent) => {
     if (e.button !== 0) return;
@@ -146,30 +189,23 @@ export async function mountTour(container: HTMLElement, options: MountOptions): 
   root.addEventListener("contextmenu", (e) => e.preventDefault());
 
   // ------------------------------------------------------------ loop
-  const tickDt = 1 / control.options.tickHz;
+  const ticker = new FixedTicker(control.options.tickHz);
   let last = performance.now();
-  let acc = 0;
   let frames = 0, fpsT = last, fps = 0;
   let raf = 0;
   let cursorKey = "";
   const g = hud.getContext("2d");
   const frame = (now: number) => {
     raf = requestAnimationFrame(frame);
-    acc += Math.min(0.25, (now - last) / 1000);
+    const n = ticker.frame((now - last) / 1000);
     last = now;
-    let n = 0;
-    while (acc >= tickDt && n < 16) {
-      control.tick();
-      acc -= tickDt;
-      n++;
-    }
-    if (n === 16) acc = 0;
+    for (let i = 0; i < n; i++) control.tick();
     draw(now);
   };
   const draw = (now: number) => {
     view.render();
     if (g) {
-      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.setTransform(hudScale, 0, 0, hudScale, 0, 0);
       g.clearRect(0, 0, cssW, cssH);
       control.layoutLayer();
       painter.draw(g, control.layer, cssW, cssH);
@@ -208,15 +244,22 @@ export async function mountTour(container: HTMLElement, options: MountOptions): 
     control.do("SCENE.ALARM.ACTIVATE");
     control.do(`script.itsfileurl=world\\7015\\${options.tourId}.eit`);
     control.do("script.load=load.3sc");
+    if (options.initialPose || options.defaultStop !== false) playHostStart(control, options.initialPose ?? null);
   }
   void viewLoad;
 
-  return {
+  const handle: TourHandle = {
     do: (command) => control.do(command),
     control,
     scene,
     loaded,
     stats: () => ({ fps, ...view.stats() }),
+    pose: () => currentPose(control),
+    goTo: (pose) => control.do(poseCommand(scene, pose)),
+    goToStop: (stopId) => {
+      const cmd = scene.stops?.find((s) => s.id === stopId)?.command;
+      return cmd ? control.do(cmd) : null;
+    },
     advance: (ticks) => {
       for (let i = 0; i < ticks; i++) control.tick();
       draw(performance.now());
@@ -226,6 +269,17 @@ export async function mountTour(container: HTMLElement, options: MountOptions): 
       ro.disconnect();
       view.dispose();
       root.remove();
+      const live = (devHandle.__encartaTours ?? []).filter((x) => x !== handle);
+      devHandle.__encartaTours = live;
+      devHandle.__encartaTour = live.at(-1) ?? null;
     },
   };
+  // Development builds expose the last mounted tour for driving it from the console or a test
+  // browser (a hidden tab gets no animation frames; `advance()` steps it by hand).
+  const devHandle = globalThis as { __encartaTour?: TourHandle | null; __encartaTours?: TourHandle[] };
+  if (import.meta.env?.DEV) {
+    devHandle.__encartaTours = [...(devHandle.__encartaTours ?? []), handle];
+    devHandle.__encartaTour = handle;
+  }
+  return handle;
 }

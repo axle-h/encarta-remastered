@@ -245,7 +245,8 @@ pub fn router(st: Arc<AppState>) -> Router {
         .nest("/api", api)
         .route("/media/file/{*name}", get(media::file))
         .route("/media/{sha}/{variant}", get(media::by_hash))
-        .route("/media/disc/{edition}/{*path}", get(media::disc))
+        // Flash `loadMovie` with variables POSTs: answered like a GET.
+        .route("/media/disc/{edition}/{*path}", get(media::disc).post(media::disc))
         .route("/fonts/{name}", get(files::font))
         .route("/atlas/{*path}", get(files::atlas))
         .route("/out/atlas/{*path}", get(files::out_atlas))

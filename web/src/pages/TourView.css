@@ -1,0 +1,258 @@
+/* Tour page, laid out like Encarta's (VM captures at 1024×768): a 172-px column with the site map
+   (172×194) over the stop text, and the control (616×420, 1-px black frame) centred on the
+   tour background under the menu bar, with the tour title below. */
+
+.tv {
+  --tv-bg: #31456b;
+  --tv-ink: #313031;
+  --tv-head: #31456b;
+  --tv-link: #314dce;
+  display: grid;
+  grid-template-columns: 173px minmax(0, 1fr);
+  height: calc(100vh - 64px);
+  background: var(--tv-bg);
+}
+
+.tv-left {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid #000;
+}
+
+.tv-map {
+  display: block;
+  width: 172px;
+  height: 194px;
+  flex: none;
+  image-rendering: pixelated;
+  background: #fff;
+}
+
+.tv-text {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin-top: 1px;
+  padding: 2px 8px 8px;
+  background: #fff;
+  color: var(--tv-ink);
+  font: 12px/15px var(--ui);
+}
+
+.tv-stoptext h2,
+.tv-hotspot h2 {
+  margin: 0 0 8px;
+  color: var(--tv-head);
+  font: bold 13px/16px var(--ui);
+}
+
+.tv-article,
+.tv-article .enc-article {
+  font: 12px/15px var(--ui);
+  color: var(--tv-ink);
+}
+
+.tv-article .enc-article .enc-p {
+  max-width: none;
+  margin: 0 0 8px;
+}
+
+.tv-article h1,
+.tv-article h2 {
+  display: none; /* the stop title above already names it */
+}
+
+.tv-article p {
+  margin: 0 0 8px;
+}
+
+.tv-article a,
+.tv-text a {
+  color: var(--tv-link);
+  text-decoration: none;
+}
+
+.tv-article a:hover,
+.tv-text a:hover {
+  text-decoration: underline;
+}
+
+.tv-hotspot img {
+  max-width: 100%;
+  height: auto;
+}
+
+.tv-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.tv-menu {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  height: 20px;
+  margin-top: 4px;
+  border-top: 2px solid #000;
+  border-bottom: 1px solid #526d94;
+  padding: 0 10px 0 0;
+  font: 13px/18px var(--ui);
+}
+
+.tv-menu-gap {
+  flex: 1;
+}
+
+.tv-menu-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 14px;
+  border: 0;
+  background: none;
+  color: #fff;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tv-menu-item:hover:not(:disabled),
+.tv-menu-item.tv-open {
+  text-decoration: underline;
+}
+
+.tv-menu-item:disabled {
+  color: #9aa7c0;
+  cursor: default;
+}
+
+.tv-menu-item.tv-on {
+  background: #7b96ce;
+  color: #000;
+}
+
+.tv-back {
+  padding-left: 8px;
+}
+
+.tv-dropdown {
+  position: relative;
+  display: flex;
+}
+
+.tv-popup {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  right: 0;
+  min-width: 190px;
+  margin: 0;
+  padding: 2px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #6f6f6f;
+  box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.35);
+  color: #000;
+  font: 12px/18px var(--ui);
+}
+
+.tv-popup li {
+  position: relative;
+}
+
+.tv-popup button {
+  display: block;
+  width: 100%;
+  padding: 1px 22px 1px 18px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tv-popup button:hover:not(:disabled),
+.tv-popup button:focus-visible,
+.tv-popup button[aria-expanded="true"] {
+  background: #316ac5;
+  color: #fff;
+}
+
+.tv-popup button:disabled {
+  color: #8d8d8d;
+  cursor: default;
+}
+
+.tv-hassub > button::before {
+  content: "\25C2";
+  position: absolute;
+  left: 6px;
+}
+
+.tv-sub {
+  top: -3px;
+  right: 100%;
+}
+
+.tv-sep {
+  height: 1px;
+  margin: 3px 1px;
+  background: #aca899;
+}
+
+.tv-stagewrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 16px;
+}
+
+.tv-stage {
+  width: min(616px, 100%);
+  aspect-ratio: 616 / 420;
+  max-height: 100%;
+  border: 1px solid #000;
+  background: #000;
+}
+
+.tv-title {
+  flex: none;
+  margin: 0;
+  padding: 0 18px 10px;
+  color: #fff;
+  font: normal 32px/1.2 var(--serif);
+}
+
+@media (max-width: 760px) {
+  .tv {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    height: auto;
+  }
+  .tv-left {
+    order: 2;
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-left: 0;
+  }
+  .tv-text {
+    flex: 1 1 200px;
+    max-height: 320px;
+    margin: 0 0 0 1px;
+  }
+  .tv-menu {
+    height: auto;
+    flex-wrap: wrap;
+  }
+  .tv-title {
+    font-size: 24px;
+  }
+}

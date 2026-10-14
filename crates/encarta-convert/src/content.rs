@@ -44,13 +44,24 @@ pub struct IdInfo {
 /// What later passes need to know about an item from its DATA record.
 #[derive(Default, Clone)]
 pub struct Summary {
-    pub title_ref: Vec<Inline>,
+    pub title: Vec<Inline>,
+    pub alt_title: Vec<Inline>,
     /// `hideappears="1"`: not shown inside the articles that place it.
     pub hide: bool,
     pub group: String,
+    /// `(section, item, group, sequence)` of the forward associations the article places.
     pub placements: Vec<(u32, u32, String, i64)>,
     pub xml_files: Vec<String>,
     pub thumb: Option<String>,
+    pub picon: Option<(String, Option<u32>)>,
+    pub image: Option<(String, Option<u32>)>,
+    /// `NoSquish="1"`: the picture may not be scaled down to the text column.
+    pub no_squish: bool,
+    /// `children/media` members (audio sets: the picture and the sound).
+    pub media_children: Vec<u32>,
+    pub preview_html: String,
+    /// DATA `type` (sidebar category code).
+    pub subtype: Option<String>,
     pub title_html: String,
     pub caption_html: String,
     pub outline: Option<String>,
@@ -174,6 +185,11 @@ pub fn run(paths: &Paths) -> Result<()> {
     })?;
     step(&mut cx, "dictionaries", dictionaries)?;
     step(&mut cx, "small formats", |cx| small_formats(cx, &articles))?;
+    step(&mut cx, "fonts", |cx| {
+        let n = copy_fonts(cx.extracted, &paths.out.join("fonts"))?;
+        cx.rep.counts.insert("fonts.copied".into(), n as u64);
+        Ok(())
+    })?;
     step(&mut cx, "items without data", |cx| {
         items_without_data(cx, &summaries, &titles);
         Ok(())
@@ -366,17 +382,25 @@ fn data_pass(cx: &mut Ctx, s: &Source, titles: &searchx::Titles, summaries: &mut
 }
 
 fn summary_of(d: &data::DataItem) -> Summary {
-    let mut title_ref = d.title.clone();
-    if !d.alt_title.is_empty() {
-        // The original shows "<title> or <alternative title>" for articles with an alternative name.
-        model::push_text(&mut title_ref, " or ");
-        title_ref.extend(d.alt_title.iter().cloned());
-    }
+    let file = |role: &str| d.files.iter().find(|f| f.role == role).map(|f| (f.name.clone(), f.width));
     Summary {
+        title: d.title.clone(),
+        alt_title: d.alt_title.clone(),
+        picon: file("picon"),
+        image: file("image"),
+        no_squish: d.attr("NoSquish") == Some("1"),
+        media_children: d.children.iter().filter(|c| c.0 == "media").map(|c| c.1).collect(),
+        preview_html: if d.preview.is_empty() {
+            String::new()
+        } else {
+            let mut h = String::new();
+            article::render_blocks(&d.preview, &|_| None, &mut h);
+            h
+        },
+        subtype: d.attr("type").map(str::to_string),
         hide: d.attr("hideappears") == Some("1"),
         title_html: render::inlines_html(&d.title),
         caption_html: render::inlines_html(&d.caption),
-        title_ref,
         group: d.group.clone(),
         placements: d
             .assocs
@@ -444,7 +468,13 @@ fn write_item(acc: &mut Acc, d: &data::DataItem, info: Option<&IdInfo>, titles: 
                 article::render_blocks(&d.preview, &|_| None, &mut h);
                 db::s(h)
             },
-            db::s(data::meta_json(d).to_string()),
+            db::s({
+                let mut m = data::meta_json(d);
+                if d.group == "sidebar" {
+                    m["sidebar_category"] = sidebar_category(d.attr("type")).into();
+                }
+                m.to_string()
+            }),
         ],
     );
     for (k, f) in d.files.iter().enumerate() {
@@ -551,8 +581,66 @@ fn media_info(summaries: &HashMap<u32, Summary>, r: u32) -> Option<article::Medi
         title_html: s.title_html.clone(),
         caption_html: s.caption_html.clone(),
         thumb: s.thumb.clone(),
+        picon: s.picon.as_ref().map(|f| f.0.clone()),
+        image: s.image.as_ref().map(|f| f.0.clone()),
         group: s.group.clone(),
+        preview_html: s.preview_html.clone(),
+        category: (s.group == "sidebar").then(|| sidebar_category(s.subtype.as_deref())),
     })
+}
+
+/// The label the reader prints above a sidebar teaser, by the sidebar's DATA `type` (observed in
+/// the reference VM; codes not seen there, and lower-case `sbl`, show the generic "SIDEBAR").
+pub fn sidebar_category(code: Option<&str>) -> &'static str {
+    match code.unwrap_or("") {
+        "SBD" => "HISTORIC DOCUMENTS",
+        "SBG" => "GREAT MOMENTS IN SPORTS",
+        "SBH" => "HISTORIC HEADLINES",
+        "SBI" => "INTERVIEWS",
+        "SBL" => "GREAT WORKS OF LITERATURE",
+        "SBO" => "HISTORIC SPEECHES",
+        "SBS" => "WORLD OF SCIENCE",
+        "SBZ" => "POINTS OF THE COMPASS",
+        "SHE" => "HISTORICAL ESSAYS",
+        "SPC" => "POINT/COUNTERPOINT",
+        _ => "SIDEBAR",
+    }
+}
+
+/// Smallest width of a picture the reader shows across the text column (narrower pictures, and
+/// pictures marked `NoSquish`, go to the left margin column).
+const WIDE_PICTURE: u32 = 360;
+
+/// Which column the encyclopedia reader draws a placed item in (rules from the VM captures,
+/// `docs/content-schema.md` §2).
+pub fn media_column(summaries: &HashMap<u32, Summary>, r: u32, group: &str) -> article::Column {
+    use article::Column::*;
+    let wide = |s: &Summary| s.image.as_ref().is_some_and(|f| f.1.unwrap_or(0) >= WIDE_PICTURE) && !s.no_squish;
+    match group {
+        "sidebar" | "video" => Text,
+        "media" => match summaries.get(&r) {
+            Some(s) if wide(s) => Text,
+            _ => Margin,
+        },
+        "audionested" => {
+            // An audio set shows its picture member.
+            let pic = summaries.get(&r).and_then(|s| {
+                s.media_children.iter().filter_map(|c| summaries.get(c)).find(|c| c.group == "media")
+            });
+            match pic {
+                Some(p) if p.image.is_some() => {
+                    if wide(p) {
+                        Text
+                    } else {
+                        Margin
+                    }
+                }
+                Some(p) if p.picon.as_ref().is_some_and(|f| f.1.unwrap_or(0) >= 216) => Text,
+                _ => Margin,
+            }
+        }
+        _ => Margin,
+    }
 }
 
 /// Converts one body and queues its rows.
@@ -567,7 +655,7 @@ fn write_article(
 ) {
     let sum = summaries.get(&ref_id);
     // Placements of items with no DATA record (not on this disc) or marked hidden are left out.
-    let placements: Vec<(u32, u32, String, i64)> = sum
+    let placements: Vec<article::Placement> = sum
         .map(|s| {
             s.placements
                 .iter()
@@ -578,14 +666,26 @@ fn write_article(
                     }
                     Some(m) => !m.hide,
                 })
-                .cloned()
+                .map(|(sec, r, g, seq)| article::Placement {
+                    sec: *sec,
+                    ref_id: *r,
+                    group: g.clone(),
+                    sequence: *seq,
+                    col: media_column(summaries, *r, g),
+                })
                 .collect()
         })
         .unwrap_or_default();
+    let layout = match sum.map(|s| s.group.as_str()) {
+        Some("kids") => article::Layout::Kids,
+        Some("sidebar") => article::Layout::Sidebar,
+        _ => article::Layout::Encyclopedia,
+    };
     let info = article::ItemInfo {
-        title: sum.map(|s| s.title_ref.as_slice()),
+        title: sum.map(|s| s.title.as_slice()),
+        alt_title: sum.map_or(&[], |s| s.alt_title.as_slice()),
         placements: &placements,
-        inline_media: sum.is_none_or(|s| s.group != "kids"),
+        layout,
     };
     if sum.is_none() {
         t.note("article", "no DATA record (title unknown)");
@@ -612,6 +712,7 @@ fn write_article(
             db::i(a.sections.len() as i64),
             db::i(words as i64),
             db::i(title_refs as i64),
+            db::s(layout.name()),
         ],
     );
     let mut seen = HashSet::new();
@@ -664,7 +765,7 @@ fn count_title_refs(v: &[article::Block]) -> usize {
     fn inl(v: &[Inline]) -> usize {
         v.iter()
             .map(|n| match n {
-                Inline::TitleRef(_) => 1,
+                Inline::TitleRef { .. } => 1,
                 Inline::Style(_, c) | Inline::Quote { c, .. } | Inline::Place { c, .. } => inl(c),
                 Inline::Link(l) => inl(&l.c),
                 _ => 0,
@@ -925,6 +1026,33 @@ fn dictionaries(cx: &mut Ctx) -> Result<()> {
     Ok(())
 }
 
+// ---- fonts -----------------------------------------------------------------------------------
+
+/// Copies the MS Reference Serif and Sans text fonts (`AREF/FONTS/REFSER*.TTF`, `REFSAN*.TTF`) to
+/// `out/fonts/`, which the server serves as `/fonts/{file}`. Each file is written to a temporary
+/// name and renamed, so a running server never sees a half-written font.
+fn copy_fonts(extracted: &Path, dir: &Path) -> Result<usize> {
+    let src = extracted.join("iso/AREF/FONTS");
+    let Ok(rd) = std::fs::read_dir(&src) else {
+        return Ok(0);
+    };
+    std::fs::create_dir_all(dir)?;
+    let mut n = 0;
+    for e in rd {
+        let e = e?;
+        let name = e.file_name().to_string_lossy().to_string();
+        let up = name.to_ascii_uppercase();
+        if !(up.starts_with("REFSER") || up.starts_with("REFSAN")) || !up.ends_with(".TTF") {
+            continue;
+        }
+        let tmp = dir.join(format!("{name}.partial"));
+        std::fs::copy(e.path(), &tmp).with_context(|| format!("copying {name}"))?;
+        std::fs::rename(&tmp, dir.join(&name))?;
+        n += 1;
+    }
+    Ok(n)
+}
+
 // ---- small formats ---------------------------------------------------------------------------
 
 fn small_formats(cx: &mut Ctx, articles: &HashSet<u32>) -> Result<()> {
@@ -1032,13 +1160,25 @@ mod disc_tests {
         let sum = summary_of(&item);
         let c = lib.content(id).unwrap().expect("content record");
         let cdoc = xml::parse(xml_text(&c.bytes).unwrap()).unwrap();
+        let placements: Vec<article::Placement> = sum
+            .placements
+            .iter()
+            .map(|(sec, r, g, seq)| article::Placement {
+                sec: *sec,
+                ref_id: *r,
+                group: g.clone(),
+                sequence: *seq,
+                col: article::Column::Margin,
+            })
+            .collect();
         let a = article::convert(
             &mut t,
             &cdoc.root,
             &article::ItemInfo {
-                title: Some(&sum.title_ref),
-                placements: &sum.placements,
-                inline_media: true,
+                title: Some(&sum.title),
+                alt_title: &sum.alt_title,
+                placements: &placements,
+                layout: article::Layout::Encyclopedia,
             },
         );
         let mut html = String::new();
@@ -1083,7 +1223,8 @@ mod disc_tests {
         match &a.blocks[0] {
             article::Block::Section { type_code, blocks, .. } => {
                 assert_eq!(*type_code, Some(4));
-                assert!(matches!(blocks[0], article::Block::Media { ref_id: 461550745, .. }));
+                // The VM shows Grévy's Zebra and the Mountain Zebra sound in one cluster.
+                assert!(matches!(&blocks[0], article::Block::Cluster(c) if c[0].ref_id == 461550745 && c[1].ref_id == 461517535));
             }
             b => panic!("{b:?}"),
         }

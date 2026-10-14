@@ -253,8 +253,9 @@ pub fn convert(t: &mut Tracker, root: &Element) -> DataItem {
                 t.el(c);
                 let mut a = article::convert(t, c, &article::ItemInfo {
                     title: Some(&preview_title),
+                    alt_title: &[],
                     placements: &[],
-                    inline_media: true,
+                    layout: article::Layout::Encyclopedia,
                 });
                 d.preview = std::mem::take(&mut a.blocks);
             }

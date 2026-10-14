@@ -25,6 +25,11 @@ export function formatEventDate(e: Pick<TimelineEvent, "start" | "end">): string
   return `${s} – ${formatDate(e.end)}`;
 }
 
+/** The pop-up date line: the converter's `date_text` ("4? BC - AD 29?", timeline.md §3.2), else our own wording. */
+export function eventDateText(e: Pick<TimelineEvent, "start" | "end" | "date_text">): string {
+  return e.date_text ?? formatEventDate(e);
+}
+
 /** Year label for an axis tick. */
 export function yearLabel(y: number): string {
   if (y < 0) {

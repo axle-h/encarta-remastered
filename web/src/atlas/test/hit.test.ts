@@ -24,7 +24,11 @@ describe("hit ranking (V11 menu order)", () => {
     f(11, "lines", "Tropic of Cancer", "Graticule - tropics, circles"),
   ]);
   it("lists points, lines, areas, countries last, once per entity", () => {
-    expect(hits.map((h) => h.name)).toEqual(["Limoges", "Loire", "Tropic of Cancer", "Western Europe", "Auvergne", "France", "World"]);
+    expect(hits.map((h) => h.name)).toEqual(["Limoges", "Loire", "15°", "Tropic of Cancer", "Western Europe", "Auvergne", "France", "World"]);
+  });
+  it("keeps only the classes in the style's hit list", () => {
+    const only = rankHits([f(1, "areas", "France", "Sovereign", 62), f(10, "lines", "15°", "Graticule - 15 deg - meridian", 77)], undefined, new Set([62]));
+    expect(only.map((h) => h.name)).toEqual(["France"]);
   });
   it("picks the first hit with a highlight pen", () => {
     const hoverable = hoverClassesAt(syntheticStyle(), 3);

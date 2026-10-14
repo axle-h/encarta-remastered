@@ -48,16 +48,19 @@ Within a section, data lines are tab-separated.
 | decimals | 0–3 | **number of decimal places**: it matches the digits after the point in all 57,347 rows |
 | B | 1–20; 8 in 93 % of rows; varies within an indicator (Area: 6, 8, 7, 7, 5, …) | **unknown**. It is not the significant-digit count, and its values go beyond the qualifier ids. |
 | year | 1990–2008 | data year |
-| C | 0 in 90 %; constant in most indicators (deforestation rate: 15 in every row; compulsory education: 1) | **unknown**. One hypothesis is a year span (a 1990 base year with span 15 gives 1990–2005; 1 gives a "2002/03" school year), unconfirmed. |
+| C | 0 in 90 %; constant in most indicators (deforestation rate: 15 in every row; compulsory education: 1) | **year span**: the value covers `year` … `year + C`. **Confirmed in the VM**: the statistics map shows "Peru 0.13 (1990-2005)" for year 1990, C = 15, and "(1995)" for C = 0. Stored as `stat_value.year_end` and `period` ("1990-2005" / "1995"); `Item::period_text()` in the reader. |
 | note | `N/A` or `estimate` | footnote text; the words are qualifier names (2, 4) |
 
 - Item rows are sorted by value, descending, within each indicator (all 363). That is the ranking order the UI shows.
-- **Needs VM or decompiler analysis:** the meaning of item columns B and C, and how the qualifier list is used
-  (its ids 2–11 never appear as numbers in the items). In the VM, compare a country's statistics page with its rows.
+- **Still open:** column B (not shown in the hover readout or the Statistics Table), and how the qualifier list
+  is used (its ids 2–11 never appear as numbers in the items; the note is not shown either).
 
 ---
 
 ## 2. Geography Quiz: `D1–D4.TXT` and `D1–D4PLACES.TXT`
+
+**Hypothesis (games):** line 3 (0/1/2/4 per place type) is how many of the 4 wrong answers come from the place's own
+region. Both VM shots fit (Navigator mixes regions; World Class offered only East Asian cities). Unconfirmed.
 
 `EE/ENCARTA/`. ASCII, tab-separated, CRLF. `n` is the difficulty, 1 (easiest) to 4.
 

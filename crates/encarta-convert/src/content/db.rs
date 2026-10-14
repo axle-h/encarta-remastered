@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 
-pub const SCHEMA_VERSION: &str = "1";
+pub const SCHEMA_VERSION: &str = "2";
 
 /// `(table, columns)`; rows are inserted positionally in this column order.
 pub const TABLES: &[(&str, &str)] = &[
@@ -26,7 +26,7 @@ pub const TABLES: &[(&str, &str)] = &[
         "article",
         "ref_id INTEGER PRIMARY KEY, source TEXT NOT NULL, source_file TEXT, body_json TEXT NOT NULL, \
          html TEXT NOT NULL, outline_json TEXT, paragraph_count INTEGER, section_count INTEGER, \
-         word_count INTEGER, title_ref_count INTEGER",
+         word_count INTEGER, title_ref_count INTEGER, layout TEXT",
     ),
     (
         "section",
@@ -114,7 +114,8 @@ pub const TABLES: &[(&str, &str)] = &[
          title_html TEXT, start_year INTEGER, start_month INTEGER, start_day INTEGER, start_circa INTEGER, \
          end_year INTEGER, end_month INTEGER, end_day INTEGER, end_circa INTEGER, span INTEGER, \
          importance INTEGER, category_mask INTEGER, region_mask INTEGER, categories TEXT, regions TEXT, \
-         raw_flags INTEGER",
+         raw_flags INTEGER, display TEXT, label TEXT, date_text TEXT, start_text TEXT, end_text TEXT, \
+         prominence INTEGER",
     ),
     (
         "timeline_term",
@@ -145,7 +146,8 @@ pub const TABLES: &[(&str, &str)] = &[
     (
         "stat_value",
         "indicator_id INTEGER, country_id INTEGER, rank INTEGER, value REAL, value_text TEXT, \
-         decimals INTEGER, col_b INTEGER, year INTEGER, col_c INTEGER, note TEXT",
+         decimals INTEGER, col_b INTEGER, year INTEGER, col_c INTEGER, note TEXT, year_end INTEGER, \
+         period TEXT",
     ),
     (
         "geoquiz_level",

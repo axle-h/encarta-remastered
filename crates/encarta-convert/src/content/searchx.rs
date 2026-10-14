@@ -28,6 +28,7 @@ pub fn markup(t: &mut Tracker, s: &str) -> Vec<Inline> {
             let mut cx = Ctx {
                 t,
                 title: None,
+                alt_title: &[],
                 squash: false,
             };
             inline::children(&mut cx, &d.root)

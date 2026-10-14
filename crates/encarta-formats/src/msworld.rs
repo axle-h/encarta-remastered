@@ -48,10 +48,23 @@ pub struct Item {
     /// Item column 4: meaning unknown.
     pub col_b: u32,
     pub year: u32,
-    /// Item column 6: meaning unknown (possibly a year span).
+    /// Item column 6: the length of the period the value covers, in years (0 = the single year
+    /// `year`). The atlas shows "(1990-2005)" for year 1990 with C = 15 (reference VM).
     pub col_c: u32,
     /// `N/A` or `estimate`.
     pub note: String,
+}
+
+impl Item {
+    /// Last year of the period the value covers.
+    pub fn year_end(&self) -> u32 {
+        self.year + self.col_c
+    }
+
+    /// The period as the atlas prints it: "1990-2005", or "1995" for a single year.
+    pub fn period_text(&self) -> String {
+        if self.col_c > 0 { format!("{}-{}", self.year, self.year_end()) } else { self.year.to_string() }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -401,6 +414,7 @@ mod tests {
         assert_eq!(heat.items[1].value, -1.25);
         assert_eq!(heat.items[1].value_text, "-1.25");
         assert_eq!(heat.items[1].col_c, 15);
+        assert_eq!(heat.items[1].period_text(), format!("{}-{}", heat.items[1].year, heat.items[1].year + 15));
         assert!(sdb.indicators[1].items.is_empty());
     }
 

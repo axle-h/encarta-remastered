@@ -73,7 +73,10 @@ fn assoc_sql() -> &'static str {
                              WHERE ch.ref_id = a.target_ref_id ORDER BY ch.ordinal, f2.ordinal LIMIT 1)";
         format!(
             "SELECT a.target_ref_id AS ref_id, a.grp AS \"group\", a.sec, a.sequence, a.appears, a.par,
-                    i.kind, i.media_type, i.title, i.title_html, i.caption_html, {}, {}, {}
+                    i.kind, i.media_type, i.title, i.title_html, i.caption_html,
+                    CASE WHEN json_extract(i.meta_json, '$.source_attrs.NoSquish') = '1' THEN 1 END AS no_squish,
+                    CASE WHEN a.grp = 'sidebar' THEN i.preview_html END AS preview_html,
+                    CASE WHEN a.grp = 'sidebar' THEN json_extract(i.meta_json, '$.sidebar_category') END AS sidebar_category, {}, {}, {}
              FROM assoc a
              LEFT JOIN item i ON i.ref_id = a.target_ref_id
              LEFT JOIN item_file ft ON ft.rowid = {}
@@ -105,6 +108,9 @@ fn assoc_items(c: &Connection, ref_id: i64, direction: &str, limit: i64) -> rusq
         for p in ["thumb", "picon", "image"] {
             take_file_ref(o, p);
         }
+        if o.remove("no_squish").is_some() {
+            o.insert("no_squish".into(), json!(true));
+        }
     }
     Ok(out)
 }
@@ -122,7 +128,11 @@ fn timeline_event(o: &Map<String, Value>) -> Value {
         o.get(k).and_then(|v| v.as_str()).map(|s| s.split(", ").filter(|x| !x.is_empty()).map(str::to_string).collect()).unwrap_or_default()
     };
     let mut m = Map::new();
-    for k in ["seq", "ref_id", "kind", "source_table", "title", "title_html", "span", "importance", "category_mask", "region_mask"] {
+    for k in [
+        "seq", "ref_id", "kind", "source_table", "title", "title_html", "span", "importance", "category_mask", "region_mask",
+        // Display columns (schema 2, timeline.md §3.2).
+        "display", "label", "date_text", "start_text", "end_text", "prominence",
+    ] {
         if let Some(v) = o.get(k) {
             m.insert(k.into(), v.clone());
         }
@@ -229,22 +239,22 @@ pub async fn article(State(st): St, Path(id): Path<i64>, Query(q): Query<Edition
             let row = c
                 .prepare_cached(
                     "SELECT a.source, a.source_file, a.paragraph_count, a.section_count, a.word_count,
-                            i.title, i.title_html, i.kind, i.alt_title_html, i.in_deluxe, i.in_kids,
+                            i.title, i.title_html, i.kind, i.alt_title_html, a.layout, i.in_deluxe, i.in_kids,
                             CASE WHEN ?2 THEN a.body_json END, CASE WHEN ?3 THEN a.html END, a.outline_json
                      FROM article a JOIN item i USING (ref_id) WHERE a.ref_id = ?1",
                 )?
                 .query_row(params![id, want_body, want_html], |r| {
                     let mut head = Map::new();
                     head.insert("ref_id".into(), json!(id));
-                    let cols = ["source", "source_file", "paragraph_count", "section_count", "word_count", "title", "title_html", "kind", "alt_title_html"];
+                    let cols = ["source", "source_file", "paragraph_count", "section_count", "word_count", "title", "title_html", "kind", "alt_title_html", "layout"];
                     for (i, k) in cols.iter().enumerate() {
                         let v = crate::error::value(r.get_ref(i)?, false);
                         if !v.is_null() {
                             head.insert(k.to_string(), v);
                         }
                     }
-                    head.insert("editions".into(), json!(editions(r.get::<_, i64>(9)? != 0, r.get::<_, i64>(10)? != 0)));
-                    Ok((head, r.get::<_, Option<String>>(11)?, r.get::<_, Option<String>>(12)?, r.get::<_, Option<String>>(13)?))
+                    head.insert("editions".into(), json!(editions(r.get::<_, i64>(10)? != 0, r.get::<_, i64>(11)? != 0)));
+                    Ok((head, r.get::<_, Option<String>>(12)?, r.get::<_, Option<String>>(13)?, r.get::<_, Option<String>>(14)?))
                 })
                 .optional()?;
             let Some((head, body, html, outline)) = row else {
@@ -633,7 +643,8 @@ fn mask_of(c: &Connection, table: &str, spec: &Option<String>) -> ApiResult<i64>
 pub async fn timeline(State(st): St, Query(q): Query<TimelineQuery>) -> ApiResult<Json<Value>> {
     let order = match q.order.as_deref().unwrap_or("date") {
         "date" => "start_year, start_month, start_day, seq",
-        "importance" => "importance DESC, start_year, start_month, start_day, seq",
+        // `prominence` = 6 − importance: importance 1 is the most prominent (VM, timeline.md §3.2).
+        "importance" => "prominence DESC, start_year, start_month, start_day, seq",
         o => return Err(ApiError::bad_request(format!("unknown order {o:?} (date, importance)"))),
     };
     let with_text = truthy(&q.text).unwrap_or(false);
@@ -794,7 +805,7 @@ pub async fn stats_indicator(State(st): St, Path(id): Path<i64>) -> ApiResult<Js
             };
             let values = query_objects(
                 c,
-                "SELECT v.country_id, c.name AS country, v.rank, v.value, v.value_text, v.decimals, v.year, v.note
+                "SELECT v.country_id, c.name AS country, v.rank, v.value, v.value_text, v.decimals, v.year, v.year_end, v.period, v.note
                  FROM stat_value v LEFT JOIN stat_country c ON c.id = v.country_id WHERE v.indicator_id = ?1 ORDER BY v.rank, c.name",
                 [id],
             )?;
@@ -812,7 +823,7 @@ pub async fn stats_country(State(st): St, Path(id): Path<i64>) -> ApiResult<Json
             };
             let values = query_objects(
                 c,
-                "SELECT v.indicator_id, s.name AS indicator, v.rank, v.value, v.value_text, v.decimals, v.year, v.note
+                "SELECT v.indicator_id, s.name AS indicator, v.rank, v.value, v.value_text, v.decimals, v.year, v.year_end, v.period, v.note
                  FROM stat_value v JOIN stat_indicator s ON s.id = v.indicator_id WHERE v.country_id = ?1 ORDER BY s.name",
                 [id],
             )?;
@@ -931,6 +942,8 @@ pub fn fts_query(q: &str) -> String {
 pub struct GazQuery {
     pub q: Option<String>,
     pub limit: Option<i64>,
+    /// `earth` or `moon`: only places on that body.
+    pub body: Option<String>,
 }
 
 pub async fn atlas_search(State(st): St, Query(q): Query<GazQuery>) -> ApiResult<Json<Value>> {
@@ -938,6 +951,7 @@ pub async fn atlas_search(State(st): St, Query(q): Query<GazQuery>) -> ApiResult
     let text = q.q.unwrap_or_default();
     let fts = fts_query(&text);
     let limit = q.limit.unwrap_or(20).clamp(1, 200);
+    let body = q.body.map(|b| b.to_ascii_lowercase()).filter(|b| !b.is_empty());
     if fts.is_empty() {
         return Ok(Json(json!({ "query": text, "places": [] })));
     }
@@ -950,7 +964,33 @@ pub async fn atlas_search(State(st): St, Query(q): Query<GazQuery>) -> ApiResult
                 Some(i) => format!("{} LIMIT ?3", &trimmed[..i]),
                 None => format!("SELECT * FROM ({trimmed}) LIMIT ?3"),
             };
-            Ok(query_objects(c, &sql, params![fts, t, limit])?)
+            // The gazetteer's own ranking first; a body filter looks further down that list.
+            let inner = if body.is_some() { 5000 } else { limit };
+            let hits = query_objects(c, &sql, params![fts, t, inner])?;
+            let mut extra = c.prepare_cached("SELECT goto_km, west, south, east, north, body, class_name FROM place_full WHERE entity = ?1")?;
+            let mut out = Vec::new();
+            for mut h in hits {
+                let Some(entity) = h.get("entity").and_then(|v| v.as_i64()) else { continue };
+                let row = extra
+                    .query_row([entity], |r| {
+                        Ok((r.get::<_, Option<f64>>(0)?, [r.get::<_, Option<f64>>(1)?, r.get(2)?, r.get(3)?, r.get(4)?], r.get::<_, Option<String>>(5)?, r.get::<_, Option<String>>(6)?))
+                    })
+                    .optional()?;
+                let Some((goto_km, bbox, pbody, class_name)) = row else { continue };
+                if body.as_deref().is_some_and(|b| pbody.as_deref() != Some(b)) {
+                    continue;
+                }
+                let o = h.as_object_mut().unwrap();
+                o.insert("goto_km".into(), json!(goto_km));
+                o.insert("bbox".into(), if bbox.iter().all(|x| x.is_some()) { json!(bbox) } else { Value::Null });
+                o.insert("body".into(), json!(pbody));
+                o.insert("class_name".into(), json!(class_name));
+                out.push(h);
+                if out.len() as i64 >= limit {
+                    break;
+                }
+            }
+            Ok(out)
         })
         .await?;
     Ok(Json(json!({ "query": text, "places": places })))
@@ -982,4 +1022,18 @@ pub async fn atlas_place(State(st): St, Path(entity): Path<i64>) -> ApiResult<Js
         })
         .await?;
     Ok(Json(v))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wheel_order_ignores_hyphens_and_case() {
+        // The VM lists: parietal lobe, pari-mutuel, paring, Paris.
+        let mut v = vec!["Paris", "paring", "pari-mutuel", "parietal lobe"];
+        v.sort_by_key(|w| wheel_key(w));
+        assert_eq!(v, vec!["parietal lobe", "pari-mutuel", "paring", "Paris"]);
+        assert_eq!(wheel_key("Grévy’s"), "grevys");
+    }
 }

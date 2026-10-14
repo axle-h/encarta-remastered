@@ -209,13 +209,21 @@ pub fn origin(headers: &HeaderMap) -> String {
 }
 
 /// Makes the root-relative URLs of a MapLibre style absolute: `sprite`, `glyphs`, source `url`s
-/// and `tiles` (`/atlas/…` → `<origin>/atlas/…`, `pmtiles:///atlas/…` → `pmtiles://<origin>/atlas/…`).
-pub fn absolutize_style(style: &mut Value, origin: &str) {
+/// and `tiles` (`/atlas/…` → `<origin><mount>/…`, `pmtiles:///atlas/…` → `pmtiles://<origin><mount>/…`).
+/// `mount` is where the style was fetched (`/atlas` or `/out/atlas`), so a style read through
+/// `/out/atlas/` (the Vite dev proxy's path) points at `/out/atlas/` too.
+pub fn absolutize_style(style: &mut Value, origin: &str, mount: &str) {
+    let path = |p: &str| -> String {
+        match p.strip_prefix("/atlas/") {
+            Some(rest) => format!("{mount}/{rest}"),
+            None => p.to_string(),
+        }
+    };
     let fix = |s: &str| -> Option<String> {
-        if let Some(rest) = s.strip_prefix("pmtiles:///") {
-            Some(format!("pmtiles://{origin}/{rest}"))
+        if let Some(rest) = s.strip_prefix("pmtiles://").filter(|r| r.starts_with('/')) {
+            Some(format!("pmtiles://{origin}{}", path(rest)))
         } else if s.starts_with('/') && !s.starts_with("//") {
-            Some(format!("{origin}{s}"))
+            Some(format!("{origin}{}", path(s)))
         } else {
             None
         }
@@ -252,13 +260,13 @@ pub fn absolutize_style(style: &mut Value, origin: &str) {
     }
 }
 
-async fn atlas_file(st: &AppState, req: &Req, rel: &str) -> Option<Response> {
+async fn atlas_file(st: &AppState, req: &Req, rel: &str, mount: &str) -> Option<Response> {
     let root = st.out.join("atlas");
     if rel.starts_with("styles/") && rel.ends_with(".json") && rel != "styles/index.json" {
         let path = safe_join(&root, rel)?;
         let bytes = tokio::fs::read(&path).await.ok()?;
         let mut v: Value = serde_json::from_slice(&bytes).ok()?;
-        absolutize_style(&mut v, &origin(&req.headers));
+        absolutize_style(&mut v, &origin(&req.headers), mount);
         let mut r = axum::Json(v).into_response();
         r.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static(DATA_CACHE));
         r.headers_mut().insert(header::VARY, HeaderValue::from_static("Host, X-Forwarded-Host, X-Forwarded-Proto"));
@@ -271,7 +279,7 @@ async fn atlas_file(st: &AppState, req: &Req, rel: &str) -> Option<Response> {
 /// such as `/atlas/place/{gid}`).
 pub async fn atlas(State(st): State<Arc<AppState>>, UrlPath(rel): UrlPath<String>, req: Request) -> Response {
     let req = Req::from(req);
-    match atlas_file(&st, &req, &rel).await {
+    match atlas_file(&st, &req, &rel, "/atlas").await {
         Some(r) => r,
         None => spa(&st, &req).await,
     }
@@ -280,7 +288,7 @@ pub async fn atlas(State(st): State<Arc<AppState>>, UrlPath(rel): UrlPath<String
 /// `/out/atlas/{*path}` and `/out/tours/{*path}`: files only (as the Vite dev server serves them).
 pub async fn out_atlas(State(st): State<Arc<AppState>>, UrlPath(rel): UrlPath<String>, req: Request) -> Response {
     let req = Req::from(req);
-    atlas_file(&st, &req, &rel).await.unwrap_or_else(|| StatusCode::NOT_FOUND.into_response())
+    atlas_file(&st, &req, &rel, "/out/atlas").await.unwrap_or_else(|| StatusCode::NOT_FOUND.into_response())
 }
 
 pub async fn out_tours(State(st): State<Arc<AppState>>, UrlPath(rel): UrlPath<String>, req: Request) -> Response {
@@ -386,12 +394,19 @@ mod tests {
     fn styles() {
         let mut v = serde_json::json!({"sprite": "/atlas/sprites/sprite", "glyphs": "/atlas/glyphs/{fontstack}/{range}.pbf",
             "sources": {"e": {"url": "pmtiles:///atlas/vector/earth.pmtiles"}, "x": {"tiles": ["/a/{z}.png", "https://x/y"]}}});
-        absolutize_style(&mut v, "https://enc.example");
+        let orig = v.clone();
+        absolutize_style(&mut v, "https://enc.example", "/atlas");
         assert_eq!(v["sprite"], "https://enc.example/atlas/sprites/sprite");
         assert_eq!(v["glyphs"], "https://enc.example/atlas/glyphs/{fontstack}/{range}.pbf");
         assert_eq!(v["sources"]["e"]["url"], "pmtiles://https://enc.example/atlas/vector/earth.pmtiles");
         assert_eq!(v["sources"]["x"]["tiles"][0], "https://enc.example/a/{z}.png");
         assert_eq!(v["sources"]["x"]["tiles"][1], "https://x/y");
+        // Fetched through /out/atlas/: the URLs keep that prefix.
+        let mut v = orig;
+        absolutize_style(&mut v, "http://127.0.0.1:5191", "/out/atlas");
+        assert_eq!(v["sprite"], "http://127.0.0.1:5191/out/atlas/sprites/sprite");
+        assert_eq!(v["sources"]["e"]["url"], "pmtiles://http://127.0.0.1:5191/out/atlas/vector/earth.pmtiles");
+        assert_eq!(v["sources"]["x"]["tiles"][0], "http://127.0.0.1:5191/a/{z}.png");
         assert!(safe_join(Path::new("/r"), "../etc/passwd").is_none());
         assert_eq!(safe_join(Path::new("/r"), "/a/b.json"), Some(PathBuf::from("/r/a/b.json")));
     }

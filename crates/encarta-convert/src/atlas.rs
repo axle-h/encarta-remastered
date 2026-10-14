@@ -12,6 +12,7 @@ mod geo;
 mod glyphs;
 mod mvt;
 mod objects;
+mod pixel;
 mod pmtiles;
 mod preview;
 mod raster;

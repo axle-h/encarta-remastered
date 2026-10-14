@@ -11,11 +11,12 @@ import { useMediaViewer } from "../media/MediaViewer";
 import { fileUrl, mediaClass } from "../media/pick";
 import { ArticleBody, type BodyContext } from "./ArticleBody";
 import { FindBar } from "./FindBar";
-import { sectionPathOf } from "./layout";
+import { mediaFirst, sectionPathOf } from "./layout";
 import { useArticleModel } from "./useArticleModel";
 import { Pronunciation } from "./Pronunciation";
 import { SequenceContext } from "./sequence";
 import { AtlasPanel, LinksPanel, QuickFacts, RelatedPanel } from "./SidePanels";
+import { KidsArticleView } from "../kids/KidsArticle";
 
 export function ArticlePage({ id, kids = false }: { id: number; kids?: boolean }) {
   const res = useApi((s) => api.article(id, kids ? "kids" : undefined, s), [id, kids]);
@@ -23,7 +24,14 @@ export function ArticlePage({ id, kids = false }: { id: number; kids?: boolean }
   useDocumentTitle(a?.title);
   if (res.error) return <div className="enc-page-error">Could not load the article ({res.error.message}).</div>;
   if (!a) return <div className="enc-loading"><div className="enc-spinner" /></div>;
-  return <ArticleView key={a.ref_id} article={a} kids={kids} />;
+  return <ArticleByLayout key={a.ref_id} article={a} kids={kids} />;
+}
+
+/** Picks the page layout the converter stored for the article (`article.layout`). */
+export function ArticleByLayout({ article, kids }: { article: Article; kids: boolean }) {
+  if (article.layout === "kids") return <KidsArticleView article={article} />;
+  if (article.layout === "sidebar") return <SidebarView article={article} kids={kids} />;
+  return <ArticleView article={article} kids={kids} />;
 }
 
 function ArticleView({ article: a, kids }: { article: Article; kids: boolean }) {
@@ -98,6 +106,7 @@ function ArticleView({ article: a, kids }: { article: Article; kids: boolean }) 
     previewSection: firstSection?.id ?? null,
     mediaColumn: true,
     sequence: m.sequence,
+    layout: m.layout,
   };
 
   const maps = m.media.filter((x) => x.group === "maps");
@@ -168,6 +177,62 @@ function ArticleView({ article: a, kids }: { article: Article; kids: boolean }) 
             {a.related && a.related.length > 0 && <RelatedPanel tree={a.related} kids={kids} />}
             {further.length > 0 && <LinksPanel title="Further Reading" items={further} kids={kids} />}
           </aside>
+        </div>
+      </div>
+    </SequenceContext.Provider>
+  );
+}
+
+/**
+ * A sidebar (layout `sidebar`, VM: Customs of Russia): a header band with the title, then the body
+ * (intro, rule, headline, by-line, paragraphs) with all of the sidebar's media in one cluster at
+ * the top left. No outline, media strip or right column.
+ */
+function SidebarView({ article: a, kids }: { article: Article; kids: boolean }) {
+  const m = useArticleModel(a);
+  const [appears, setAppears] = useState(false);
+  const item = useApi(appears ? (s) => api.item(a.ref_id, s) : null, [appears, a.ref_id]);
+  const ctx: BodyContext = {
+    assoc: m.assoc,
+    tables: m.tables,
+    opts: { kids },
+    collapsed: new Set(),
+    toggle: () => undefined,
+    previewSection: null,
+    mediaColumn: true,
+    sequence: m.sequence,
+    layout: "sidebar",
+  };
+  const places = (item.data?.appears_in ?? []).filter((x, i, all) => all.findIndex((y) => y.ref_id === x.ref_id) === i);
+  return (
+    <SequenceContext.Provider value={m.sequence}>
+      <div className="art art-sidebar">
+        <header className="sb-head">
+          <div className="sb-head-band">
+            <button type="button" className="sb-appears" aria-expanded={appears} onClick={() => setAppears((v) => !v)}>
+              Appears <u>I</u>n
+            </button>
+            <span className="sb-banner" aria-hidden="true">
+              sidebar
+            </span>
+          </div>
+          <h1 className="sb-title">
+            <Html as="span" html={a.title_html ?? a.title} />
+          </h1>
+          {appears && (
+            <ul className="sb-appears-list">
+              {item.loading && <li>…</li>}
+              {places.map((x) => (
+                <li key={x.ref_id}>
+                  <Link to={`${kids ? "/kids" : ""}/item/${x.ref_id}`}>{x.title ?? x.ref_id}</Link>
+                </li>
+              ))}
+              {item.data && places.length === 0 && <li>Not linked from any article.</li>}
+            </ul>
+          )}
+        </header>
+        <div className="sb-body">
+          <ArticleBody blocks={mediaFirst(m.body)} ctx={ctx} />
         </div>
       </div>
     </SequenceContext.Provider>

@@ -12,7 +12,9 @@ import "./atlas.css";
 
 import { MENU_STYLE, findStyle, styleBody, styleLabel, type StyleIndexEntry } from "./catalog";
 import {
+  dataFile,
   defaultEndpoints,
+  fetchJson,
   getPlace,
   getPlaceLinks,
   loadIndicator,
@@ -31,11 +33,21 @@ import {
   type StatValue,
 } from "./data";
 import { hoverClassesAt, hoverTarget, rankHits, viewTitle, type HitPlace, type QueriedFeature } from "./hit";
-import { HIT_PREFIX, vectorSources, type ClassOverrides } from "./layers";
+import { HIT_PREFIX, hitClassesAt, hitRanges, vectorSources, type ClassOverrides } from "./layers";
+import {
+  MILLER_MVT_PROTOCOL,
+  MILLER_RASTER_PROTOCOL,
+  createMillerRasterProtocol,
+  createMillerVectorProtocol,
+  fromViewLat,
+  toViewLat,
+  zoomToFitHeight,
+  type MillerImage,
+} from "./miller";
 import { LOOK_PROTOCOL, bakedLooks, createLookProtocol } from "./recolour";
 import { colourValues, DEFAULT_RAMP, statRamp } from "./stats";
 import { buildStyle, defaultVisibleClasses, styleMeta, type Projection, type StyleMeta } from "./style";
-import { altitudeForView, altitudeForZoom, formatAltitude, maxZoomAt, parseMsEncartaUrl, zoomForView, DEFAULT_P_OVER_M, FLAT_ZOOM_OFFSET } from "./zoom";
+import { altitudeForView, altitudeForZoom, formatAltitude, maxZoomAt, pOverMForPane, parseMsEncartaUrl, quantiseShift, zoomForView, zoomShift, DEFAULT_P_OVER_M } from "./zoom";
 import { LocatorGlobe } from "./ui/LocatorGlobe";
 import { CustomizerPanel, LegendPanel, Panel } from "./ui/Panels";
 import { PlaceMenu } from "./ui/PlaceMenu";
@@ -85,6 +97,17 @@ export interface AtlasProps {
   onOpenArticle?: (refId: number, link: AtlasLink) => void;
   /** Called after each move or style change (for keeping a URL in sync). */
   onViewChange?: (view: AtlasViewState) => void;
+  /** Fill and outline this entity (gazetteer id = MVT feature id), e.g. a quiz question's country. */
+  highlightEntity?: number | null;
+  /** Colour of `highlightEntity` (default Encarta's highlight yellow). */
+  highlightColor?: string;
+  /**
+   * Quiz mode: no place names (labels, title, tooltips) and no click menu; clicks go to
+   * `onPlaceClick` only. The symbols and the map styling stay.
+   */
+  quizMode?: boolean;
+  /** Every click on the map, with the places under the point (in the hit list's order). */
+  onPlaceClick?: (hits: HitPlace[], lngLat: { lat: number; lon: number }) => void;
   /** Base URL of `out/atlas/` (default `/out/atlas`). */
   dataUrl?: string;
   /** Base URL of the JSON API (default `/api`). */
@@ -98,17 +121,26 @@ export interface AtlasProps {
 let protocolsReady = false;
 let protocolEndpoints: Endpoints = defaultEndpoints();
 let protocolPalettes: Palettes | null = null;
+let protocolMiller: MillerImage[] = [];
 
 function registerProtocols(): void {
   if (protocolsReady) return;
   const pmtiles = new Protocol({ metadata: true });
   maplibregl.addProtocol("pmtiles", pmtiles.tile);
   maplibregl.addProtocol(LOOK_PROTOCOL, createLookProtocol(() => ({ palettes: protocolPalettes, ep: protocolEndpoints })));
+  maplibregl.addProtocol(MILLER_MVT_PROTOCOL, createMillerVectorProtocol());
+  maplibregl.addProtocol(
+    MILLER_RASTER_PROTOCOL,
+    createMillerRasterProtocol(() => ({
+      images: protocolMiller,
+      imageUrl: (raster, look, level) => dataFile(`miller/${raster.toLowerCase()}/${look.toLowerCase()}-${level}.webp`, protocolEndpoints),
+    })),
+  );
   protocolsReady = true;
 }
 
 const EMPTY: ClassOverrides = { on: new Set(), off: new Set() };
-const ENTITY_LAYERS = ["areas", "lines", "points", "labels"];
+const ENTITY_LAYERS = ["areas", "lines", "points", "labels", "outlines"];
 
 /**
  * The style's layers and sources exist (after `style.load`). Unlike `map.isStyleLoaded()`, this does
@@ -143,6 +175,10 @@ export function Atlas({
   initialProjection = "globe",
   onOpenArticle,
   onViewChange,
+  highlightEntity,
+  highlightColor = "#ffd400",
+  quizMode = false,
+  onPlaceClick,
   dataUrl,
   apiUrl,
   className,
@@ -166,6 +202,10 @@ export function Atlas({
   const [labelScale, setLabelScale] = useState(1);
   const [lookOverride, setLookOverride] = useState<string | undefined>();
   const [units, setUnits] = useState<"imperial" | "metric">("imperial");
+  const [hoverHighlight, setHoverHighlight] = useState(false);
+  const [paneHeight, setPaneHeight] = useState(0);
+  /** Real latitude of the view centre at the last move end (for the zoom shift). */
+  const [shiftLat, setShiftLat] = useState(initial.lat ?? 30);
 
   const [zoom, setZoom] = useState(2);
   const [center, setCenter] = useState<{ lat: number; lon: number }>({ lat: initial.lat ?? 20, lon: initial.lon ?? 0 });
@@ -187,21 +227,55 @@ export function Atlas({
   const sprite = useSpriteSheet(ep);
   const meta: StyleMeta | null = useMemo(() => (raw ? styleMeta(raw) : null), [raw]);
   const drawn = useMemo(() => (raw ? defaultVisibleClasses(raw) : new Set<number>()), [raw]);
-  const pOverM = meta?.pOverM ?? DEFAULT_P_OVER_M;
+  const stylePOverM = meta?.pOverM ?? DEFAULT_P_OVER_M;
+  // Encarta's P/m grows with the map pane height (VM V1); the styles are compiled for its 518-px pane.
+  const pOverM = paneHeight > 0 ? pOverMForPane(paneHeight, meta?.pOverMPerHeightPx) : stylePOverM;
+  const flat = projection === "flat";
+  const shift = quantiseShift(zoomShift(flat, pOverM, stylePOverM, flat ? 0 : shiftLat));
+  const ranges = useMemo(() => (raw ? hitRanges(raw, overrides) : new Map()), [raw, overrides]);
   const body = entry ? styleBody(entry) : "earth";
   const isStatistical = entry?.id === 12;
 
   // Latest values for map event handlers.
-  const live = useRef({ drawn, raw, meta, zoom, body, selected, hover: null as number | null, colours: new Map<number, string>(), onViewChange, entry, projection, title, pOverM });
-  live.current = { ...live.current, drawn, raw, meta, zoom, body, selected, onViewChange, entry, projection, title, pOverM };
+  const live = useRef({
+    drawn,
+    raw,
+    built: null as StyleSpecification | null,
+    meta,
+    zoom,
+    body,
+    selected,
+    hover: null as number | null,
+    colours: new Map<number, string>(),
+    onViewChange,
+    entry,
+    projection,
+    title,
+    pOverM,
+    shift,
+    ranges,
+    hoverHighlight,
+    paneHeight,
+    quizMode,
+    onPlaceClick,
+  });
+  live.current = { ...live.current, drawn, raw, meta, zoom, body, selected, onViewChange, entry, projection, title, pOverM, shift, ranges, hoverHighlight, paneHeight, quizMode, onPlaceClick };
+  /** Real latitude ↔ the map's latitude (the flat view draws Miller in view latitudes, miller.ts). */
+  const toMapLat = useCallback((lat: number) => (live.current.projection === "flat" ? toViewLat(lat) : lat), []);
+  const fromMapLat = useCallback((lat: number) => (live.current.projection === "flat" ? fromViewLat(lat) : lat), []);
 
   // --- data -------------------------------------------------------------------------------
   useEffect(() => {
     protocolEndpoints = ep;
     const ac = new AbortController();
-    Promise.all([loadStyleIndex(ep, ac.signal), loadPalettes(ep, ac.signal).catch(() => null)])
-      .then(([idx, pal]) => {
+    Promise.all([
+      loadStyleIndex(ep, ac.signal),
+      loadPalettes(ep, ac.signal).catch(() => null),
+      fetchJson<MillerImage[]>(dataFile("miller/index.json", ep), ac.signal).catch(() => []),
+    ])
+      .then(([idx, pal, miller]) => {
         protocolPalettes = pal;
+        protocolMiller = miller;
         setPalettes(pal);
         setIndex(idx);
         const fromMenu = initial.menuStyle !== undefined ? MENU_STYLE[initial.menuStyle] : undefined;
@@ -243,9 +317,23 @@ export function Atlas({
   }, [lookOverride, meta, baked]);
   const statsOn = isStatistical && !!indicator;
   const built = useMemo(
-    () => (raw ? buildStyle(raw, { ep, projection, overrides, labelScale, look, palettes, stats: statsOn }) : null),
-    [raw, ep, projection, overrides, labelScale, look, palettes, statsOn],
+    () =>
+      raw
+        ? buildStyle(raw, {
+            ep,
+            projection,
+            overrides,
+            labelScale: quizMode ? 0 : labelScale,
+            look,
+            palettes,
+            stats: statsOn,
+            shift,
+            highlight: highlightEntity != null ? { entity: highlightEntity, color: highlightColor } : null,
+          })
+        : null,
+    [raw, ep, projection, overrides, labelScale, look, palettes, statsOn, shift, quizMode, highlightEntity, highlightColor],
   );
+  live.current.built = built;
   const ramp = useMemo(() => {
     const r = raw ? statRamp(raw) : DEFAULT_RAMP;
     return r.positive.length ? r : DEFAULT_RAMP;
@@ -270,10 +358,13 @@ export function Atlas({
     const m = live.current.meta;
     if (!map || !m) return;
     const c = map.getCenter();
-    // The flat map shows the style's top altitude one zoom further out (FLAT_ZOOM_OFFSET).
-    map.setMinZoom(Math.max(0, m.minzoom + (live.current.projection === "flat" ? FLAT_ZOOM_OFFSET : 0)));
-    map.setMaxZoom(maxZoomAt(c.lng, c.lat, m.maxzoom, m.minRects));
-  }, []);
+    const { shift: s, projection: p, paneHeight: h } = live.current;
+    // The style's altitude limits, moved like its layers; the flat view opens on the whole world
+    // fitted to the pane height (V12) and goes no further out.
+    const min = m.minzoom + s;
+    map.setMinZoom(Math.max(0, p === "flat" && h > 0 ? Math.max(min, zoomToFitHeight(h)) : min));
+    map.setMaxZoom(maxZoomAt(c.lng, fromMapLat(c.lat), m.maxzoom, m.minRects) + s);
+  }, [fromMapLat]);
 
   const hitsAt = useCallback((point: { x: number; y: number }, pad = 3): QueriedFeature[] => {
     const map = mapRef.current;
@@ -301,13 +392,14 @@ export function Atlas({
     if (!map) return;
     const c = map.project(map.getCenter());
     const hits = rankHits(hitsAt(c, 1));
-    const alt = altitudeForView(map.getZoom(), live.current.projection === "flat", live.current.pOverM);
+    const ll = map.getCenter();
+    const lat = fromMapLat(ll.lat);
+    const alt = altitudeForView(map.getZoom(), live.current.projection === "flat", live.current.pOverM, lat);
     const t = viewTitle(hits, alt, live.current.body);
     setTitle((prev) => (prev.title === t.title && prev.subtitle === t.subtitle && prev.entity === t.entity ? prev : t));
     const e = live.current.entry;
-    const ll = map.getCenter();
     live.current.onViewChange?.({
-      lat: ll.lat,
+      lat,
       lon: ll.lng,
       altitudeKm: alt,
       zoom: map.getZoom(),
@@ -317,7 +409,7 @@ export function Atlas({
       title: t.title,
       entity: t.entity,
     });
-  }, [hitsAt]);
+  }, [hitsAt, fromMapLat]);
 
   // --- create the map once the first style is there; then diff or replace ---------------------
   useEffect(() => {
@@ -325,12 +417,13 @@ export function Atlas({
     registerProtocols();
     let map = mapRef.current;
     if (!map) {
-      const z = initial.altitudeKm ? zoomForView(initial.altitudeKm, projection === "flat", pOverM) : 2;
+      const lat0 = initial.lat ?? 30;
+      const z = initial.altitudeKm ? zoomForView(initial.altitudeKm, flat, pOverM, lat0) : 2;
       map = new maplibregl.Map({
         container: container.current,
         style: built,
-        center: [initial.lon ?? 10, initial.lat ?? 30],
-        zoom: Math.min(Math.max(z, meta.minzoom + (projection === "flat" ? FLAT_ZOOM_OFFSET : 0)), meta.maxzoom),
+        center: [initial.lon ?? 10, flat ? toViewLat(lat0) : lat0],
+        zoom: Math.min(Math.max(z, meta.minzoom + shift), meta.maxzoom + shift),
         minZoom: 0,
         maxZoom: 22,
         transformRequest: makeTransformRequest(ep),
@@ -395,9 +488,10 @@ export function Atlas({
       frame = requestAnimationFrame(() => {
         frame = 0;
         const c = map.getCenter();
+        const lat = fromMapLat(c.lat);
         setZoom(map.getZoom());
-        setCenter({ lat: c.lat, lon: c.lng });
-        const alt = altitudeForView(map.getZoom(), live.current.projection === "flat", live.current.pOverM);
+        setCenter({ lat, lon: c.lng });
+        const alt = altitudeForView(map.getZoom(), live.current.projection === "flat", live.current.pOverM, lat);
         if (alt >= 14000) setOutline(null);
         else {
           const { clientWidth: w, clientHeight: h } = map.getContainer();
@@ -413,7 +507,7 @@ export function Atlas({
             [0, h / 2],
           ] as const) {
             const ll = map.unproject([x, y]);
-            pts.push([ll.lng, ll.lat]);
+            pts.push([ll.lng, fromMapLat(ll.lat)]);
           }
           setOutline(pts);
         }
@@ -422,7 +516,10 @@ export function Atlas({
     const onMoveEnd = () => {
       updateZoomLimits();
       refreshTitle();
+      setShiftLat(fromMapLat(map.getCenter().lat));
     };
+    /** Classes in the hit list at the current zoom (the ranges are in the style's own zooms). */
+    const allowed = () => hitClassesAt(live.current.ranges, map.getZoom() - live.current.shift);
     let hoverFrame = 0;
     let last: MapMouseEvent | null = null;
     const setHover = (entity: number | null) => {
@@ -439,14 +536,16 @@ export function Atlas({
       hoverFrame = requestAnimationFrame(() => {
         hoverFrame = 0;
         if (!last || !live.current.raw) return;
-        const hits = rankHits(hitsAt(last.point), iconOf, live.current.drawn);
-        const target = hoverTarget(hits, hoverClassesAt(live.current.raw, map.getZoom()));
+        const hits = rankHits(hitsAt(last.point), iconOf, allowed());
+        // Encarta highlights nothing on hover (V11); the Customizer can turn it on.
+        const target = live.current.hoverHighlight && live.current.built ? hoverTarget(hits, hoverClassesAt(live.current.built, map.getZoom())) : undefined;
         setHover(target?.entity ?? null);
         const country = hits.find((h) => /^(Sovereign|CountryRegion)/.test(h.className) && live.current.colours.has(h.entity));
         setHoverCountry(country ? country.entity : null);
-        const top = country ?? hits[0];
+        // A statistics readout over a coloured country (V14); place names only with the hover option.
+        const top = live.current.quizMode ? undefined : (country ?? (live.current.hoverHighlight ? hits[0] : undefined));
         setTooltip(top ? { x: last.point.x, y: last.point.y, text: top.name } : null);
-        map.getCanvas().style.cursor = top ? "pointer" : "";
+        map.getCanvas().style.cursor = hits.length ? "pointer" : "";
       });
     };
     const onMouseOut = () => {
@@ -456,13 +555,14 @@ export function Atlas({
       setHoverCountry(null);
     };
     const onClick = (e: MapMouseEvent) => {
-      const hits = rankHits(hitsAt(e.point), iconOf, live.current.drawn);
+      const hits = rankHits(hitsAt(e.point), iconOf, allowed());
       setTooltip(null);
-      if (!hits.length) {
+      live.current.onPlaceClick?.(hits, { lat: fromMapLat(e.lngLat.lat), lon: e.lngLat.lng });
+      if (!hits.length || live.current.quizMode) {
         setMenu(null);
         return;
       }
-      setMenu({ x: e.point.x, y: e.point.y, hits, lngLat: [e.lngLat.lng, e.lngLat.lat] });
+      setMenu({ x: e.point.x, y: e.point.y, hits, lngLat: [e.lngLat.lng, fromMapLat(e.lngLat.lat)] });
     };
     map.on("move", onMove);
     map.on("moveend", onMoveEnd);
@@ -499,12 +599,35 @@ export function Atlas({
   useEffect(() => {
     const map = mapReady;
     if (!map || lastProjection.current === projection) return;
+    const c = map.getCenter();
+    // Keep the place and the altitude: the centre moves between real and view latitudes, and the
+    // zoom by the flat view's offset and the globe's latitude term.
+    const wasFlat = lastProjection.current === "flat";
+    const realLat = wasFlat ? fromViewLat(c.lat) : c.lat;
+    const alt = altitudeForView(map.getZoom(), wasFlat, live.current.pOverM, realLat);
     lastProjection.current = projection;
     live.current.projection = projection;
     if (styleReady(map)) map.setProjection({ type: projection === "globe" ? "globe" : "mercator" });
+    const toFlat = projection === "flat";
+    map.setMinZoom(0);
+    map.jumpTo({ center: [c.lng, toFlat ? toViewLat(realLat) : realLat], zoom: zoomForView(alt, toFlat, live.current.pOverM, realLat) });
     updateZoomLimits();
-    map.jumpTo({ zoom: map.getZoom() + (projection === "flat" ? FLAT_ZOOM_OFFSET : -FLAT_ZOOM_OFFSET) });
   }, [projection, mapReady, updateZoomLimits]);
+
+  // The map pane's height sets P/m (VM V1: P/m ≈ 6.05 × pane height).
+  useEffect(() => {
+    const el = container.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setPaneHeight(el.clientHeight));
+    ro.observe(el);
+    setPaneHeight(el.clientHeight);
+    return () => ro.disconnect();
+  }, []);
+
+  // A new zoom shift (pane size, latitude) moves the zoom limits too.
+  useEffect(() => {
+    if (mapRef.current && styleReady(mapRef.current)) updateZoomLimits();
+  }, [shift, updateZoomLimits]);
 
   // Statistics → feature-state.
   useEffect(() => {
@@ -577,22 +700,23 @@ export function Atlas({
       const map = mapRef.current;
       const m = live.current.meta;
       if (!map || !m) return;
-      const maxz = maxZoomAt(lon, lat, m.maxzoom, m.minRects);
+      const s = live.current.shift;
+      const maxz = maxZoomAt(lon, lat, m.maxzoom, m.minRects) + s;
       if (!altitudeKm && bbox && bbox[0] !== bbox[2]) {
         map.fitBounds(
           [
-            [bbox[0], bbox[1]],
-            [bbox[2], bbox[3]],
+            [bbox[0], toMapLat(bbox[1])],
+            [bbox[2], toMapLat(bbox[3])],
           ],
           { padding: 40, maxZoom: maxz, duration: 1200 },
         );
         return;
       }
-      const z = zoomForView(altitudeKm || 200, live.current.projection === "flat", live.current.pOverM);
+      const z = zoomForView(altitudeKm || 200, live.current.projection === "flat", live.current.pOverM, lat);
       map.setMaxZoom(maxz);
-      map.flyTo({ center: [lon, lat], zoom: Math.min(Math.max(z, m.minzoom), maxz), duration: 1400, essential: true });
+      map.flyTo({ center: [lon, toMapLat(lat)], zoom: Math.min(Math.max(z, m.minzoom + s), maxz), duration: 1400, essential: true });
     },
-    [],
+    [toMapLat],
   );
 
   const goToPlace = useCallback(
@@ -636,7 +760,7 @@ export function Atlas({
       setSelected(h.entity);
       getPlace(h.entity, ep)
         .then((d) => goToPlace(d.place))
-        .catch(() => menu && flyTo(menu.lngLat[1], menu.lngLat[0], altitudeForView(zoom + 1, projection === "flat", pOverM)));
+        .catch(() => menu && flyTo(menu.lngLat[1], menu.lngLat[0], altitudeForView(zoom + 1, projection === "flat", pOverM, menu.lngLat[1])));
     },
     [ep, goToPlace, flyTo, menu, zoom, pOverM],
   );
@@ -676,9 +800,9 @@ export function Atlas({
   };
 
   // --- render -----------------------------------------------------------------------------
-  const maxz = meta ? maxZoomAt(center.lon, center.lat, meta.maxzoom, meta.minRects) : 9;
-  const minz = meta?.minzoom ?? 0;
-  const altitude = altitudeForView(zoom, projection === "flat", pOverM);
+  const maxz = meta ? maxZoomAt(center.lon, center.lat, meta.maxzoom, meta.minRects) + shift : 9;
+  const minz = Math.max(0, (meta?.minzoom ?? 0) + shift, flat && paneHeight > 0 ? zoomToFitHeight(paneHeight) : 0);
+  const altitude = altitudeForView(zoom, flat, pOverM, center.lat);
   const lookOf = meta?.raster && palettes ? palettes[meta.raster.toUpperCase()] : undefined;
   const lookName = lookOverride ?? meta?.look;
 
@@ -689,14 +813,14 @@ export function Atlas({
           <LocatorGlobe ep={ep} lat={center.lat} lon={center.lon} outline={outline} body={body} />
           <div className="enc-atlas-head__main">
             <div className="enc-atlas-title">
-              <h1>{title.title}</h1>
-              {title.subtitle && <span className="enc-atlas-title__sub">{title.subtitle}</span>}
+              <h1>{quizMode ? "World" : title.title}</h1>
+              {title.subtitle && !quizMode && <span className="enc-atlas-title__sub">{title.subtitle}</span>}
             </div>
             <div className="enc-atlas-toolbar">
               <button
                 type="button"
                 className="enc-atlas-btn enc-atlas-btn--primary"
-                disabled={!titleArticle}
+                disabled={!titleArticle || quizMode}
                 onClick={() => titleArticle && title.entity !== undefined && open(titleArticle, title.entity, title.title)}
               >
                 Read Article
@@ -736,7 +860,7 @@ export function Atlas({
                   Flat
                 </button>
               </div>
-              <SearchBox ep={ep} body={body} onPick={goToPlace} />
+              {!quizMode && <SearchBox ep={ep} body={body} onPick={goToPlace} />}
             </div>
           </div>
         </header>
@@ -757,7 +881,8 @@ export function Atlas({
                 hits={menu.hits}
                 onHover={(h) => {
                   const map = mapRef.current;
-                  if (!map) return;
+                  // Encarta does not highlight the hovered menu entry either (V11).
+                  if (!map || !hoverHighlight) return;
                   const sources = sourcesOf(raw);
                   const prev = live.current.hover;
                   if (prev !== null && prev !== selected) setEntityState(map, sources, prev, { hover: false });
@@ -787,10 +912,19 @@ export function Atlas({
                 onLook={setLookOverride}
                 units={units}
                 onUnits={setUnits}
+                hoverHighlight={hoverHighlight}
+                onHoverHighlight={(on) => {
+                  setHoverHighlight(on);
+                  const map = mapRef.current;
+                  const prev = live.current.hover;
+                  if (!on && map && prev !== null && prev !== selected) setEntityState(map, sourcesOf(raw), prev, { hover: false });
+                  if (!on) live.current.hover = null;
+                }}
                 onReset={() => {
                   setOverrides(EMPTY);
                   setLabelScale(1);
                   setLookOverride(undefined);
+                  setHoverHighlight(false);
                 }}
                 onClose={() => setPanel(null)}
               />
@@ -809,12 +943,16 @@ export function Atlas({
                   </dd>
                   <dt>Altitude range</dt>
                   <dd>
-                    {formatAltitude(meta.maxAltitudeKm ?? altitudeForZoom(meta.minzoom, pOverM))} to {formatAltitude(meta.minAltitudeKm ?? altitudeForZoom(meta.maxzoom, pOverM))}
+                    {formatAltitude(meta.maxAltitudeKm ?? altitudeForZoom(meta.minzoom, stylePOverM))} to {formatAltitude(meta.minAltitudeKm ?? altitudeForZoom(meta.maxzoom, stylePOverM))}
                     {meta.minRects.length ? `; down to 5 km in ${meta.minRects.length} city and island boxes` : ""}
                   </dd>
                   <dt>Now</dt>
                   <dd>
                     {formatAltitude(altitude)} (zoom {zoom.toFixed(2)}), {center.lat.toFixed(2)}°, {center.lon.toFixed(2)}°
+                  </dd>
+                  <dt>Scale</dt>
+                  <dd>
+                    P/m {Math.round(pOverM)} for this {paneHeight}-px pane (Encarta: 3,135 for 518 px); style zooms shifted by {shift.toFixed(2)}
                   </dd>
                 </dl>
                 {meta.notes && <p className="enc-atlas-note">{meta.notes}</p>}

@@ -371,7 +371,7 @@ fn attr(p: &Value, name: &str) -> usize {
 fn converted(tag: &str) -> (Tour, super::Converted) {
     let dir = synthetic_tour(tag);
     let tour = Tour::load(&dir).unwrap();
-    let c = super::convert(&tour, "99999").unwrap();
+    let c = super::convert(&tour, "99999", None).unwrap();
     (tour, c)
 }
 
@@ -429,9 +429,16 @@ fn coordinates_are_converted_and_winding_reversed() {
     let n = &nrm[3 * ix[0] as usize..3 * ix[0] as usize + 3];
     assert_eq!(n, [0.0, 0.0, -1.0], "normal z negated");
     assert!(cross[2] < 0.0 && cross[0] == 0.0 && cross[1] == 0.0, "counter-clockwise front face matches the converted normal");
-    // UVs unchanged.
+    // V flipped: the disc's (0,1) at the bottom-left corner becomes (0,0), its (1,0) at the
+    // top-right corner (1,1).
     let uv = g.floats(attr(p, "TEXCOORD_0"));
-    assert!(uv.as_chunks::<2>().0.contains(&[0.0, 1.0]));
+    let corner_uv = |want_x: f32, want_y: f32| {
+        let i = (0..pos.len() / 3).find(|&i| pos[3 * i].signum() == want_x && pos[3 * i + 1].signum() == want_y).expect("corner");
+        [uv[2 * i], uv[2 * i + 1]]
+    };
+    assert_eq!(corner_uv(-1.0, -1.0), [0.0, 0.0], "bottom-left");
+    assert_eq!(corner_uv(1.0, 1.0), [1.0, 1.0], "top-right");
+    assert_eq!(corner_uv(1.0, -1.0), [1.0, 0.0], "bottom-right");
     let s = scene_json(&c);
     assert_eq!(s["camera"]["start"]["position"], serde_json::json!([1.0, 2.0, -3.0]));
     assert_eq!(s["camera"]["start"]["yawDeg"], 90.0);
@@ -582,7 +589,7 @@ fn clouds_become_point_primitives() {
 #[test]
 fn conversion_is_deterministic() {
     let (tour, a) = converted("determinism");
-    let b = super::convert(&tour, "99999").unwrap();
+    let b = super::convert(&tour, "99999", None).unwrap();
     assert_eq!(a.files.keys().collect::<Vec<_>>(), b.files.keys().collect::<Vec<_>>());
     for (k, v) in &a.files {
         assert!(&b.files[k] == v, "{k} differs between runs");
@@ -606,7 +613,7 @@ fn abu_simbel_from_the_disc() {
         return;
     };
     let tour = Tour::load(Path::new(&dir)).unwrap();
-    let c = super::convert(&tour, "05919").unwrap();
+    let c = super::convert(&tour, "05919", None).unwrap();
     for ch in &c.report.checks {
         assert!(ch.ok, "{}: {}", ch.name, ch.detail);
     }
@@ -624,4 +631,76 @@ fn abu_simbel_from_the_disc() {
     assert_eq!(c.report.glb.triangles, 55_494);
     let layer = s["layers"].as_array().unwrap().iter().find(|l| l["final"] == true).unwrap();
     assert_eq!(layer["elements"].as_array().unwrap().len(), 57);
+}
+
+#[test]
+fn content_record_adds_stops_and_hotspot_destinations() {
+    use super::content::{HotspotTarget, Site, SiteLocation, Stop, TourContent};
+    let dir = synthetic_tour("content");
+    let tour = Tour::load(&dir).unwrap();
+    // A 4×2 site map: left half plain, right half tinted (synthetic pixels).
+    let map = super::images::tests::bmp24(4, 2, &[[255, 255, 255], [200, 200, 200], [250, 220, 200], [190, 170, 150], [255, 255, 255], [0, 0, 255], [250, 220, 200], [0, 0, 200]]);
+    let record = TourContent {
+        title: Some("Test Tour, 100 BC".into()),
+        default_stop: Some(11),
+        stops: vec![Stop {
+            id: 11,
+            title: "Hall".into(),
+            command: Some("CAMERA.MOVETO=1,0,2,90;".into()),
+            hotspots: vec![701500001],
+            site: Some(21),
+            article: Some(31),
+        }],
+        article: Some(41),
+        sites: vec![Site {
+            id: 21,
+            image_file: Some("map21.dib".into()),
+            locations: vec![SiteLocation { id: 22, title: "Hall".into(), stop: Some(11), x: Some(1), y: Some(0) }],
+            image_data: Some(map),
+        }],
+        hotspots: vec![HotspotTarget {
+            id: 701500001,
+            title: "Big Hall".into(),
+            dest_media: Some(681500999),
+            dest_group: Some("media".into()),
+            dest_kind: Some("media".into()),
+            dest_title: Some("Big Hall".into()),
+            stops: vec![11],
+        }],
+    };
+    let c = super::convert(&tour, "99999", Some(&record)).unwrap();
+    for ch in &c.report.checks {
+        assert!(ch.ok, "{}: {}", ch.name, ch.detail);
+    }
+    let s = scene_json(&c);
+    assert_eq!(s["defaultStop"], 11);
+    assert_eq!(s["stops"][0]["command"], "CAMERA.MOVETO=1,0,2,90;");
+    let h = s["hotspots"].as_array().unwrap().iter().find(|h| h["contentId"] == 701500001).unwrap();
+    assert_eq!(h["destMedia"], 681500999);
+    assert_eq!(h["destGroup"], "media");
+    assert_eq!(s["hotspotTargets"][0]["destMedia"], 681500999);
+    assert_eq!((s["stops"][0]["site"].as_u64(), s["stops"][0]["article"].as_u64(), s["article"].as_u64()), (Some(21), Some(31), Some(41)));
+    let site = &s["sites"][0];
+    assert_eq!(s["tour"]["title"], "Test Tour, 100 BC");
+    assert_eq!(site["image"], "images/sitemap-21.png");
+    assert_eq!(site["size"], serde_json::json!([4, 2]));
+    assert_eq!(site["locations"][0]["stop"], 11);
+    let png = super::images::decode(&c.files["images/sitemap-21.png"]).unwrap();
+    assert_eq!((png.pixels[0], png.pixels[5]), ([255, 255, 255, 255], [0, 0, 255, 255]), "display orientation, top row first");
+
+    // A record that lacks the element's hotspot fails the destination check.
+    let empty = TourContent::default();
+    let c = super::convert(&tour, "99999", Some(&empty)).unwrap();
+    assert!(c.report.checks.iter().any(|ch| ch.name == "hotspot destinations" && !ch.ok));
+    // A site whose image was not found fails the site-map check.
+    let mut no_image = record.clone();
+    no_image.sites[0].image_data = None;
+    let c = super::convert(&tour, "99999", Some(&no_image)).unwrap();
+    assert!(c.report.checks.iter().any(|ch| ch.name == "site maps" && !ch.ok));
+    // No record: no stops, null destinations, check skipped.
+    let c = super::convert(&tour, "99999", None).unwrap();
+    let s = scene_json(&c);
+    assert_eq!(s["stops"], serde_json::json!([]));
+    assert_eq!(s["sites"], serde_json::json!([]));
+    assert!(s["defaultStop"].is_null());
 }

@@ -7,6 +7,8 @@ import { Html } from "../components/Html";
 import { Icon } from "../components/Icons";
 import { ArticleInline } from "../article/ArticleInline";
 import { fileUrl, galleryImage, largeImage, mediaClass, tourIdFor, uniqueByRef } from "./pick";
+import { FlashInteractive } from "./FlashPlayer";
+import { GameInteractive } from "../games/GameInteractive";
 import { AudioPlayer, VideoPlayer } from "./Players";
 import { itemHref } from "../content/links";
 
@@ -203,11 +205,19 @@ export function MediaStage({ item, kids }: { item: Item; kids: boolean }) {
       );
     }
     case "interactive": {
+      const iax = item.files?.find((f) => f.role === "item" && /\.iax$/i.test(f.file_name));
+      if (iax) {
+        return (
+          <div className="mv-interactive">
+            <GameInteractive iax={iax.file_name} kids={kids} title={item.title} fallback={<FlashInteractive iax={iax.file_name} width={iax.width ?? 556} height={iax.height ?? 400} kids={kids} />} />
+          </div>
+        );
+      }
       const pic = largeImage(item);
       return (
         <div className="mv-interactive">
           {pic && <img src={fileUrl(pic)} alt="" />}
-          <p className="enc-muted">Interactive features (Flash) are not available in this version yet.</p>
+          <p className="enc-muted">This interactive has no Flash definition on the disc.</p>
         </div>
       );
     }

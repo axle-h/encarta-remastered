@@ -48,12 +48,23 @@ async fn content_endpoints() {
     assert_eq!(item["meta"]["note"], "synthetic");
     assert_eq!(item["has_article"], true);
     assert_eq!(item["media"][0]["thumb"]["url"], "/media/file/zz000001.jtn");
+    // Association rows carry the gallery picture and the full image with their sizes.
+    assert_eq!(item["media"][0]["picon"]["url"], "/media/file/zz000001.jsm");
+    assert_eq!(item["media"][0]["picon"]["width"], 192);
+    assert_eq!(item["media"][0]["image"]["width"], 640);
+    assert!(item["media"][1]["picon"].is_null());
     assert_eq!(item["children"][0]["title"], "Plains Zebra Herd");
     assert_eq!(json(&app, "/api/item/999999").await.0, 404);
 
     let (s, a) = json(&app, &format!("/api/article/{ZEBRA}")).await;
     assert_eq!(s, 200);
     assert_eq!(a["body"][1]["title"], "STRIPES");
+    // Schema 2: the page layout, clusters, columns and `title-ref` parts pass through as stored.
+    assert_eq!(a["layout"], "encyclopedia");
+    assert_eq!(a["body"][0]["blocks"][0]["t"], "cluster");
+    assert_eq!(a["body"][0]["blocks"][0]["items"][1]["ref"], FACTS);
+    assert_eq!(a["body"][0]["blocks"][1]["c"][0]["alt"][0], "Equus quagga");
+    assert_eq!(a["body"][1]["blocks"][0]["col"], "text");
     assert!(a["html"].as_str().unwrap().starts_with("<article"));
     assert_eq!(a["sections"][1]["number"], "II");
     assert_eq!(a["related_editions"], "DLX,STE");
@@ -64,12 +75,28 @@ async fn content_endpoints() {
     assert_eq!(a["related_editions"], "KDC");
     assert!(a.get("body").is_none() && a.get("html").is_none());
     assert_eq!(json(&app, &format!("/api/article/{PHOTO}")).await.0, 404);
+    let (_, k) = json(&app, &format!("/api/article/{KIDS}?edition=kids")).await;
+    assert_eq!(k["layout"], "kids");
+    assert_eq!(k["body"][1]["t"], "media-grid");
+    let (_, sb) = json(&app, &format!("/api/article/{SIDEBAR}")).await;
+    assert_eq!(sb["layout"], "sidebar");
+    // A sidebar association carries what its teaser shows; other rows do not.
+    let (_, h) = json(&app, &format!("/api/article/{HORSE}")).await;
+    assert_eq!(h["media"][0]["sidebar_category"], "WORLD OF SCIENCE");
+    assert_eq!(h["media"][0]["preview_html"], "<p class=\"enc-intro\">Why stripes?</p>");
+    assert!(a["media"][0].get("preview_html").is_none());
 
     let (s, p) = json(&app, "/api/place/42").await;
     assert_eq!(s, 200);
     assert_eq!(p["links"][0]["title"], "Zebra");
+    assert_eq!(p["links"][1]["kind_label"], "flag");
+    assert_eq!(p["links"][2]["kind_label"], "anthem");
     assert_eq!(json(&app, "/api/quiz/7").await.1["quiz"]["q"], 1);
-    assert_eq!(json(&app, "/api/interactive/ZZ.IAX").await.1["definition"]["@id"], "zz");
+    let (_, ia) = json(&app, "/api/interactive/ZZ.IAX").await;
+    assert_eq!(ia["definition"]["@id"], "zz");
+    assert_eq!(ia["refs"][0]["ref"], "Slide.jpg");
+    assert_eq!(ia["refs"][0]["url"], "/media/disc/deluxe/dswMedia/IAF/a/zz/Slide.jpg");
+    assert_eq!(ia["refs"][0]["kind"], "image");
 
     let (s, e) = json(&app, "/api/nope").await;
     assert_eq!(s, 404);
@@ -89,6 +116,21 @@ async fn dictionary_timeline_mindmaze_stats() {
     let (_, l) = json(&app, "/api/dictionary/lookup?q=zeb&prefix=1&dict=DICTA").await;
     let heads: Vec<_> = l["entries"].as_array().unwrap().iter().map(|e| e["headword"].as_str().unwrap()).collect();
     assert_eq!(heads, vec!["zebra", "zebu"]);
+    // Word wheel: headwords before and after the typed word, hyphens ignored in the order.
+    let (_, l) = json(&app, "/api/dictionary/lookup?q=zebra&dict=DICTA&around=1&limit=3").await;
+    let words = |v: &serde_json::Value| v.as_array().unwrap().iter().map(|e| e["form"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+    assert_eq!(words(&l["before"]), vec!["yak"]);
+    assert_eq!(words(&l["entries"]), vec!["zebra", "ze-bra crossing", "zebu"]);
+    let (_, l) = json(&app, "/api/dictionary/lookup?q=zebs&dict=DICTA&around=5&limit=1").await;
+    assert_eq!(words(&l["before"]), vec!["yak", "zebra", "ze-bra crossing"]);
+    assert_eq!(words(&l["entries"]), vec!["zebu"]);
+    let (_, l) = json(&app, "/api/dictionary/lookup?q=zebra&dict=DICTA&prefix=1").await;
+    assert!(l.get("before").is_none());
+    let (s, e) = json(&app, "/api/dictionary/entry/9101").await;
+    assert_eq!(s, 200);
+    assert_eq!(e["dictionary"], "ENG_FRA");
+    assert_eq!(e["summary"], "zèbre");
+    assert_eq!(json(&app, "/api/dictionary/entry/123").await.0, 404);
     let (_, l) = json(&app, "/api/dictionary/lookup?q=zebra&kind=bilingual").await;
     assert_eq!(l["entries"][0]["dictionary"], "ENG_FRA");
     let (s, e) = json(&app, "/api/dictionary/DICTA/9001").await;
@@ -103,9 +145,26 @@ async fn dictionary_timeline_mindmaze_stats() {
     assert_eq!(t["total"], 1);
     assert_eq!(t["events"][0]["start"]["year"], 1890);
     assert_eq!(t["events"][0]["regions"][0], "Africa");
+    assert_eq!(t["events"][0]["has_article"], true);
+    assert_eq!(t["events"][0]["display"], "point");
+    assert_eq!(t["events"][0]["date_text"], "May 1, 1890");
+    assert_eq!(t["events"][0]["prominence"], 3);
+    assert!(t["events"][0].get("label").is_none());
+    assert!(t["events"][0].get("text").is_none());
+    let (_, t) = json(&app, "/api/timeline?from=-100&to=2000&order=importance&text=1").await;
+    // Most prominent first: importance 3 (prominence 3) before importance 5 (prominence 1).
+    assert_eq!(t["events"][0]["title"], "Stripes Explained");
+    assert_eq!(t["events"][0]["text"], "A naturalist proposes why zebras have stripes.");
+    assert_eq!(t["events"][1]["title"], "A Treaty");
+    assert_eq!(t["events"][1]["has_article"], false);
+    assert_eq!(json(&app, "/api/timeline?order=random").await.0, 400);
     let (_, t) = json(&app, "/api/timeline?category=Political%20History").await;
     assert_eq!(t["events"][0]["title"], "A Treaty");
     assert_eq!(t["events"][0]["start"]["circa"], true);
+    assert_eq!(t["events"][0]["display"], "period");
+    assert_eq!(t["events"][0]["label"], "A TREATY");
+    assert_eq!(t["events"][0]["start_text"], "50? BC");
+    assert_eq!(t["events"][0]["end_text"], "40 BC");
     let (_, t) = json(&app, "/api/timeline?region=1,2&from=-100&to=-45").await;
     assert_eq!(t["total"], 1);
     assert_eq!(json(&app, "/api/timeline?category=Nope").await.0, 400);
@@ -123,12 +182,24 @@ async fn dictionary_timeline_mindmaze_stats() {
     assert_eq!(s["indicators"][0]["unit"]["unit"], "head");
     let (_, i) = json(&app, "/api/stats/indicator/1").await;
     assert_eq!(i["values"][0]["country"], "Tanzania");
+    assert_eq!(i["values"][0]["period"], "2000");
+    assert_eq!(i["values"][1]["period"], "1990-2005");
+    assert_eq!(i["values"][1]["year_end"], 2005);
     let (_, c) = json(&app, "/api/stats/country/1").await;
     assert_eq!(c["values"][0]["indicator"], "Zebra population");
+    assert_eq!(c["values"][0]["period"], "1990-2005");
 
     let (_, g) = json(&app, "/api/atlas/search?q=nairo").await;
     assert_eq!(g["places"][0]["entity"], 42);
-    assert_eq!(g["places"].as_array().unwrap().len(), 2);
+    assert_eq!(g["places"].as_array().unwrap().len(), 3);
+    assert_eq!(g["places"][0]["goto_km"], 200.0);
+    assert_eq!(g["places"][0]["bbox"], serde_json::json!([36.6, -1.45, 37.1, -1.15]));
+    assert_eq!(g["places"][0]["body"], "earth");
+    assert_eq!(g["places"][0]["class_name"], "PPL - city");
+    assert!(g["places"][1]["bbox"].is_null());
+    let (_, g) = json(&app, "/api/atlas/search?q=nairo&body=moon").await;
+    assert_eq!(g["places"].as_array().unwrap().len(), 1);
+    assert_eq!(g["places"][0]["entity"], 44);
     let (_, g) = json(&app, "/api/atlas/place/42").await;
     assert_eq!(g["links"][0]["title"], "Zebra");
     assert_eq!(g["place"]["classes"][1], 2);
@@ -150,7 +221,17 @@ async fn search_suggest_spell() {
     assert!(r["hits"][0]["snippet_html"].as_str().unwrap().contains("<b>biting</b>"));
     let (_, r) = json(&app, "/api/search?q=zebra&kind=media").await;
     assert!(r["hits"].as_array().unwrap().iter().all(|h| h["category"] == "media"));
-    assert!(r["hits"].as_array().unwrap().iter().any(|h| h["ref_id"] == PHOTO), "{r}");
+    let photo = r["hits"].as_array().unwrap().iter().find(|h| h["ref_id"] == PHOTO).expect("photo hit");
+    assert_eq!(photo["media_type"], "image");
+    assert_eq!(photo["thumb"]["url"], "/media/file/zz000001.jtn");
+    // The last word is a prefix; a title that starts with the query comes first, without a deep link.
+    let (_, r) = json(&app, "/api/search?q=plains%20zeb").await;
+    assert_eq!(r["mode"], "all", "{r}");
+    assert_eq!(r["hits"][0]["ref_id"], PHOTO, "{r}");
+    assert_eq!(r["hits"][0]["url"], "/item/200");
+    let (_, r) = json(&app, "/api/search?q=bit").await;
+    assert_eq!(r["hits"][0]["ref_id"], ZEBRA, "{r}"); // "biting" in paragraph 2
+    assert_eq!(r["hits"][0]["url"], "/item/100#p2");
     let (_, r) = json(&app, "/api/search?q=zebra&edition=kids").await;
     assert_eq!(r["hits"][0]["ref_id"], KIDS);
     let (_, r) = json(&app, "/api/search?q=zebra&kind=dictionary").await;
@@ -246,6 +327,11 @@ async fn static_trees_and_spa() {
     let style: serde_json::Value = serde_json::from_slice(&bytes(send(&app, req).await).await).unwrap();
     assert_eq!(style["sprite"], "https://encarta.example/atlas/sprites/sprite");
     assert_eq!(style["sources"]["earth"]["url"], "pmtiles://https://encarta.example/atlas/vector/earth.pmtiles");
+    // Through /out/atlas/ the URLs keep that prefix (the Vite dev proxy forwards only /out).
+    let req = Request::get("/out/atlas/styles/default.json").header(header::HOST, "127.0.0.1:5173").body(Body::empty()).unwrap();
+    let style: serde_json::Value = serde_json::from_slice(&bytes(send(&app, req).await).await).unwrap();
+    assert_eq!(style["sprite"], "http://127.0.0.1:5173/out/atlas/sprites/sprite");
+    assert_eq!(style["sources"]["earth"]["url"], "pmtiles://http://127.0.0.1:5173/out/atlas/vector/earth.pmtiles");
     // PMTiles reads 16 KiB from a 1000-byte archive: 206 with the clamped range.
     let res = send(&app, range("/atlas/vector/earth.pmtiles", "bytes=0-16383")).await;
     assert_eq!(res.status(), 206);
@@ -311,4 +397,32 @@ async fn media_manifest_without_content_db() {
     let app = app(&f.config());
     assert_eq!(get(&app, "/media/file/zz000001.jpg").await.status(), 200);
     assert_eq!(json(&app, "/api/item/100").await.0, 503);
+}
+
+#[tokio::test]
+async fn disc_tree_and_fonts() {
+    let f = fixture();
+    let app = app(&f.0.config());
+
+    // The dswMedia tree by path, any case; an .iax in an IAF folder resolves to the baggage file.
+    let res = get(&app, "/media/disc/deluxe/dswmedia/iaf/a/zz/SLIDE.JPG").await;
+    assert_eq!(res.status(), 200);
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "image/jpeg");
+    assert_eq!(bytes(res).await, jpeg(5000));
+    let res = get(&app, "/media/disc/kids/dswMedia/shared/players/IAFPlayer/base.swf").await;
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "application/x-shockwave-flash");
+    let res = get(&app, "/media/disc/deluxe/dswMedia/IAF/a/zz/zz.iax").await;
+    assert_eq!(res.status(), 200);
+    assert_eq!(String::from_utf8(bytes(res).await).unwrap(), IAX);
+    // Flash's loadMovie with variables POSTs.
+    let res = send(&app, Request::post("/media/disc/deluxe/dswMedia/shared/players/IAFPlayer/base.swf").body(Body::from("a=1")).unwrap()).await;
+    assert_eq!(res.status(), 200);
+    assert_eq!(get(&app, "/media/disc/deluxe/dswMedia/nope.swf").await.status(), 404);
+
+    let (_, meta) = json(&app, "/api/meta").await;
+    assert_eq!(meta["fonts"], serde_json::json!(["/fonts/REFSAN.TTF"]));
+    let res = get(&app, "/fonts/refsan.ttf").await;
+    assert_eq!(res.status(), 200);
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "font/ttf");
+    assert_eq!(get(&app, "/fonts/other.ttf").await.status(), 404);
 }

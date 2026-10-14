@@ -1,16 +1,45 @@
 import { describe, expect, it } from "vitest";
-import { altitudeForZoom, encartaAltitude, formatAltitude, insideBbox, maxZoomAt, parseMsEncartaUrl, zoomForAltitude } from "../zoom";
+import {
+  altitudeForView,
+  altitudeForZoom,
+  encartaAltitude,
+  formatAltitude,
+  insideBbox,
+  maxZoomAt,
+  pOverMForPane,
+  parseMsEncartaUrl,
+  quantiseShift,
+  zoomForAltitude,
+  zoomForView,
+  zoomShift,
+} from "../zoom";
 
-describe("altitude ↔ zoom (converter mapping, P/m = 2400)", () => {
+describe("altitude ↔ zoom (converter mapping, VM P/m = 3135)", () => {
   it("matches the band table of atlas-output.md", () => {
-    expect(zoomForAltitude(150)).toBeCloseTo(8.97, 2);
-    expect(zoomForAltitude(4000)).toBeCloseTo(4.23, 2);
-    expect(zoomForAltitude(50000)).toBeCloseTo(0.59, 2);
-    expect(zoomForAltitude(30)).toBeCloseTo(11.29, 2);
+    expect(zoomForAltitude(150)).toBeCloseTo(9.354, 2);
+    expect(zoomForAltitude(4000)).toBeCloseTo(4.617, 2);
+    expect(zoomForAltitude(50000)).toBeCloseTo(0.973, 2);
   });
   it("round-trips", () => {
     for (const a of [1, 5, 150, 3000, 14000, 50000]) expect(altitudeForZoom(zoomForAltitude(a))).toBeCloseTo(a, 6);
-    expect(zoomForAltitude(3000, 4800)).toBeCloseTo(zoomForAltitude(3000) + 1, 9);
+    expect(zoomForAltitude(3000, 6270)).toBeCloseTo(zoomForAltitude(3000) + 1, 9);
+  });
+  it("derives P/m from the pane height (VM: 3133 for 518 px, 2891 for 477 px)", () => {
+    expect(pOverMForPane(518)).toBeCloseTo(3134, 0);
+    expect(pOverMForPane(477)).toBeCloseTo(2886, 0);
+  });
+  it("uses the true ground scale away from the equator (VM: no 1/cos φ magnification)", () => {
+    // MapLibre draws 512·2^z/(40075·cos φ) px/km; Encarta P/(2.5·m·a) at any latitude.
+    const a = 1000;
+    const z = zoomForView(a, false, 3135, 60);
+    const pxPerKm = (512 * 2 ** z) / (40075.017 * Math.cos(Math.PI / 3));
+    expect(pxPerKm).toBeCloseTo(3135 / (2.5 * a), 6);
+    expect(altitudeForView(z, false, 3135, 60)).toBeCloseTo(a, 6);
+    // The styles' ranges move by log2(cos φ · P/m / 3135).
+    expect(zoomShift(false, 3135, 3135, 60)).toBeCloseTo(-1, 9);
+    expect(zoomShift(false, 6270, 3135, 0)).toBeCloseTo(1, 9);
+    expect(zoomShift(true, 3135, 3135, 60)).toBeCloseTo(-1, 9);
+    expect(quantiseShift(0.123)).toBe(0.1);
   });
   it("floors like MOBB and formats", () => {
     expect(encartaAltitude(zoomForAltitude(2999.6))).toBe(2999);
@@ -44,8 +73,7 @@ describe("msencarta:// map URLs", () => {
 });
 
 describe("flat view scale (mad-styling.md §2.1: half the globe's pixels per km)", () => {
-  it("is one zoom level further out at the same altitude", async () => {
-    const { zoomForView, altitudeForView } = await import("../zoom");
+  it("is one zoom level further out at the same altitude", () => {
     expect(zoomForView(3000, true)).toBeCloseTo(zoomForView(3000, false) - 1, 9);
     expect(altitudeForView(zoomForView(1234, true), true)).toBeCloseTo(1234, 6);
   });

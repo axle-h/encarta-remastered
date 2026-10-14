@@ -300,16 +300,33 @@ pub fn bitmap_dims(b: &[u8]) -> Result<Vec<(u8, u8)>> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Styles
+// Styles (mad-styling.md §3, §5, §6, §7, §11, §12, §13)
 
+fn f32_at(b: &[u8], o: usize) -> f32 {
+    f32::from_le_bytes(b[o..o + 4].try_into().unwrap())
+}
+
+/// One `MapStyle` record (115 bytes, mad-styling.md §3).
 #[derive(Debug, Clone, Serialize)]
 pub struct MapStyle {
     pub name: String,
+    /// RAST raster name (mad.md §5.3).
     pub raster: String,
+    /// LOOK style of that raster (mad.md §5.4).
     pub look: String,
+    /// Style id = PDCAttribute key.
     pub id: u16,
-    /// Three bytes after the id that look like a background colour.
-    pub background: [u8; 3],
+    /// Colour 1 (R, G, B). Hypothesis: the background outside the globe.
+    pub colour1: [u8; 3],
+    /// Colour 2 (R, G, B). Hypothesis: the globe colour where no raster pixel is drawn yet.
+    pub colour2: [u8; 3],
+    /// Byte 0x68 = 1: the default style (only "Atlas Default").
+    pub is_default: bool,
+    /// Zoom limits of the style, camera altitudes in metres.
+    pub min_altitude_m: u32,
+    pub max_altitude_m: u32,
+    /// Bytes 0x71 and 0x72 (meaning open).
+    pub flags: [u8; 2],
     #[serde(skip)]
     pub raw: Vec<u8>,
 }
@@ -317,11 +334,16 @@ pub struct MapStyle {
 pub fn map_styles(b: &[u8]) -> Result<Vec<MapStyle>> {
     Ok(fixed_records(b, 115, "MapStyle")?
         .map(|r| MapStyle {
-            name: cp1252(&r[0..26]),
-            raster: cstr(&r[0x20..0x2A]),
-            look: cstr(&r[0x40..0x4C]),
+            name: cp1252(&r[0..0x20]),
+            raster: cstr(&r[0x20..0x40]),
+            look: cstr(&r[0x40..0x60]),
             id: u16_at(r, 0x60),
-            background: [r[0x62], r[0x63], r[0x64]],
+            colour1: [r[0x62], r[0x63], r[0x64]],
+            colour2: [r[0x65], r[0x66], r[0x67]],
+            is_default: r[0x68] == 1,
+            min_altitude_m: u32_at(r, 0x69),
+            max_altitude_m: u32_at(r, 0x6D),
+            flags: [r[0x71], r[0x72]],
             raw: r.to_vec(),
         })
         .collect())
@@ -397,67 +419,171 @@ pub fn label_styles(b: &[u8]) -> Result<Vec<LabelStyle>> {
         .collect())
 }
 
+/// Charset of a Label Font face: Windows ANSI.
+pub const CHARSET_ANSI: u8 = 0x00;
+/// Charset of a Label Font face: Shift-JIS (the Japanese faces).
+pub const CHARSET_SHIFTJIS: u8 = 0x80;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct LabelFont {
-    pub id: u16,
+    /// The GeoLabel font id (1…9).
+    pub font: u8,
+    /// [`CHARSET_ANSI`] or [`CHARSET_SHIFTJIS`].
+    pub charset: u8,
     pub name: String,
 }
 
-/// `Label Font`: `{u16 id, u8 len, UTF-16 name[len]}` until the end.
+/// `Label Font`: `{u8 font id, u8 charset, u8 len, UTF-16 name[len]}` until the end (mad-styling.md §7.1).
 pub fn label_fonts(b: &[u8]) -> Result<Vec<LabelFont>> {
     let mut out = Vec::new();
     let mut pos = 0;
     while pos < b.len() {
         ensure!(pos + 3 <= b.len(), "Label Font truncated at {pos}");
-        let id = u16_at(b, pos);
+        let (font, charset) = (b[pos], b[pos + 1]);
         let len = b[pos + 2] as usize;
         pos += 3;
         ensure!(pos + 2 * len <= b.len(), "Label Font name truncated at {pos}");
         let units: Vec<u16> = (0..len).map(|k| u16_at(b, pos + 2 * k)).collect();
         pos += 2 * len;
-        out.push(LabelFont { id, name: String::from_utf16_lossy(&units) });
+        out.push(LabelFont { font, charset, name: String::from_utf16_lossy(&units) });
     }
     Ok(out)
 }
 
-/// `ShieldId`: `{u8 n, u16 value}`.
+/// `ShieldId`: `{u8 shield type, u16 PDCAttribute row}` (mad-styling.md §8).
 pub fn shield_ids(b: &[u8]) -> Result<Vec<(u8, u16)>> {
     Ok(fixed_records(b, 3, "ShieldId")?.map(|r| (r[0], u16_at(r, 1))).collect())
 }
 
-/// `MillerStyles` (flat-map configuration; layout partly open).
+/// Colours per GeoTrans ramp.
+pub const RAMP_LEN: usize = 15;
+/// One tint ramp: index 0 for the brightest underlying pixels, 14 for the darkest.
+pub type Ramp = [[u8; 3]; RAMP_LEN];
+
+/// `GeoTrans`: tint ramps of 15 R, G, B colours (mad-styling.md §6).
+pub fn geo_trans(b: &[u8]) -> Result<Vec<Ramp>> {
+    Ok(fixed_records(b, 3 * RAMP_LEN, "GeoTrans")?.map(|r| std::array::from_fn(|i| [r[3 * i], r[3 * i + 1], r[3 * i + 2]])).collect())
+}
+
+/// Ramp index for an underlying pixel of luminance `lum` (0…255): `15 − L·15/25500` with `L = lum × 100`,
+/// clamped to 0…14 (mad-styling.md §6). Bright pixels take the low end of the ramp.
+pub fn tint_index(lum: f64) -> usize {
+    let l = (lum * 100.0).clamp(0.0, 25500.0);
+    (RAMP_LEN as f64 - l * RAMP_LEN as f64 / 25500.0).floor().clamp(0.0, (RAMP_LEN - 1) as f64) as usize
+}
+
+/// One `MinRect` row: inside the box, style `style` may zoom down to `altitude_m` (mad-styling.md §13.2).
+#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
+pub struct MinRect {
+    pub style: u16,
+    pub altitude_m: u32,
+    pub lat1: f32,
+    pub lon1: f32,
+    pub lat2: f32,
+    pub lon2: f32,
+}
+
+impl MinRect {
+    /// `[west, south, east, north]` with the corners in (min, max) order, as MOBB swaps them.
+    pub fn bbox(&self) -> [f32; 4] {
+        [self.lon1.min(self.lon2), self.lat1.min(self.lat2), self.lon1.max(self.lon2), self.lat1.max(self.lat2)]
+    }
+}
+
+/// `MinRect`: `{u16 MapStyle id, u32 altitude m, f32 lat1, lon1, lat2, lon2}`.
+pub fn min_rects(b: &[u8]) -> Result<Vec<MinRect>> {
+    Ok(fixed_records(b, 22, "MinRect")?
+        .map(|r| MinRect { style: u16_at(r, 0), altitude_m: u32_at(r, 2), lat1: f32_at(r, 6), lon1: f32_at(r, 10), lat2: f32_at(r, 14), lon2: f32_at(r, 18) })
+        .collect())
+}
+
+/// One `Unicode Attributes` record (mad-styling.md §11.2).
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+pub struct UnicodeAttribute {
+    pub code_point: u16,
+    pub upper: u16,
+    /// The letter without its accent.
+    pub base: u16,
+    /// The Windows ANSI byte used when the character is not available.
+    pub ansi: u8,
+}
+
+/// `Unicode Attributes`: `{u16 code point, u16 upper-case form, u16 base letter, u8 ANSI fallback}`.
+pub fn unicode_attributes(b: &[u8]) -> Result<Vec<UnicodeAttribute>> {
+    Ok(fixed_records(b, 7, "Unicode Attributes")?
+        .map(|r| UnicodeAttribute { code_point: u16_at(r, 0), upper: u16_at(r, 2), base: u16_at(r, 4), ansi: r[6] })
+        .collect())
+}
+
+/// One `Font Conv` entry: how a byte of a G1G2 code page sorts and splits (mad-styling.md §11.1).
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+pub struct Collation {
+    pub base: u16,
+    /// Case- and accent-insensitive sort weight.
+    pub weight: u16,
+    /// Counts as a letter (Find Grid `nlet`).
+    pub letter: bool,
+    /// Separates words (the space and bytes 8, 9).
+    pub separator: bool,
+}
+
+/// Bytes per Font Conv code page: 256 entries × 6 bytes.
+const FONT_CONV_PAGE: usize = 256 * 6;
+
+/// `Font Conv`: one 256-entry table per G1G2 code page (3 in the shipped data) of
+/// `{u16 base, u16 weight, u8 letter, u8 separator}`.
+pub fn font_conv(b: &[u8]) -> Result<Vec<Vec<Collation>>> {
+    Ok(fixed_records(b, FONT_CONV_PAGE, "Font Conv")?
+        .map(|page| {
+            page.as_chunks::<6>()
+                .0
+                .iter()
+                .map(|r| Collation { base: u16_at(r, 0), weight: u16_at(r, 2), letter: r[4] != 0, separator: r[5] != 0 })
+                .collect()
+        })
+        .collect())
+}
+
+/// `MillerStyles` (the flat map: level sizes and the rasters it has; mad-styling.md §12.1):
+/// `u16 version, u16 tile width, u16 tile height, u8 nlevels, nlevels × {u32 w, u32 h}, u8 nrasters, entries`.
 #[derive(Debug, Clone, Serialize)]
 pub struct MillerStyles {
-    pub header: [u16; 4],
-    /// Two `(u16, u16)` pairs per level.
-    pub level_pairs: Vec<[(u16, u16); 2]>,
+    pub version: u16,
+    pub tile_width: u16,
+    pub tile_height: u16,
+    /// `(width, height)` in pixels of each level.
+    pub levels: Vec<(u32, u32)>,
     pub entries: Vec<MillerEntry>,
 }
 
-/// One flat-map raster: `raster\0 (look\0)* \0 u32 scale, u8 levels`.
+/// One flat-map raster: `raster\0 (look\0)* \0 u32 min altitude km, u8 last level`.
 #[derive(Debug, Clone, Serialize)]
 pub struct MillerEntry {
     pub raster: String,
     pub looks: Vec<String>,
-    pub scale: u32,
-    pub levels: u8,
+    pub min_altitude_km: u32,
+    /// Levels `0..=last_level` are stored.
+    pub last_level: u8,
 }
 
+/// The only version MOBB accepts.
+pub const MILLER_VERSION: u16 = 0x0100;
+
 pub fn miller_styles(b: &[u8]) -> Result<MillerStyles> {
-    ensure!(b.len() >= 8, "MillerStyles too short");
-    let header = [u16_at(b, 0), u16_at(b, 2), u16_at(b, 4), u16_at(b, 6)];
-    let nlevels = header[3] as usize;
-    let mut pos = 8;
+    ensure!(b.len() >= 7, "MillerStyles too short");
+    let (version, tile_width, tile_height) = (u16_at(b, 0), u16_at(b, 2), u16_at(b, 4));
+    ensure!(version == MILLER_VERSION, "MillerStyles: bad version {version:#06x}");
+    let nlevels = b[6] as usize;
+    let mut pos = 7;
     ensure!(b.len() >= pos + 8 * nlevels, "MillerStyles level table truncated");
-    let level_pairs = (0..nlevels)
-        .map(|l| {
-            let o = pos + 8 * l;
-            [(u16_at(b, o), u16_at(b, o + 2)), (u16_at(b, o + 4), u16_at(b, o + 6))]
-        })
-        .collect();
+    let levels = (0..nlevels).map(|l| (u32_at(b, pos + 8 * l), u32_at(b, pos + 8 * l + 4))).collect();
     pos += 8 * nlevels;
+    ensure!(pos < b.len(), "MillerStyles: raster count missing");
+    let nrasters = b[pos] as usize;
+    pos += 1;
     let mut entries = Vec::new();
-    while pos < b.len() {
+    while entries.len() < nrasters {
+        ensure!(pos < b.len(), "MillerStyles: {} of {nrasters} rasters", entries.len());
         let mut strings = Vec::new();
         loop {
             let Some(e) = b[pos..].iter().position(|&c| c == 0) else { bail!("MillerStyles: unterminated name at {pos}") };
@@ -470,10 +596,14 @@ pub fn miller_styles(b: &[u8]) -> Result<MillerStyles> {
         }
         ensure!(!strings.is_empty() && pos + 5 <= b.len(), "MillerStyles: bad entry before {pos}");
         let raster = strings.remove(0);
-        entries.push(MillerEntry { raster, looks: strings, scale: u32_at(b, pos), levels: b[pos + 4] });
+        entries.push(MillerEntry { raster, looks: strings, min_altitude_km: u32_at(b, pos), last_level: b[pos + 4] });
         pos += 5;
     }
-    Ok(MillerStyles { header, level_pairs, entries })
+    ensure!(pos == b.len(), "MillerStyles: {} trailing bytes", b.len() - pos);
+    for e in &entries {
+        ensure!((e.last_level as usize) < nlevels, "MillerStyles: {} uses level {} of {nlevels}", e.raster, e.last_level);
+    }
+    Ok(MillerStyles { version, tile_width, tile_height, levels, entries })
 }
 
 #[cfg(test)]
@@ -518,28 +648,91 @@ mod tests {
 
     #[test]
     fn miller_entries() {
-        let mut b = vec![0, 1, 0, 1, 0, 0, 1, 0];
-        b.extend([2, 0, 0, 0x80, 1, 0, 0, 0x80]);
+        // version 0x0100, tiles 256 × 255, 2 levels (u8 count at byte 7, u32 sizes from byte 7).
+        let mut b = vec![0, 1, 0, 1, 255, 0, 2];
+        for v in [512u32, 384, 896, 640] {
+            b.extend(v.to_le_bytes());
+        }
+        b.push(2); // rasters
         b.extend(b"RAS\0LOOKA\0\0");
         b.extend(250u32.to_le_bytes());
-        b.push(3);
+        b.push(1);
         b.extend(b"SAT\0sat\0\0");
         b.extend(8000u32.to_le_bytes()); // 40 1F: starts with a printable byte
-        b.push(2);
+        b.push(0);
         let m = miller_styles(&b).unwrap();
-        assert_eq!(m.level_pairs[0], [(2, 0x8000), (1, 0x8000)]);
+        assert_eq!((m.version, m.tile_width, m.tile_height), (0x0100, 256, 255));
+        assert_eq!(m.levels, [(512, 384), (896, 640)]);
         assert_eq!(m.entries.len(), 2);
-        assert_eq!((m.entries[0].raster.as_str(), m.entries[0].scale, m.entries[0].levels), ("RAS", 250, 3));
+        assert_eq!((m.entries[0].raster.as_str(), m.entries[0].min_altitude_km, m.entries[0].last_level), ("RAS", 250, 1));
         assert_eq!(m.entries[0].looks, ["LOOKA"]);
-        assert_eq!((m.entries[1].looks.len(), m.entries[1].scale), (1, 8000));
+        assert_eq!((m.entries[1].looks.len(), m.entries[1].min_altitude_km), (1, 8000));
+        let mut bad = b.clone();
+        bad[0] = 2;
+        assert!(miller_styles(&bad).is_err());
+        let mut bad = b.clone();
+        *bad.last_mut().unwrap() = 2; // level 2 of 2
+        assert!(miller_styles(&bad).is_err());
+        let mut bad = b;
+        bad.push(0);
+        assert!(miller_styles(&bad).is_err(), "trailing byte");
+    }
+
+    #[test]
+    fn map_style_record() {
+        let mut r = vec![0u8; 115];
+        r[..5].copy_from_slice(b"Atlas");
+        r[0x20..0x25].copy_from_slice(b"HYPSO");
+        r[0x40..0x48].copy_from_slice(b"POLITICA");
+        r[0x60] = 10;
+        r[0x62..0x68].copy_from_slice(&[1, 2, 3, 0xEB, 0xEA, 0xE1]);
+        r[0x68] = 1;
+        r[0x69..0x6D].copy_from_slice(&150_000u32.to_le_bytes());
+        r[0x6D..0x71].copy_from_slice(&50_000_000u32.to_le_bytes());
+        r[0x71] = 1;
+        let s = &map_styles(&r).unwrap()[0];
+        assert_eq!((s.name.as_str(), s.raster.as_str(), s.look.as_str(), s.id), ("Atlas", "HYPSO", "POLITICA", 10));
+        assert_eq!((s.colour1, s.colour2, s.is_default), ([1, 2, 3], [0xEB, 0xEA, 0xE1], true));
+        assert_eq!((s.min_altitude_m, s.max_altitude_m, s.flags), (150_000, 50_000_000, [1, 0]));
+        assert!(map_styles(&r[..114]).is_err());
+    }
+
+    #[test]
+    fn small_style_tables() {
+        let mut gt = Vec::new();
+        for i in 0..2 * 45 {
+            gt.push(i as u8);
+        }
+        let ramps = geo_trans(&gt).unwrap();
+        assert_eq!((ramps.len(), ramps[1][0], ramps[0][14]), (2, [45, 46, 47], [42, 43, 44]));
+        assert!(geo_trans(&gt[..44]).is_err());
+        assert_eq!((tint_index(255.0), tint_index(0.0), tint_index(127.5)), (0, 14, 7));
+
+        let mut mr = 14u16.to_le_bytes().to_vec();
+        mr.extend(5000u32.to_le_bytes());
+        for v in [45.5f32, 12.4, 45.3, 12.2] {
+            mr.extend(v.to_le_bytes());
+        }
+        let m = min_rects(&mr).unwrap()[0];
+        assert_eq!((m.style, m.altitude_m, m.bbox()), (14, 5000, [12.2, 45.3, 12.4, 45.5]));
+
+        let ua = [0xE4, 0, 0xC4, 0, 0x61, 0, 0xE4];
+        assert_eq!(unicode_attributes(&ua).unwrap()[0], UnicodeAttribute { code_point: 0xE4, upper: 0xC4, base: 0x61, ansi: 0xE4 });
+
+        let mut fc = vec![0u8; 2 * 256 * 6];
+        fc[6 * 0x61..6 * 0x61 + 6].copy_from_slice(&[0x61, 0, 0xCE, 0x04, 1, 0]);
+        fc[256 * 6 + 6 * 0x20 + 5] = 1;
+        let c = font_conv(&fc).unwrap();
+        assert_eq!((c.len(), c[0][0x61].weight, c[0][0x61].letter, c[1][0x20].separator), (2, 1230, true, true));
+        assert!(font_conv(&fc[..100]).is_err());
     }
 
     #[test]
     fn label_fonts_and_classes() {
-        let mut b = 3u16.to_le_bytes().to_vec();
-        b.push(2);
+        let mut b = vec![3, CHARSET_SHIFTJIS, 2];
         b.extend([0x41, 0, 0x42, 0]);
-        assert_eq!(label_fonts(&b).unwrap()[0].name, "AB");
+        let f = &label_fonts(&b).unwrap()[0];
+        assert_eq!((f.font, f.charset, f.name.as_str()), (3, CHARSET_SHIFTJIS, "AB"));
         let mut r = vec![7, 0, 4, 2, 1, 0, 0];
         r.extend(400000u32.to_le_bytes());
         r.extend([0, 5, 9]);

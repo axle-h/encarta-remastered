@@ -1,6 +1,7 @@
 /**
  * Dev page for the atlas (`/atlas.html`). Query: `?style=atlas-political&lat=50&lon=10&alt=3000`,
- * `?place=25262` (gazetteer entity), `?url=msencarta://view=MapView/cmd=map/…`, `?view=flat`.
+ * `?place=25262` (gazetteer entity), `?url=msencarta://view=MapView/cmd=map/…`, `?view=flat`,
+ * `?quiz=1` (quiz mode), `?highlight=<entity>` (filled in yellow).
  * Opened articles are listed in a side strip instead of navigating away.
  */
 import { StrictMode, useState } from "react";
@@ -26,6 +27,9 @@ function Dev() {
           initialPlace={initialPlace()}
           initialStyle={q.get("style") ?? undefined}
           initialProjection={q.get("view") === "flat" ? "flat" : "globe"}
+          quizMode={q.get("quiz") === "1"}
+          highlightEntity={num("highlight")}
+          onPlaceClick={(hits) => console.log("atlas click:", hits.map((h) => h.name).join(", "))}
           onOpenArticle={(_, link) => setOpened((o) => [link, ...o].slice(0, 8))}
           onViewChange={(v) => {
             const p = new URLSearchParams(location.search);

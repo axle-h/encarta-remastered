@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ComponentType } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ComponentType } from "react";
 import { Navigate, Outlet, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArticleMediaPage, MediaBrowserPage } from "../pages/MediaBrowserPage";
 import { AtlasPlaceholder } from "../pages/AtlasPlaceholder";
@@ -16,9 +16,19 @@ import { MediaViewerProvider } from "../media/MediaViewer";
 import { Shell } from "./Shell";
 
 // The atlas (plan Step 5) lives in src/atlas/ and is owned separately; load it when present.
+interface AtlasView {
+  lat: number;
+  lon: number;
+  altitudeKm: number;
+  style?: string;
+  projection?: string;
+}
 interface AtlasModuleProps {
   initialPlace?: { entity?: number; lat?: number; lon?: number; altitudeKm?: number } | string;
+  initialStyle?: string;
+  initialProjection?: "globe" | "flat";
   onOpenArticle?: (refId: number) => void;
+  onViewChange?: (v: AtlasView) => void;
   className?: string;
 }
 const atlasModules = import.meta.glob("../atlas/index.tsx");
@@ -42,20 +52,57 @@ export function atlasInitialPlace(splat: string, search: URLSearchParams): Atlas
 }
 
 const TourViewLazy = lazy(async () => ({ default: (await import("../pages/TourView")).TourView }));
+const GamesLazy = lazy(async () => ({ default: (await import("../games")).GamesRoutes }));
+
+/** The URL search for an atlas view (`lat`, `lon`, `alt`, `style`, `view`), as the route reads it back. */
+export function atlasViewSearch(v: AtlasView): string {
+  const p = new URLSearchParams();
+  p.set("lat", v.lat.toFixed(4));
+  p.set("lon", v.lon.toFixed(4));
+  p.set("alt", String(Math.round(v.altitudeKm)));
+  if (v.style) p.set("style", v.style);
+  if (v.projection === "flat") p.set("view", "flat");
+  return p.toString();
+}
 
 function AtlasRoute() {
   const splat = useParams()["*"] ?? "";
   const [search] = useSearchParams();
   const navigate = useNavigate();
+  // The map keeps the URL in step with its view (replace, debounced). Only a URL change that did
+  // not come from the map itself (a link to /atlas/place/…, Back) remounts it at the new place.
+  const here = `${splat}?${search.toString()}`;
+  const written = useRef<string | null>(null);
+  const [mount, setMount] = useState(0);
+  const seen = useRef(here);
+  useEffect(() => {
+    if (here === seen.current) return;
+    seen.current = here;
+    if (here !== written.current) setMount((n) => n + 1);
+  }, [here]);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const onViewChange = (v: AtlasView) => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      const q = atlasViewSearch(v);
+      written.current = `?${q}`;
+      navigate({ pathname: "/atlas", search: `?${q}` }, { replace: true });
+    }, 400);
+  };
   if (!AtlasLazy) return <AtlasPlaceholder />;
+  const view = search.get("view");
   return (
     <Suspense fallback={<div className="enc-loading"><div className="enc-spinner" /></div>}>
       <div className="atlas-route">
         <AtlasLazy
-          key={splat + search.toString()}
+          key={mount}
           className="atlas-route-map"
           initialPlace={atlasInitialPlace(splat, search)}
+          initialStyle={search.get("style") ?? undefined}
+          initialProjection={view === "flat" || view === "globe" ? view : undefined}
           onOpenArticle={(refId) => navigate(`/item/${refId}`)}
+          onViewChange={onViewChange}
         />
       </div>
     </Suspense>
@@ -109,6 +156,7 @@ export function App() {
         <Route path="tours" element={<ToursPage />} />
         <Route path="tours/:tourId" element={<TourRoute />} />
         <Route path="atlas/*" element={<AtlasRoute />} />
+        <Route path="games/*" element={<Suspense fallback={<div className="enc-loading"><div className="enc-spinner" /></div>}><GamesLazy /></Suspense>} />
         <Route path="*" element={<NotFound />} />
       </Route>
       <Route path="kids" element={<Kids />}>

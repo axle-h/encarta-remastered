@@ -11,22 +11,35 @@ here as §n); this file describes only what the converter writes.
 | `scene.glb` | glTF 2.0 binary: every `.x` mesh (merged where possible), baked vertex lighting, flicker weights, embedded textures, point-cloud statues |
 | `scene.json` | the scene description (schema below) |
 | `pvs.bin` | walk-map visibility runs (layout below) |
-| `images/` | images the scripts or 2D layers name: HUD/loading images, `APPLYTEXTURE`/`FILMSTRIP` textures, the icon strip |
+| `images/` | images the scripts or 2D layers name: HUD/loading images, `APPLYTEXTURE`/`FILMSTRIP` textures, the icon strip; the site maps (`sitemap-<siteId>.png`) |
 | `cursors/` | every `.cur` of the container as PNG (hotspots in `scene.json`) |
 
-The 2D-layer images in `images/` keep the disc files' row order, which is bottom-up: the engine shows
-them flipped vertically, so a runtime must flip them when drawing 2D layers (this also gives spinner
-film strips their frame order). 3D textures need no flip. The icon strip is already in display orientation.
+**Image orientation.** Every image (`images/`, and the textures in `scene.glb`) is stored in display orientation,
+top row first, as the image file means it. The engine instead fills its surfaces bottom row first, for every format
+(§5.6), and addresses them from that first row. Two consequences:
+- 3D: `TEXCOORD_0` is already converted (`v' = 1 − v`), so glTF textures, `APPLYTEXTURE`/`FILMSTRIP` images and
+  water textures are sampled as usual (three.js `flipY = false`). Something that writes into a texture surface the
+  way the engine does (the cloud impostor, §7.3.3) must write surface row `r` to image row `H − 1 − r`.
+- 2D: the layer rectangles and their `uv` (and `NEXTFRAME` v-ranges) address the surface, so a runtime draws 2D
+  images flipped vertically (the disc's 2D GIFs are stored upside down and show upright; this also gives spinner
+  film strips their frame order). The icon strip is already in display orientation.
+- Site maps (`sites[].image`) are drawn as they are (the host draws them with GDI).
 
 Output is deterministic and idempotent: a second run rewrites nothing, and stale files in a tour
 directory are removed. `ENCARTA_TOURS=04257,05919` converts only some tours.
+
+The Tour Stops, hotspot destinations and site maps come from the tours' content records (§4.3, §4.2), which
+`encarta-convert content` has already decoded into `out/content.sqlite`. Run `content` first; without that
+database the tours still convert, with empty `stops`/`hotspotTargets`/`sites` and null `destMedia`. The site-map
+images are baggage files of the catalog (`eit/CONTENT/*/baggage/`, e.g. `MDDLX01.EIT`), read from the extracted disc.
 
 ## Conventions
 
 - **Coordinates.** glTF space: right-handed, +Y up, original model units. Every world position
   from the disc (meshes, camera, lights, walk maps, anchors, clouds) is converted with
-  `x' = x, y' = y, z' = −z` (§5.6). Triangle winding is reversed, UVs are unchanged (no V flip;
-  keep three.js `texture.flipY = false`, the GLTFLoader default).
+  `x' = x, y' = y, z' = −z` (§5.6). Triangle winding is reversed, and V is flipped, `(u, v) → (u, 1 − v)`,
+  because the engine's texture surfaces start with the image's bottom row (§5.6); keep three.js
+  `texture.flipY = false`, the GLTFLoader default.
 - **Yaw** stays in the original degrees: the look direction is `(sin yaw, 0, −cos yaw)` in glTF
   space, so three.js `camera.rotation.y = −yaw·π/180` (with rotation order `YXZ`). **Pitch** is in
   degrees, positive looks up.
@@ -53,8 +66,8 @@ directory are removed. `ENCARTA_TOURS=04257,05919` converts only some tours.
   merged nodes `merged: true, material`; cloud nodes `cloudOf, file`.
 - **Primitives**: one per (node, material), `TRIANGLES`, fan-triangulated faces in face order, so
   each original face is one contiguous run of `faceVertices − 2` triangles.
-  Attributes: `POSITION`, `NORMAL` (unit length), `TEXCOORD_0` (tiles far outside 0…1: the
-  samplers use `REPEAT`), `COLOR_0` (`VEC4` normalised `UNSIGNED_BYTE`), and on primitives touched
+  Attributes: `POSITION`, `NORMAL` (unit length), `TEXCOORD_0` (`(u, 1 − v)` of the disc's coordinates;
+  tiles far outside 0…1: the samplers use `REPEAT`), `COLOR_0` (`VEC4` normalised `UNSIGNED_BYTE`), and on primitives touched
   by a flickering light `_FLICKER_SLOTS[_n]` (`VEC4 UNSIGNED_BYTE`, slot numbers) and
   `_FLICKER_WEIGHTS[_n]` (`VEC4 FLOAT`). Vertices are split per (position, normal, colour, flicker
   weights); three.js names the custom attributes `_flicker_slots`, `_flicker_weights`, `_flicker_slots_1`, ….
@@ -111,7 +124,8 @@ TypeScript notation; `Vec3 = [number, number, number]` (glTF space unless noted)
 ```ts
 interface TourScene {
   format: "encarta-tour-scene"; version: 1;
-  tour: { id: string; contentId: number; name: string };       // contentId = 7015 + id (§1)
+  tour: { id: string; contentId: number; name: string;          // contentId = 7015 + id (§1)
+          title: string | null };                                // the tour record's title, "Acropolis, 400 BC"
   coordinates: Record<string, string>;                           // the conventions above, as text
   files: { glb: "scene.glb"; pvs: "pvs.bin" };
   camera: Camera; scene: SceneSwitches; model: Model;
@@ -122,6 +136,11 @@ interface TourScene {
   layers: Layer[];                // in load order: begin.32d (loading screen), lh.32d (final)
   hud: Hud; cursors: Cursors;
   hotspots: HotspotLink[];        // final-layer elements whose macro fires HOTSPOTCLICKED
+  stops: TourStop[];              // Tour Stops in menu order (content record, §4.3); [] without content.sqlite
+  defaultStop: number | null;     // the stop the host moves to after WORLDLOADED (tour record default/@refid)
+  hotspotTargets: HotspotTarget[]; // every hotspot of every stop, with its destination
+  sites: SiteMapImage[];          // the stops' site maps (§4.2), in first-use order; [] without content.sqlite
+  article: number | null;         // the tour record's children/article (the credits)
   unresolvedHotspots: { origin: string; src: string }[];  // MACRO.MOUSEUP on missing elements
   siteMap: SiteMap;
   macros: Macro[]; alarms: Alarm[]; events: FiredEvent[];
@@ -204,8 +223,9 @@ The cloud `matrix` maps a stored point `(x, y, −z)` to world as
 `base + R_y(α)·(a·x, b·y, a·(−z))` with `a = s·quadWidth/W`, `b = s·quadHeight/H` and
 `α = −offset − π/2` (in original coordinates the rotation is `(x, z) → (x cos α − z sin α, x sin α + z cos α)`).
 It is derived from the impostor algorithm of §7.3.3 (the impostor shows the orthographic view of
-that fixed rotated cloud from the eye direction, with cloud y = 0 at the bottom of the quad); the
-orientation is a **[VM]** item (§7.10: upright, not mirrored). A runtime that reimplements the
+that fixed rotated cloud from the eye direction, with cloud y = 0 at the bottom of the quad). The
+runtime does not use it (it reimplements the impostor, whose orientation the VM confirmed, §7.3.3); the
+matrix itself was not checked against the captures. A runtime that reimplements the
 impostor instead uses `_KEY`, `scale`, `offsetRadians` and `textureSize`.
 
 ```ts
@@ -255,8 +275,30 @@ interface ElementState {
   other?: Record<string, string>;
 }
 interface HotspotLink {
-  element: string; event: string; contentId: number; contentIdText: string;   // an Encarta media id (§4.3)
+  element: string; event: string; contentId: number; contentIdText: string;   // the hotspot's content id (§4.3)
   title: string; icon: number; anchor: Vec3; anchored: boolean;
+  destMedia: number | null;       // the hotspot record's destmedia: the media page a click opens
+  destGroup: string | null;       // its DATA group: "media", "flash", …
+}
+interface TourStop {
+  id: number; title: string;
+  command: string | null;         // default/@coord3d: the camera command the host sends (disc coordinates)
+  hotspots: number[];             // hotspot content ids, menu order
+  site: number | null;            // children/site: the site map shown at this stop (sites[].id; one per floor)
+  article: number | null;         // children/article: the stop text
+}
+interface SiteMapImage {           // a stop's children/site record (§4.2)
+  id: number; file: string | null;               // the baggage DIB, e.g. "00068668.dib"
+  image: string | null;                          // images/sitemap-<id>.png, 344×194: left half the plain map,
+  size: [w: number, h: number];                  //   right half the map as tinted inside the view wedge
+  locations: { id: number; title: string;        // named locations: click → move to `stop`
+               stop: number | null;              //   (destmedia)
+               x: number | null; y: number | null }[];  // top-left of the 11-px box, site-map window pixels
+}
+interface HotspotTarget {
+  id: number; title: string; destMedia: number | null;
+  destGroup: string | null; destKind: string | null; destTitle: string | null;   // the destination item
+  stops: number[];                // stops listing this hotspot
 }
 interface Hud {
   iconStrip: { file: string; image: string;       // already in display orientation (§8.4.1)
@@ -344,8 +386,9 @@ statement is one `objectFlag water=false` step on `n_00water` with the rest of t
 file sizes, glb statistics, merge statistics, counts, and the validation checks the converter ran
 (glb structure, triangle and face counts against the `.x`, node counts, cloud points and
 placements, walk-map cells, PVS faces and triangles against the masks, executed statements,
-lights, layer elements, hotspot macros, and "every node, light, element and image name in
-scene.json exists"). The converter fails when a check fails.
+lights, layer elements, hotspot macros, hotspot destinations, site maps (every stop has a site and every site
+image was found in the disc's baggage), and "every node, light, element and image name in scene.json exists").
+The converter fails when a check fails.
 
 ## Open points for the runtime (VM items)
 
@@ -353,5 +396,7 @@ scene.json exists"). The converter fails when a check fails.
   what the engine's always-drawn object list holds: 9 of 33 Acropolis sprites, 19 of 132 Beaumaris
   sprites and 9 of 61 Abu Simbel sprites appear in no PVS list, so they would never be drawn over a
   visibility cell unless that list contains them (§6.6).
-- Back-face culling, faceColor, the colour-key test (555 vs 565), cloud orientation, sprite
-  rotation sign (§5.9, §7.10).
+- Back-face culling, faceColor, the colour-key test on the 565 display the VM uses, sprite rotation sign
+  (§5.9, §7.10).
+- Texture filtering: the VM's software rasteriser samples without mipmaps, so distant floors and walls look sharper
+  and noisier there than with mipmapped textures.

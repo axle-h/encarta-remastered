@@ -29,16 +29,27 @@ export type FovAxis = "horizontal" | "vertical";
 
 export interface ControlOptions {
   /**
-   * Device the original would run on. Software (the control's default, §6.8) snaps the eye to the
-   * ground; hardware applies `SCENE.GRAVITY` and re-renders clouds only every ~5° (§7.3.4).
+   * Device the original would run on. Software (what Encarta uses on a machine without a D3D
+   * device, and what the reference VM showed: snap mode, §6.8) snaps the eye to the ground;
+   * hardware applies `SCENE.GRAVITY` and re-renders clouds only every ~5° (§7.3.4).
    */
   device?: "software" | "hardware";
   /** Overrides the ground mode the device implies. */
   groundMode?: GroundMode;
-  /** Simulation ticks per second (the original's timer rate on XP, §2.3, §6.9). */
+  /**
+   * Simulation ticks per second. Default 64: the VM's idle rate (`SW 65.8` with DISPLAYFPS, the
+   * 15.6 ms XP timer, §6.9). Walking and turning are time-scaled (100·SPEED.FLY units/s,
+   * 200·SPEED.TURN °/s) for any rate from 20 to 100 Hz; pitch keys step once per tick.
+   */
   tickHz?: number;
-  /** Which axis `CAMERA.FOV` spans (a VM item, §6.13). */
+  /** Which axis `CAMERA.FOV` spans. The VM measured horizontal (§6.13); kept as a switch for experiments. */
   fovAxis?: FovAxis;
+  /**
+   * Shortest time the loading screen stays up, in seconds of simulation time from `script.load`.
+   * The original streams one texture per tick after `3D.LOAD`; in the VM the LOADING screen
+   * showed for about 2 s (Colosseum 0.67–2.65 s; harness loads 1.6–2.3 s). Default 2.
+   */
+  minLoadSeconds?: number;
   /** Hotspot handling on a switch to a cached walk map (see WalkMapSet.switchRule). */
   walkmapSwitch?: "settle" | "spec";
   rng?: Rng;
@@ -145,6 +156,9 @@ export class TourControl implements Handlers {
   private pending: SeqStep[] = [];
   private pc = 0;
   private waitingForModel = false;
+  private loadStartedAt = 0;
+  /** Host actions waiting for the end of loading (run on the first tick after it). */
+  private afterLoad: (() => void)[] = [];
   /** True while the original would still be streaming the model (3D view hidden). */
   modelReady: () => boolean = () => true;
   loaded = false;
@@ -170,6 +184,7 @@ export class TourControl implements Handlers {
       tickHz: options.tickHz ?? 64,
       fovAxis: options.fovAxis ?? "horizontal",
       walkmapSwitch: options.walkmapSwitch ?? "settle",
+      minLoadSeconds: options.minLoadSeconds ?? 2,
     };
     this.rng = options.rng ?? Math.random;
     this.interp = new Interpreter(this);
@@ -202,6 +217,11 @@ export class TourControl implements Handlers {
     return this.interp.do(command);
   }
 
+  /** Runs `f` on the first tick after loading has finished (host reactions to `WORLDLOADED`). */
+  whenLoaded(f: () => void): void {
+    this.afterLoad.push(f);
+  }
+
   fireEvent(text: string): void {
     this.events.onEvent?.(text);
   }
@@ -216,6 +236,7 @@ export class TourControl implements Handlers {
     this.loading = true;
     this.loaded = false;
     this.waitingForModel = false;
+    this.loadStartedAt = this.simTime;
     this.runPending(false);
   }
 
@@ -245,7 +266,7 @@ export class TourControl implements Handlers {
     this.tickCount++;
     if (this.loading) {
       if (this.waitingForModel) {
-        if (this.modelReady()) {
+        if (this.modelReady() && this.simTime - this.loadStartedAt >= this.options.minLoadSeconds - 1e-9) {
           this.waitingForModel = false;
           this.modelLoaded = true;
           this.runPending(true);
@@ -253,6 +274,10 @@ export class TourControl implements Handlers {
       } else {
         this.runPending(true);
       }
+    }
+    if (this.loaded && this.afterLoad.length) {
+      const queue = this.afterLoad.splice(0);
+      for (const f of queue) f();
     }
     if (!this.interp.timerOn) return;
     this.interp.pollAlarms(this.simTime);
@@ -454,10 +479,8 @@ export class TourControl implements Handlers {
         // The host's `script.load=load.3sc` starts the converted load sequence. Every nested
         // SCENE.LOAD of the disc was expanded in place by the converter; there are no script
         // files at run time.
-        if (/(^|\\)LOAD\.3SC$/.test(step.file.toUpperCase()) && !this.loading) {
-          this.startLoad();
-          return SUCCESS;
-        }
+        // The VM replies `Failed` to `script.load=…load.3sc` even though the load then runs (§2.2).
+        if (/(^|\\)LOAD\.3SC$/.test(step.file.toUpperCase()) && !this.loading) this.startLoad();
         return FAILED;
       case "setScene":
         return this.setScene(step);
@@ -576,12 +599,15 @@ export class TourControl implements Handlers {
       case "gravity": this.gravity = Number(v); break;
       case "specular": this.specular = Boolean(v); break;
       case "highSpecular": this.highSpecular = Boolean(v); break;
-      case "displayFps": this.displayFps = Boolean(v); break;
+      // The VM replies `Failed` but the overlay does switch on.
+      case "displayFps": this.displayFps = Boolean(v); return FAILED;
       case "cursors": this.cursorsEnabled = Boolean(v); break;
       case "halfResDriving": this.halfResDriving = Boolean(v); break;
       case "showCollision": this.showCollision = Boolean(v); break;
       case "fogStart": this.fog.start = Number(v); break;
       case "fogEnd": this.fog.end = Number(v); this.fog.enabled = this.fog.end > 0.01; break;
+      // VM: `1` when the container is found, `-2` for a path with spaces (they do not survive, §3.2).
+      case "itsFileUrl": return /\s/.test(String(v).trim()) ? "-2" : "1";
       default: break;
     }
     return SUCCESS;

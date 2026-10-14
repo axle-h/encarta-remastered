@@ -1,53 +1,70 @@
 /**
- * Layout decisions for an article body, kept free of React so they can be unit-tested:
- * which placed items go to the left media column, inline into the text, or to the right column,
- * and how consecutive media blocks group into one box (the original shows them as one box
- * with a row of small thumbnails to switch between them).
+ * Layout decisions for an article body, kept free of React so they can be unit-tested. The
+ * converter stores the placement (content-schema §2): each `media` block's column (`text` or
+ * `margin`), `cluster` blocks (several items in one margin box) and the Kids `media-grid`. The
+ * reader only decides what goes to the right column (Quick Facts), into the text (inline tables)
+ * or into a sidebar teaser.
  */
 import type { AssocItem, DataTable } from "../api/types";
-import type { Block, MediaBlock } from "../content/model";
+import type { Block, ClusterBlock, MediaBlock, MediaGridBlock, MediaRef } from "../content/model";
 
-export type Placement = "left" | "inline" | "right" | "hidden";
+/**
+ * Where a placed item is drawn: the left `margin` column (picon box), the `text` column (picture
+ * at up to 432 px), `inline` (a table in the text), a sidebar `teaser`, the `right` column
+ * (Quick Facts) or not at all.
+ */
+export type Placement = "margin" | "text" | "inline" | "teaser" | "right" | "hidden";
 
-export function placementOf(b: MediaBlock, assoc: AssocItem | undefined, table: DataTable | undefined): Placement {
+/** Width of a picture in the text column (px); wider ones are scaled down. */
+export const WIDE_MAX_WIDTH = 432;
+
+export function placementOf(b: MediaRef & { col?: string }, assoc: AssocItem | undefined, table: DataTable | undefined): Placement {
   if (assoc?.appears === 0) return "hidden";
   if (b.group === "tableinline") return "inline";
   if (table?.kind === "facts" && (b.group === "table" || b.group === "factsandfigures")) return "right";
-  return "left";
+  if (b.group === "sidebar") return "teaser";
+  return b.col === "text" ? "text" : "margin";
 }
 
-export type Run =
-  | { t: "media"; placement: Placement; items: MediaBlock[] }
-  | { t: "block"; block: Block };
-
-/** Splits a section's blocks into runs, grouping consecutive media blocks with the same placement. */
-export function runsOf(
-  blocks: Block[],
-  assoc: Map<number, AssocItem>,
-  tables: Map<number, DataTable>,
-): Run[] {
-  const out: Run[] = [];
-  for (const b of blocks) {
-    if (b.t !== "media") {
-      out.push({ t: "block", block: b });
-      continue;
-    }
-    const placement = placementOf(b, assoc.get(b.ref), tables.get(b.ref));
-    const last = out[out.length - 1];
-    // Inline tables each stand alone; left-column items group until the next text block.
-    if (last && last.t === "media" && last.placement === placement && placement !== "inline") last.items.push(b);
-    else out.push({ t: "media", placement, items: [b] });
-  }
-  return out;
+/**
+ * The members of a cluster that its box shows: every item except hidden ones. A facts table stays
+ * a member (VM, Zebra: "Plains Zebra" and "Zebra Quick Facts" share a box) and is also in the right
+ * column.
+ */
+export function clusterMembers(c: ClusterBlock, assoc: Map<number, AssocItem>): MediaRef[] {
+  return c.items.filter((m) => assoc.get(m.ref)?.appears !== 0);
 }
 
-/** All media blocks of a body in reading order (the strip under the title, the viewer sequence). */
-export function mediaInOrder(blocks: Block[], out: MediaBlock[] = []): MediaBlock[] {
+/** Every placed item of a body in reading order, cluster and grid members included. */
+export function mediaInOrder(blocks: Block[], out: MediaRef[] = []): MediaRef[] {
   for (const b of blocks) {
     if (b.t === "media") out.push(b);
+    else if (b.t === "cluster" || b.t === "media-grid") out.push(...b.items);
     else if (b.t === "section") mediaInOrder(b.blocks, out);
   }
   return out;
+}
+
+/** The Kids tile grid: the items of the body's `media-grid` blocks, in order. */
+export function gridItems(blocks: Block[]): MediaRef[] {
+  const out: MediaRef[] = [];
+  const walk = (bs: Block[]) => {
+    for (const b of bs) {
+      if (b.t === "media-grid") out.push(...(b as MediaGridBlock).items);
+      else if (b.t === "section") walk(b.blocks);
+    }
+  };
+  walk(blocks);
+  return out;
+}
+
+/**
+ * A sidebar's body with its media first: the original floats all of a sidebar's own placed media
+ * in one cluster at the top left of the body (content-schema §2 "Sidebar view").
+ */
+export function mediaFirst(blocks: Block[]): Block[] {
+  const media = blocks.filter((b): b is ClusterBlock | MediaBlock => b.t === "cluster" || b.t === "media");
+  return media.length ? [...media, ...blocks.filter((b) => b.t !== "cluster" && b.t !== "media")] : blocks;
 }
 
 /** Groups that the strip and the "All Media" gallery show (not further reading, contributors …). */

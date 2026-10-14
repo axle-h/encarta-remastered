@@ -93,6 +93,26 @@ describe("Inlines", () => {
     expect(container.querySelector("img.enc-place-right")?.getAttribute("src")).toBe("/media/file/00abcdef.gif");
   });
 
+  it("bolds the title and the alternative title, not the joining \"or\"", () => {
+    const c: Inline[] = [{ t: "title-ref", title: ["Testland"], alt: ["Probaria"], c: ["Testland"] }, ", a made-up country."];
+    const { container } = render(
+      <MemoryRouter>
+        <Inlines c={c} />
+      </MemoryRouter>,
+    );
+    expect(Array.from(container.querySelectorAll(".enc-title-ref")).map((e) => e.textContent)).toEqual(["Testland", "Probaria"]);
+    expect(container.querySelector(".enc-alt-title")?.textContent).toBe("Probaria");
+    expect(container.textContent).toBe("Testland or Probaria, a made-up country.");
+    // Without an alternative title it is one bold span and no "or".
+    const one = render(
+      <MemoryRouter>
+        <Inlines c={[{ t: "title-ref", title: ["Zebra"], alt: [], c: ["Zebra"] }, ", member"]} />
+      </MemoryRouter>,
+    );
+    expect(one.container.querySelectorAll(".enc-title-ref")).toHaveLength(1);
+    expect(one.container.textContent).toBe("Zebra, member");
+  });
+
   it("keeps links inside Kids mode", () => {
     const { container } = render(
       <MemoryRouter>
@@ -112,11 +132,10 @@ const body: Block[] = [
     number: ["I"],
     title: ["INTRODUCTION"],
     blocks: [
-      { t: "media", ref: 100, group: "media" },
-      { t: "media", ref: 101, group: "media" },
+      { t: "cluster", col: "margin", items: [{ ref: 100, group: "media" }, { ref: 101, group: "media" }] },
       { t: "p", id: 1, c: ["Intro text."] },
-      { t: "media", ref: 102, group: "table" },
-      { t: "media", ref: 103, group: "tableinline" },
+      { t: "media", ref: 102, group: "table", col: "margin" },
+      { t: "media", ref: 103, group: "tableinline", col: "margin" },
     ],
   },
   {
@@ -135,8 +154,16 @@ const body: Block[] = [
 
 function ctx(collapsed: number[] = [], toggle = () => undefined): BodyContext {
   const media: AssocItem[] = [
-    { ref_id: 100, group: "media", title: "First picture", thumb: { file_name: "a.jtn", url: "/media/file/a.jtn" } },
-    { ref_id: 101, group: "media", title: "Second picture", thumb: { file_name: "b.jtn", url: "/media/file/b.jtn" } },
+    { ref_id: 100, group: "media", kind: "media", media_type: "image", title: "First picture", thumb: { file_name: "a.jtn", url: "/media/file/a.jtn" },
+      picon: { file_name: "p100.jsm", url: "/media/file/p100.jsm", width: 192, height: 128 }, image: { file_name: "p100.jpg", url: "/media/file/p100.jpg", width: 556, height: 370 } },
+    { ref_id: 101, group: "media", kind: "media", media_type: "image", title: "Second picture", thumb: { file_name: "b.jtn", url: "/media/file/b.jtn" },
+      picon: { file_name: "p101.jsm", url: "/media/file/p101.jsm", width: 192, height: 128 } },
+    { ref_id: 104, group: "audionested", kind: "audio-set", media_type: "audio", title: "Flag and Anthem",
+      image: { file_name: "f.jpg", url: "/media/file/f.jpg", width: 365, height: 180 } },
+    { ref_id: 105, group: "media", kind: "media", media_type: "map", no_squish: true, title: "A Map",
+      picon: { file_name: "m.jsm", url: "/media/file/m.jsm", width: 192, height: 192 }, image: { file_name: "m.jpg", url: "/media/file/m.jpg", width: 556, height: 414 } },
+    { ref_id: 106, group: "sidebar", kind: "sidebar", title: "Ten Who Changed Things", sidebar_category: "HISTORIC DOCUMENTS",
+      preview_html: "<p class='enc-intro'>A synthetic preview.</p>" },
   ];
   const tables = new Map<number, DataTable>([
     [102, { ref_id: 102, kind: "facts", json: { entries: [] }, html: "" }],
@@ -155,8 +182,8 @@ function ctx(collapsed: number[] = [], toggle = () => undefined): BodyContext {
 }
 
 describe("ArticleBody", () => {
-  it("renders numbered sections, paragraphs with anchors, a grouped media box and inline tables", async () => {
-    mockFetch();
+  it("renders numbered sections, paragraphs with anchors, a cluster box and inline tables", async () => {
+    const fetch = mockFetch();
     const { container } = render(
       <MemoryRouter>
         <MediaViewerProvider>
@@ -167,14 +194,86 @@ describe("ArticleBody", () => {
     expect(container.querySelector("#s1 .enc-section-title")?.textContent).toBe("I. INTRODUCTION");
     expect(container.querySelector("#s3 .enc-section-title")?.textContent).toBe("A. Plains");
     expect(container.querySelector("#p2")?.textContent).toBe("Habitat text.");
-    // Two consecutive media blocks make one box with two thumbnails; the facts table is not in the column.
+    // A cluster is one box with two thumbnails; the lone facts table is not in the column.
     const boxes = container.querySelectorAll("figure.enc-mbox");
     expect(boxes).toHaveLength(1);
     expect(boxes[0]!.querySelectorAll(".enc-mbox-thumbs button")).toHaveLength(2);
     expect(container.querySelector(".enc-inline-table td")?.textContent).toBe("cell");
-    await waitFor(() => expect(container.querySelector(".enc-mbox-pic img")?.getAttribute("src")).toBe("/media/file/p100.jsm"));
+    // The gallery picture comes from the association row: no request per box.
+    expect(container.querySelector(".enc-mbox-pic img")?.getAttribute("src")).toBe("/media/file/p100.jsm");
     fireEvent.click(boxes[0]!.querySelectorAll(".enc-mbox-thumbs button")[1]!);
-    await waitFor(() => expect(container.querySelector(".enc-mbox-pic img")?.getAttribute("src")).toBe("/media/file/p101.jsm"));
+    expect(container.querySelector(".enc-mbox-pic img")?.getAttribute("src")).toBe("/media/file/p101.jsm");
+    expect(fetch.mock.calls.filter(([u]) => String(u).startsWith("/api/item/"))).toHaveLength(0);
+  });
+
+  it("draws text-column items wide and margin items as boxes, as stored", () => {
+    mockFetch();
+    const blocks: Block[] = [
+      {
+        t: "section", id: 1, kind: "introduction", level: 1, number: ["I"], title: ["INTRODUCTION"],
+        blocks: [
+          { t: "media", ref: 104, group: "audionested", col: "text" },
+          { t: "p", id: 1, c: ["One."] },
+          { t: "media", ref: 100, group: "media", col: "text" },
+          { t: "p", id: 2, c: ["Two."] },
+          { t: "media", ref: 105, group: "media", col: "margin" },
+          { t: "p", id: 3, c: ["Three."] },
+          { t: "cluster", col: "margin", items: [{ ref: 101, group: "media" }] },
+        ],
+      },
+    ];
+    const { container } = render(
+      <MemoryRouter>
+        <MediaViewerProvider>
+          <ArticleBody blocks={blocks} ctx={ctx()} />
+        </MediaViewerProvider>
+      </MemoryRouter>,
+    );
+    const boxes = Array.from(container.querySelectorAll("figure.enc-mbox"));
+    expect(boxes.map((b) => b.classList.contains("enc-mbox-wide"))).toEqual([true, true, false, false]);
+    // A 556 px photo is scaled to the 432 px text column; the 365 px flag keeps its size.
+    expect(boxes[1]!.querySelector("img")?.getAttribute("width")).toBe("432");
+    expect(boxes[1]!.querySelector("img")?.getAttribute("src")).toBe("/media/file/p100.jpg");
+    expect(boxes[0]!.querySelector("img")?.getAttribute("width")).toBe("365");
+    expect(boxes[2]!.querySelector("img")?.getAttribute("src")).toBe("/media/file/m.jsm");
+    // A one-item cluster is a margin box without thumbnails.
+    expect(boxes[3]!.querySelector(".enc-mbox-thumbs")).toBeNull();
+  });
+
+  it("draws a sidebar teaser in the text column", () => {
+    mockFetch();
+    const blocks: Block[] = [{ t: "p", id: 1, c: ["Text."] }, { t: "media", ref: 106, group: "sidebar", col: "text" }];
+    const { container } = render(
+      <MemoryRouter>
+        <MediaViewerProvider>
+          <ArticleBody blocks={blocks} ctx={ctx()} />
+        </MediaViewerProvider>
+      </MemoryRouter>,
+    );
+    const t = container.querySelector("aside.enc-sidebar-teaser")!;
+    expect(t.querySelector(".enc-sb-hdr")?.textContent).toBe("Sidebars");
+    expect(t.querySelector(".enc-sb-cat")?.textContent).toBe("HISTORIC DOCUMENTS");
+    expect(t.querySelector(".enc-sb-title")?.textContent).toBe("Ten Who Changed Things");
+    expect(t.querySelector(".enc-sb-body")?.textContent).toBe("A synthetic preview.");
+    expect(t.querySelector("a.enc-sb-open")?.getAttribute("href")).toBe("/item/106");
+    expect(container.querySelector("figure.enc-mbox")).toBeNull();
+  });
+
+  it("prints no section numbers or toggles in the Kids layout, and leaves the grid to the page", () => {
+    mockFetch();
+    const blocks: Block[] = [...body, { t: "media-grid", col: "grid", items: [{ ref: 100, group: "media" }] }];
+    const { container } = render(
+      <MemoryRouter>
+        <MediaViewerProvider>
+          <ArticleBody blocks={blocks} ctx={{ ...ctx(), layout: "kids", mediaColumn: false }} />
+        </MediaViewerProvider>
+      </MemoryRouter>,
+    );
+    expect(container.querySelector("#s2 .enc-section-title")?.textContent?.trim()).toBe("HABITAT");
+    expect(container.querySelector(".enc-secnum")).toBeNull();
+    expect(container.querySelector(".enc-toggle")).toBeNull();
+    expect(container.querySelector("figure.enc-mbox")).toBeNull();
+    expect(container.querySelector(".enc-inline-table td")?.textContent).toBe("cell");
   });
 
   it("shows only headings and the introduction preview in the outline", () => {

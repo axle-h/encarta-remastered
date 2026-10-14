@@ -45,6 +45,8 @@ export function legendEntries(style: StyleSpecification, zoom: number, o: ClassO
     if (layer.type === "background" || layer.type === "raster") continue;
     if (layer.id.startsWith(HIT_PREFIX) || layer.id === STAT_LAYER || isHoverLayer(layer)) continue;
     if (!inZoom(layer, zoom) || !layerState(layer, o).visible) continue;
+    // Pens that draw only over water (draw-over masks): the key shows the line as drawn on land.
+    if (JSON.stringify((layer as { filter?: unknown }).filter ?? null).includes('["==",["get","water"],true]')) continue;
     const { ids, names } = layerClasses(layer);
     names.forEach((rawName, i) => {
       const id = ids[i];

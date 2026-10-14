@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { TourControl } from "./control";
 import { parseCommand } from "./script/parse";
 import { lcg } from "./sim/effects";
+import { parseWorldLoaded, siteMapMarker } from "./sitemap";
 import type { Step, TourScene } from "./types";
 
 const TOURS = resolve(__dirname, "../../../out/tours");
@@ -33,6 +34,26 @@ describe.skipIf(ids.length === 0)("converted tours", () => {
   for (const id of ids) {
     describe(id, () => {
       const scene = load(id);
+
+      it("each stop's site-map marker falls on that stop's location box (§4.2, rotated frames included)", () => {
+        if (!scene.stops?.length || !scene.sites?.length || !scene.siteMap.payload) return;
+        const pairs = scene.siteMap.payload.replace(/^[^:]*:/, "").split(",").map((p) => p.split("=") as [string, string]);
+        const cfg = parseWorldLoaded(pairs);
+        let checked = 0;
+        for (const stop of scene.stops) {
+          const site = scene.sites.find((s) => s.id === stop.site);
+          expect(site?.image, `stop ${stop.id} has a site map image`).toBeTruthy();
+          const loc = site?.locations.find((l) => l.stop === stop.id);
+          const m = [...(stop.command ?? "").matchAll(/MOVETO=([-\d.]+),[-\d.]+,([-\d.]+),([-\d.]+)/g)].at(-1);
+          if (!loc || loc.x === null || loc.y === null || !m) continue; // floor-only stops have no location
+          const mk = siteMapMarker(cfg, Number(m[1]), Number(m[2]), Number(m[3]));
+          // Location boxes are 11 px, x/y at the top-left; the art and the marker maths agree to 13 px.
+          expect(Math.abs((mk?.px ?? 1e9) - (loc.x + 5)), stop.title).toBeLessThanOrEqual(14);
+          expect(Math.abs((mk?.py ?? 1e9) - (loc.y + 5)), stop.title).toBeLessThanOrEqual(14);
+          checked++;
+        }
+        expect(checked).toBeGreaterThan(0);
+      });
 
       it("the TS parser converts every statement like the converter", () => {
         const checks: [string, Step[]][] = [];

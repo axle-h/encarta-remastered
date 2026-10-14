@@ -11,9 +11,12 @@
 
 use super::geo;
 use super::objects::Classes;
+use super::pixel::{self, SurfaceClasses};
+use super::vector;
 use super::vector::Tileset;
 use anyhow::{Context, Result};
 use encarta_formats::mad::Atlas;
+use encarta_formats::mad::cells::CellSystem;
 use encarta_formats::mad::schemas::{Bitmap, DisplayRule, DisplayRules, decode_record};
 use encarta_formats::mad::tables::{self, GeometryKind, LabelStyle, MapStyle, PenDef};
 use serde::Serialize;
@@ -45,48 +48,22 @@ fn slug(s: &str) -> String {
     o.trim_matches('-').to_string()
 }
 
-/// The parts of a MapStyle record beyond what `tables::MapStyle` decodes (mad-styling.md §3).
+/// A MapStyle record and how the converter reads its colours (mad-styling.md §3: colour 1 is taken
+/// as the space colour and colour 2 as the globe background, both hypotheses).
 pub struct StyleInfo {
     pub style: MapStyle,
-    pub space: [u8; 3],
-    pub globe: [u8; 3],
-    pub is_default: bool,
-    pub min_alt_m: u32,
-    pub max_alt_m: u32,
 }
 
 impl StyleInfo {
-    fn from(s: MapStyle) -> StyleInfo {
-        let r = &s.raw;
-        let u32_at = |o: usize| u32::from_le_bytes(r[o..o + 4].try_into().unwrap());
-        StyleInfo {
-            space: [r[0x62], r[0x63], r[0x64]],
-            globe: [r[0x65], r[0x66], r[0x67]],
-            is_default: r[0x68] == 1,
-            min_alt_m: u32_at(0x69),
-            max_alt_m: u32_at(0x6D),
-            style: s,
-        }
+    fn space(&self) -> [u8; 3] {
+        self.style.colour1
+    }
+    fn globe(&self) -> [u8; 3] {
+        self.style.colour2
     }
     pub fn slug(&self) -> String {
         slug(&self.style.name)
     }
-}
-
-/// GeoTrans: 167 ramps × 15 RGB colours (mad-styling.md §6).
-fn geo_trans(b: &[u8]) -> Vec<[[u8; 3]; 15]> {
-    b.as_chunks::<45>().0.iter().map(|r| std::array::from_fn(|i| [r[3 * i], r[3 * i + 1], r[3 * i + 2]])).collect()
-}
-
-/// MinRect: `{u16 style, u32 altitude m, f32 lat1, lon1, lat2, lon2}` (mad-styling.md §13.2).
-pub fn min_rects(b: &[u8]) -> Vec<(u16, u32, [f32; 4])> {
-    b.as_chunks::<22>().0.iter()
-        .map(|r| {
-            let f = |o: usize| f32::from_le_bytes(r[o..o + 4].try_into().unwrap());
-            let (la1, lo1, la2, lo2) = (f(6), f(10), f(14), f(18));
-            (u16::from_le_bytes([r[0], r[1]]), u32::from_le_bytes(r[2..6].try_into().unwrap()), [lo1.min(lo2), la1.min(la2), lo1.max(lo2), la1.max(la2)])
-        })
-        .collect()
 }
 
 /// Glyph face name for a Label Font id and style flags ("MS Reference Sans Serif Bold").
@@ -137,11 +114,15 @@ struct Ctx<'a> {
     classes: &'a Classes,
     pens: Vec<PenDef>,
     labels: Vec<LabelStyle>,
-    ramps: Vec<[[u8; 3]; 15]>,
+    ramps: Vec<tables::Ramp>,
     fonts: BTreeMap<u8, String>,
     /// Classes present in the detail tileset (bands 8–9).
     detail_classes: BTreeSet<u16>,
+    /// First zoom of the detail tileset.
+    detail_from: f64,
     faces: BTreeSet<String>,
+    /// Pixel classes of the current style's raster over water and land (draw-over masks, tints).
+    surface: SurfaceClasses,
 }
 
 /// One compiled layer before merging: everything but the class filter.
@@ -155,7 +136,46 @@ struct Proto {
     maxzoom: f64,
     layout: Value,
     paint: Value,
+    /// Combined with the class filter (draw-over masks: water or land runs only).
+    filter: Option<Value>,
     placeholder: Option<String>,
+}
+
+/// Average advance of a label character in ems, for the abbreviation fallback (hypothesis: the
+/// spec says only "when the full name does not fit", mad-styling.md §7.3).
+const CHAR_EM: f64 = 0.6;
+
+/// `text-field` of an area label: the name, or its abbreviation (U+0002) where the name is wider
+/// than the area. The area's width at zoom 10 is the tile property `width_z10`; MapLibre allows
+/// `zoom` only as the input of a top-level step, so the test is repeated at every half zoom.
+fn area_text_field(size: f64, spacing_em: f64, z0: f64, z1: f64) -> Value {
+    let name = json!(["coalesce", ["get", "name"], ""]);
+    let fits = |z: f64| {
+        let width = json!(["*", ["length", name.clone()], size * (CHAR_EM + spacing_em)]);
+        json!(["case",
+            ["all", ["has", "abbr"], ["has", "width_z10"], [">", width, ["*", ["get", "width_z10"], 2f64.powf(z - 10.0)]]],
+            ["get", "abbr"], name.clone()])
+    };
+    let start = (z0 * 2.0).floor() / 2.0;
+    let end = z1.min(18.0);
+    let mut step = vec![json!("step"), json!(["zoom"]), fits(start)];
+    let mut z = start + 0.5;
+    while z < end {
+        step.push(json!(z));
+        step.push(fits(z));
+        z += 0.5;
+    }
+    if step.len() == 3 { fits(start) } else { Value::Array(step) }
+}
+
+/// MapLibre filter for the line runs a pen may draw on (`None`: all of them).
+fn side_filter(water: bool, land: bool) -> Option<Option<Value>> {
+    match (water, land) {
+        (true, true) => Some(None),
+        (true, false) => Some(Some(json!(["==", ["get", "water"], true]))),
+        (false, true) => Some(Some(json!(["!=", ["get", "water"], true]))),
+        (false, false) => None,
+    }
 }
 
 impl Ctx<'_> {
@@ -163,7 +183,17 @@ impl Ctx<'_> {
         v & 0x0F
     }
 
-    fn label_layout(&mut self, rule: &DisplayRule, kind: GeometryKind) -> Option<(Value, Value, Option<String>)> {
+    /// Colour of a GeoTrans tint over this style's land: the ramp entry that the mean land
+    /// brightness selects (mad-styling.md §6), so it comes from the light end over light rasters.
+    fn tint(&self, ramp: u8) -> Option<[u8; 3]> {
+        self.ramps.get(ramp as usize).map(|r| r[tables::tint_index(self.surface.land_luminance)])
+    }
+
+    fn pen_colour(&self, p: &PenDef) -> String {
+        if p.b8[3] != 0xFF { self.tint(p.b8[3]).map_or(hex(p.color), hex) } else { hex(p.color) }
+    }
+
+    fn label_layout(&mut self, rule: &DisplayRule, kind: GeometryKind, zooms: (f64, f64)) -> Option<(Value, Value, Option<String>)> {
         let l = self.labels.get(rule.w5_13[0] as usize)?;
         let bold = l.tail[0] == 1;
         let italic = l.tail[1] == 1;
@@ -190,6 +220,7 @@ impl Ctx<'_> {
             }
             GeometryKind::Area => {
                 layout["text-max-width"] = json!(8);
+                layout["text-field"] = area_text_field(size, spacing / size.max(1.0), zooms.0, zooms.1);
             }
             _ => {
                 layout["text-variable-anchor"] = json!(["left", "right", "top", "bottom"]);
@@ -206,21 +237,29 @@ impl Ctx<'_> {
         Some((layout, paint, ph))
     }
 
+    /// Zoom range of a rule (styles are compiled for the reference pane at latitude 0).
+    fn rule_zooms(rule: &DisplayRule) -> (f64, f64) {
+        let z_lo = geo::zoom_for_altitude(rule.max_scale as f64 / 1000.0).max(0.0);
+        let z_hi = geo::zoom_for_altitude((rule.min_scale as f64 / 1000.0).max(1.0)).min(24.0);
+        (z_lo, z_hi)
+    }
+
     /// Compiles one rule of one class into layer prototypes.
     fn compile(&mut self, rule: &DisplayRule, is_moon: bool) -> Vec<Proto> {
         let c = rule.class as usize;
         let class = &self.classes.classes[c];
         let kind = class.kind;
-        let z_lo = geo::zoom_for_altitude(rule.max_scale as f64 / 1000.0).max(0.0);
-        let z_hi = geo::zoom_for_altitude((rule.min_scale as f64 / 1000.0).max(1.0)).min(24.0);
+        let (z_lo, z_hi) = Self::rule_zooms(rule);
         if z_hi <= z_lo {
             return Vec::new();
         }
+        let masked = !is_moon && self.classes.uses[c].masked > 0;
         let mut out = Vec::new();
         let z12 = class.group as u32;
         let prio = class.priority as u32;
-        // Sources by zoom: the earth archive (overzoomed at z ≥ 9 unless the class has detail data).
-        let detail_from = 9.0;
+        // Sources by zoom: the earth archive (overzoomed up to the detail zooms unless the class
+        // has detail data).
+        let detail_from = self.detail_from;
         let has_detail = self.detail_classes.contains(&rule.class);
         let sources: Vec<(&'static str, f64, f64)> = if is_moon {
             vec![("moon", z_lo, z_hi)]
@@ -248,6 +287,7 @@ impl Ctx<'_> {
                 maxzoom: hi,
                 layout,
                 paint,
+                filter: None,
                 placeholder: ph,
             };
             let vis = |v: u8| if v == 2 { json!({"visibility": "none"}) } else { json!({}) };
@@ -260,22 +300,26 @@ impl Ctx<'_> {
                             if p.w12 != NONE {
                                 paint["fill-pattern"] = json!(format!("bm{}", p.w12));
                             } else if p.b8[3] != 0xFF {
-                                let ramp = self.ramps.get(p.b8[3] as usize).copied().unwrap_or([[128; 3]; 15]);
-                                paint["fill-color"] = json!(hex(ramp[7]));
+                                paint["fill-color"] = json!(self.tint(p.b8[3]).map_or(hex(p.color), hex));
                                 paint["fill-opacity"] = json!(0.5);
-                                ph = Some(format!("GeoTrans tint ramp {} over the hill shading is approximated by a 50 % fill (mad-styling.md §6)", p.b8[3]));
+                                ph = Some(format!(
+                                    "GeoTrans tint ramp {} over the hill shading is approximated by a 50 % fill of the ramp entry for the style's mean land brightness (mad-styling.md §6)",
+                                    p.b8[3]
+                                ));
                             } else {
                                 paint["fill-color"] = json!(hex(p.color));
                             }
                             out.push(base((0, z12, prio), "fill", "areas", vis(geom), paint, ph));
                         }
+                        // Outline pens stroke the seam-free `outlines` linework.
                         for (k, p) in pens.iter().enumerate().skip(1) {
                             if let Some(p) = p.and_then(|p| self.pens.get(p))
                                 && p.b8[1] > 0
                             {
-                                let paint = json!({ "line-color": hex(p.color), "line-width": p.b8[1] });
-                                out.push(base((1 + k as u8, z12, prio), "line", "areas", vis(geom), paint,
-                                    Some("area outline pen: MVT area rings include cell-clip edges; outlines may show cell seams".into())));
+                                let paint = json!({ "line-color": self.pen_colour(p), "line-width": p.b8[1] });
+                                let mut layout = vis(geom);
+                                layout["line-join"] = json!("round");
+                                out.push(base((1 + k as u8, z12, prio), "line", "outlines", layout, paint, None));
                             }
                         }
                     }
@@ -286,11 +330,17 @@ impl Ctx<'_> {
                             if width == 0.0 {
                                 continue;
                             }
-                            let colour = if p.b8[3] != 0xFF {
-                                self.ramps.get(p.b8[3] as usize).map_or(hex(p.color), |r| hex(r[7]))
+                            // Draw-over mask (mad-styling.md §5.2): which of the water and land runs.
+                            let side = if masked {
+                                let (w, l) = self.surface.pen_sides(pixel::pen_mask(&p.flags));
+                                match side_filter(w, l) {
+                                    Some(f) => f,
+                                    None => continue,
+                                }
                             } else {
-                                hex(p.color)
+                                None
                             };
+                            let colour = self.pen_colour(p);
                             let offset = if p.signed24 != -128 { p.signed24 as f64 } else { 0.0 };
                             let strokes: Vec<(f64, f64)> = if passes >= width || passes == 0.0 {
                                 vec![(width, offset)]
@@ -309,7 +359,9 @@ impl Ctx<'_> {
                                 }
                                 let mut layout = vis(geom);
                                 layout["line-join"] = json!("round");
-                                out.push(base((1 + k as u8, z12, prio), "line", "lines", layout, paint, None));
+                                let mut proto = base((1 + k as u8, z12, prio), "line", "lines", layout, paint, None);
+                                proto.filter = side.clone();
+                                out.push(proto);
                             }
                         }
                     }
@@ -322,7 +374,7 @@ impl Ctx<'_> {
                                 layout["symbol-sort-key"] = json!(["get", "priority"]);
                                 layout["icon-allow-overlap"] = json!(false);
                                 if label != 0
-                                    && let Some((tl, mut tp, ph)) = self.label_layout(rule, kind)
+                                    && let Some((tl, mut tp, ph)) = self.label_layout(rule, kind, (lo, hi))
                                 {
                                     // Symbol and label appear together or not at all (§7.4); an
                                     // optional label on a shown symbol starts transparent.
@@ -352,34 +404,59 @@ impl Ctx<'_> {
                     GeometryKind::Line => "lines",
                     _ => "points",
                 };
-                if let Some((mut layout, paint, ph)) = self.label_layout(rule, kind) {
+                if let Some((mut layout, paint, ph)) = self.label_layout(rule, kind, (lo, hi)) {
                     if label == 2 {
                         layout["visibility"] = json!("none");
                     }
                     out.push(base((10, 0, prio), "symbol", layer, layout, paint, ph));
                 }
             }
-            // Highlight on hover/selection (b15/b16/w17).
+            // Highlight of the selected place (b15/b16/w17). Encarta also names the mouse-over
+            // highlight in code, but the VM shows none on hover (V11): the client draws these
+            // for its selection, and on hover only as an option.
             if rule.b14_16[1] == 1
                 && let Some(p) = pen_ref(rule.w17).and_then(|p| self.pens.get(p))
             {
-                    let colour = if p.b8[3] != 0xFF { self.ramps.get(p.b8[3] as usize).map_or(hex(p.color), |r| hex(r[7])) } else { hex(p.color) };
-                    let on = json!(["case", ["boolean", ["feature-state", "hover"], false], 1, 0]);
-                    let layer = match kind {
-                        GeometryKind::Area => "areas",
-                        GeometryKind::Line => "lines",
-                        _ => "points",
-                    };
-                    if rule.b14_16[2] == 3 && kind == GeometryKind::Area {
-                        out.push(base((7, z12, prio), "fill", layer, json!({}), json!({ "fill-color": colour, "fill-opacity": ["*", 0.6, on] }), None));
-                    } else if kind != GeometryKind::Point && kind != GeometryKind::RadiusPoint {
-                        let w = p.b8[1].max(1);
-                        out.push(base((7, z12, prio), "line", layer, json!({}), json!({ "line-color": colour, "line-width": w, "line-opacity": on }), None));
-                    }
+                let colour = self.pen_colour(p);
+                let on = json!(["case", ["boolean", ["feature-state", "hover"], false], 1, 0]);
+                if rule.b14_16[2] == 3 && kind == GeometryKind::Area {
+                    let ph = (p.b8[3] != 0xFF).then(|| format!("highlight tint ramp {}: one ramp entry (for the style's mean land brightness) at 60 %, not per pixel (mad-styling.md §6)", p.b8[3]));
+                    out.push(base((7, z12, prio), "fill", "areas", json!({}), json!({ "fill-color": colour, "fill-opacity": ["*", 0.6, on] }), ph));
+                } else if kind != GeometryKind::Point && kind != GeometryKind::RadiusPoint {
+                    let layer = if kind == GeometryKind::Area { "outlines" } else { "lines" };
+                    let w = p.b8[1].max(1);
+                    out.push(base((7, z12, prio), "line", layer, json!({}), json!({ "line-color": colour, "line-width": w, "line-opacity": on }), None));
+                }
             }
         }
         out
     }
+}
+
+/// Per class, the zoom ranges in which the rules make it interactive (PDCAltitudeGrid `b4` low
+/// nibble, mad-styling.md §4.1): `[[minzoom, maxzoom, tri-state], …]`, adjacent equal ranges
+/// merged, tri-state 1 = by default, 2 = when the user turns the class on.
+fn interactive_ranges(rules: &[DisplayRule]) -> BTreeMap<u16, Vec<(f64, f64, u8)>> {
+    let mut out: BTreeMap<u16, Vec<(f64, f64, u8)>> = BTreeMap::new();
+    for r in rules {
+        let tri = r.b4 & 0x0F;
+        let (lo, hi) = Ctx::rule_zooms(r);
+        if tri == 0 || hi <= lo {
+            continue;
+        }
+        let v = out.entry(r.class).or_default();
+        let (lo, hi) = ((lo * 100.0).floor() / 100.0, (hi * 100.0).ceil() / 100.0);
+        if let Some(last) = v.iter_mut().find(|e| e.2 == tri && ((e.1 - lo).abs() < 0.02 || (hi - e.0).abs() < 0.02)) {
+            last.0 = last.0.min(lo);
+            last.1 = last.1.max(hi);
+        } else {
+            v.push((lo, hi, tri));
+        }
+    }
+    for v in out.values_mut() {
+        v.sort_by(|a, b| a.0.total_cmp(&b.0));
+    }
+    out
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -388,38 +465,53 @@ pub struct StyleReport {
     pub rules: usize,
     pub layers: usize,
     pub placeholder_layers: usize,
+    /// `(style id, water pixel class, land pixel class, mean land luminance)` of each style's raster.
+    pub surfaces: Vec<(u16, u8, u8, f64)>,
     pub faces: Vec<String>,
     pub sprites: usize,
 }
 
-fn tileset_source(ts: Tileset) -> Value {
-    json!({ "type": "vector", "url": format!("pmtiles:///atlas/{}", ts.path()), "attribution": "Microsoft Encarta 2009" })
+/// A vector source. `minzoom`/`maxzoom` repeat the archive's own (the PMTiles header wins in
+/// MapLibre); the client's flat view needs them when it re-tiles the archive itself.
+fn tileset_source(ts: Tileset, cells: &CellSystem) -> Value {
+    let zb = vector::zoom_bands(cells, ts);
+    let (lo, hi) = (zb.first().map_or(0, |z| z.0), zb.last().map_or(0, |z| z.0));
+    json!({ "type": "vector", "url": format!("pmtiles:///atlas/{}", ts.path()), "minzoom": lo, "maxzoom": hi, "attribution": "Microsoft Encarta 2009" })
 }
 
 pub fn run(atlas: &Atlas, classes: &Classes, detail_classes: BTreeSet<u16>, out: &Path, log: &dyn Fn(String)) -> Result<(StyleReport, BTreeSet<String>)> {
     let mut rep = StyleReport::default();
+    let cells = atlas.cells()?;
     let fonts: BTreeMap<u8, String> =
-        tables::label_fonts(atlas.require("Label Font")?)?.into_iter().filter(|f| f.id >> 8 == 0).map(|f| (f.id as u8, f.name)).collect();
+        tables::label_fonts(atlas.require("Label Font")?)?.into_iter().filter(|f| f.charset == tables::CHARSET_ANSI).map(|f| (f.font, f.name)).collect();
     let mut ctx = Ctx {
         classes,
         pens: tables::pen_defs(atlas.require("GeoPenDef")?)?,
         labels: tables::label_styles(atlas.require("GeoLabel")?)?,
-        ramps: geo_trans(atlas.require("GeoTrans")?),
+        ramps: tables::geo_trans(atlas.require("GeoTrans")?)?,
         fonts,
         detail_classes,
+        detail_from: vector::detail_from_zoom(&cells) as f64,
         faces: BTreeSet::new(),
+        surface: SurfaceClasses { water: 1, land: 4, land_luminance: 128.0 },
     };
+    let terrain = atlas.terrain()?;
+    let hypso = terrain.raster("HYPSO").context("no HYPSO raster")?;
     let rules_grid = atlas.grid("PDCAltitudeGrid", "PDCAltitudeLookup")?;
-    let min_rects = min_rects(atlas.require("MinRect")?);
+    let min_rects = tables::min_rects(atlas.require("MinRect")?)?;
     let dir = out.join("styles");
     std::fs::create_dir_all(&dir)?;
     let mut index = Vec::new();
     for s in atlas.map_styles()? {
-        let info = StyleInfo::from(s);
+        let info = StyleInfo { style: s };
         let s = &info.style;
         let rules: DisplayRules = decode_record(&rules_grid, s.id as u32).with_context(|| format!("rules of style {}", s.id))?;
         rep.rules += rules.rules.len();
         let is_moon_style = s.raster.eq_ignore_ascii_case("MOON");
+        let raster = terrain.raster(&s.raster).with_context(|| format!("raster {} of style {}", s.raster, s.name))?;
+        let look = raster.look(&s.look).with_context(|| format!("LOOK {} of style {}", s.look, s.name))?;
+        ctx.surface = pixel::calibrate(hypso, raster, look, 4096)?;
+        rep.surfaces.push((s.id, ctx.surface.water, ctx.surface.land, (ctx.surface.land_luminance * 10.0).round() / 10.0));
         let mut protos: Vec<(Proto, u16)> = Vec::new();
         for r in &rules.rules {
             let moon = classes.is_moon(r.class as usize);
@@ -434,7 +526,7 @@ pub fn run(atlas: &Atlas, classes: &Classes, detail_classes: BTreeSet<u16>, out:
         let mut merged: BTreeMap<String, (Proto, Vec<u16>)> = BTreeMap::new();
         for (p, c) in protos {
             let key = serde_json::to_string(&json!([p.order.0, p.order.1, p.kind, p.source, p.source_layer,
-                (p.minzoom * 100.0).round(), (p.maxzoom * 100.0).round(), p.layout, p.paint]))?;
+                (p.minzoom * 100.0).round(), (p.maxzoom * 100.0).round(), p.layout, p.paint, p.filter]))?;
             let e = merged.entry(key).or_insert_with(|| (p.clone(), Vec::new()));
             e.0.order.2 = e.0.order.2.min(p.order.2);
             if !e.1.contains(&c) {
@@ -449,18 +541,23 @@ pub fn run(atlas: &Atlas, classes: &Classes, detail_classes: BTreeSet<u16>, out:
         sources.insert("raster".into(), json!({ "type": "raster", "url": format!("pmtiles:///atlas/raster/{raster}/{look}.pmtiles"), "tileSize": 256 }));
         sources.insert("raster-index".into(), json!({ "type": "raster", "url": format!("pmtiles:///atlas/raster/{raster}/index.pmtiles"), "tileSize": 256 }));
         if is_moon_style {
-            sources.insert("moon".into(), tileset_source(Tileset::Moon));
+            sources.insert("moon".into(), tileset_source(Tileset::Moon, &cells));
         } else {
-            sources.insert("earth".into(), tileset_source(Tileset::Earth));
-            sources.insert("earth-detail".into(), tileset_source(Tileset::EarthDetail));
+            sources.insert("earth".into(), tileset_source(Tileset::Earth, &cells));
+            sources.insert("earth-detail".into(), tileset_source(Tileset::EarthDetail, &cells));
         }
         let mut layers = vec![
-            json!({ "id": "background", "type": "background", "paint": { "background-color": hex(info.globe) } }),
+            json!({ "id": "background", "type": "background", "paint": { "background-color": hex(info.globe()) } }),
             json!({ "id": "raster", "type": "raster", "source": "raster", "paint": { "raster-resampling": "nearest" } }),
         ];
         let mut placeholders = 0;
         for (i, (p, cls)) in groups.iter().enumerate() {
-            let filter = if cls.len() == 1 { json!(["==", ["get", "class"], cls[0]]) } else { json!(["in", ["get", "class"], ["literal", cls]]) };
+            let class_filter = if cls.len() == 1 { json!(["==", ["get", "class"], cls[0]]) } else { json!(["in", ["get", "class"], ["literal", cls]]) };
+            // The class test stays first: the client rewrites it for the user's class overrides.
+            let filter = match &p.filter {
+                Some(f) => json!(["all", class_filter, f]),
+                None => class_filter,
+            };
             let mut l = json!({
                 "id": format!("{}-{}-{i}", p.kind, p.source_layer),
                 "type": p.kind, "source": p.source, "source-layer": p.source_layer,
@@ -474,10 +571,15 @@ pub fn run(atlas: &Atlas, classes: &Classes, detail_classes: BTreeSet<u16>, out:
             }
             layers.push(l);
         }
+        let interactive: serde_json::Map<String, Value> = interactive_ranges(&rules.rules)
+            .into_iter()
+            .filter(|(c, _)| classes.is_moon(*c as usize) == is_moon_style)
+            .map(|(c, v)| (c.to_string(), json!(v.iter().map(|r| json!([r.0, r.1, r.2])).collect::<Vec<_>>())))
+            .collect();
         let rects: Vec<Value> = min_rects
             .iter()
-            .filter(|r| r.0 == s.id)
-            .map(|r| json!({ "bbox": r.2, "min_altitude_km": r.1 as f64 / 1000.0, "maxzoom": geo::zoom_for_altitude(r.1 as f64 / 1000.0) }))
+            .filter(|r| r.style == s.id)
+            .map(|r| json!({ "bbox": r.bbox(), "min_altitude_km": r.altitude_m as f64 / 1000.0, "maxzoom": geo::zoom_for_altitude(r.altitude_m as f64 / 1000.0) }))
             .collect();
         let style = json!({
             "version": 8,
@@ -490,15 +592,19 @@ pub fn run(atlas: &Atlas, classes: &Classes, detail_classes: BTreeSet<u16>, out:
             "metadata": {
                 "encarta:style_id": s.id,
                 "encarta:raster": s.raster, "encarta:look": s.look,
-                "encarta:space_colour": hex(info.space),
-                "encarta:default_style": info.is_default,
-                "encarta:min_altitude_km": info.min_alt_m as f64 / 1000.0,
-                "encarta:max_altitude_km": info.max_alt_m as f64 / 1000.0,
-                "encarta:minzoom": geo::zoom_for_altitude(info.max_alt_m as f64 / 1000.0).max(0.0),
-                "encarta:maxzoom": geo::zoom_for_altitude(info.min_alt_m as f64 / 1000.0),
+                "encarta:space_colour": hex(info.space()),
+                "encarta:default_style": info.style.is_default,
+                "encarta:min_altitude_km": info.style.min_altitude_m as f64 / 1000.0,
+                "encarta:max_altitude_km": info.style.max_altitude_m as f64 / 1000.0,
+                "encarta:minzoom": geo::zoom_for_altitude(info.style.max_altitude_m as f64 / 1000.0).max(0.0),
+                "encarta:maxzoom": geo::zoom_for_altitude(info.style.min_altitude_m as f64 / 1000.0),
                 "encarta:min_rects": rects,
                 "encarta:view_p_over_m": geo::VIEW_P_OVER_M,
-                "encarta:notes": "Zoom ranges come from Encarta camera altitudes via zoom = log2(40075·(P/m)/(1280·alt_km)); P/m is a working value until measured in the VM. The raster-index source carries class indices for client-side recolouring (raster/palettes.json).",
+                "encarta:view_p_over_m_per_height_px": geo::VIEW_P_OVER_M_PER_HEIGHT_PX,
+                "encarta:reference_pane_height_px": geo::REFERENCE_PANE_HEIGHT_PX,
+                "encarta:interactive": interactive,
+                "encarta:surface": { "water_pixel_class": ctx.surface.water, "land_pixel_class": ctx.surface.land, "land_luminance": (ctx.surface.land_luminance * 10.0).round() / 10.0 },
+                "encarta:notes": "Zoom ranges come from Encarta camera altitudes via zoom = log2(40075·(P/m)/(1280·alt_km)) at latitude 0 for Encarta's 812 × 518 map pane (P/m = 3135, measured in the VM; P/m ≈ 6.05 × pane height). A client shifts the zoom ranges by log2(cos φ · P/m(own pane) / 3135) to apply Encarta's rule at the true ground scale. The raster-index source carries class indices for client-side recolouring (raster/palettes.json).",
             },
         });
         let name = format!("{}.json", info.slug());
@@ -506,7 +612,7 @@ pub fn run(atlas: &Atlas, classes: &Classes, detail_classes: BTreeSet<u16>, out:
         rep.layers += layers.len();
         rep.placeholder_layers += placeholders;
         rep.styles.push((s.id, s.name.clone(), format!("styles/{name}"), layers.len()));
-        index.push(json!({ "id": s.id, "name": s.name, "file": format!("styles/{name}"), "raster": s.raster, "look": s.look, "default": info.is_default }));
+        index.push(json!({ "id": s.id, "name": s.name, "file": format!("styles/{name}"), "raster": s.raster, "look": s.look, "default": info.style.is_default }));
     }
     std::fs::write(dir.join("index.json"), serde_json::to_vec_pretty(&index)?)?;
     rep.sprites = sprites(atlas, &out.join("sprites"))?;

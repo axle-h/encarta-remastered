@@ -37,7 +37,7 @@ pub struct ValueStyle {
     pub rgb: [u8; 3],
     /// Hill-shading step (low 4 bits).
     pub shade: u8,
-    /// Attribute byte (meaning open: 0 land, 2 water/ice in HYPSO).
+    /// The pixel class of the colour (mad-styling.md §5.2); in HYPSO 0 = water, 2 = land and ice (mad.md §5.4).
     pub kind: u8,
 }
 

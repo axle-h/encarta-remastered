@@ -73,47 +73,95 @@ export function vectorSources(style: StyleSpecification): string[] {
     .map(([id]) => id);
 }
 
-/** Five-letter prefixes of thematic area classes that cover the world (languages, religions, climate …). */
-export const THEME_PREFIXES = ["LANG ", "REL -", "CLI -", "ECO -", "Ecore", "TECT ", "Time ", "Dayli", "World"];
+/** `[minzoom, maxzoom)` ranges. */
+export type Ranges = [number, number][];
 
-function namedFilter(drawn: readonly number[]): FilterSpecification {
-  return [
-    "all",
-    ["has", "name"],
-    ["!=", ["get", "name"], ""],
-    ["!", ["to-boolean", ["coalesce", ["get", "anonymous"], false]]],
-    // Membership areas (one per organisation, covering its member states) are not places; Encarta's
-    // click menu does not list them (V11).
-    ["!=", ["get", "class_name"], "International organization"],
-    // World-wide thematic areas only where the style draws them: elsewhere they are not in Encarta's
-    // menu, and at low zooms their huge polygons made the invisible layer freeze the page.
-    [
-      "any",
-      ["!", ["in", ["slice", ["coalesce", ["get", "class_name"], ""], 0, 5], ["literal", THEME_PREFIXES]]],
-      ["in", ["get", "class"], ["literal", [...drawn]]],
-    ],
-  ] as FilterSpecification;
+/**
+ * The style's per-class interactive ranges (metadata `encarta:interactive`, from PDCAltitudeGrid
+ * `b4`, mad-styling.md §4.1): `class → [[minzoom, maxzoom, tri-state], …]`, tri-state 1 = by
+ * default, 2 = when the user turns the class on.
+ */
+export function interactiveRanges(style: StyleSpecification): Map<number, [number, number, number][]> {
+  const m = (style.metadata ?? {}) as Record<string, unknown>;
+  const raw = m["encarta:interactive"];
+  const out = new Map<number, [number, number, number][]>();
+  if (raw && typeof raw === "object") {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (Array.isArray(v)) out.set(Number(k), v.filter((r): r is [number, number, number] => Array.isArray(r) && r.length === 3));
+    }
+  }
+  return out;
+}
+
+function union(r: Ranges): Ranges {
+  const s = [...r].sort((a, b) => a[0] - b[0]);
+  const out: Ranges = [];
+  for (const [a, b] of s) {
+    const last = out[out.length - 1];
+    if (last && a <= last[1] + 0.02) last[1] = Math.max(last[1], b);
+    else out.push([a, b]);
+  }
+  return out;
 }
 
 /**
- * Invisible layers for hit-testing: the named features of the `areas` layer, so a click can list
- * everything under the cursor, as Encarta's pop-up menu does (V11 shot), including label-only areas
- * that no layer draws (regions, basins). MapLibre queries layers by geometry, not by opacity. Lines
- * are hit-tested on their drawn layers only: an invisible 7-px line layer over every named line
- * stalled the page at world zooms.
- * `drawn` = class rows the style shows by default.
+ * Where each class goes into the hit list: where its rules make it interactive (`b4`), with the
+ * user's class overrides (off = never, on = also where the rule makes it optional). Drawing is not
+ * required: the VM's click menu (V11) lists statistical regions and basins that Political neither
+ * draws nor labels. It also leaves out the time zones that Political marks interactive in the same
+ * way, which nothing in the rules explains yet (docs/atlas-client.md "Known differences").
  */
-export function hitLayers(style: StyleSpecification, drawn: readonly number[] = []): LayerSpecification[] {
-  const filter = namedFilter(drawn);
+export function hitRanges(style: StyleSpecification, o: ClassOverrides): Map<number, Ranges> {
+  const out = new Map<number, Ranges>();
+  for (const [cls, rules] of interactiveRanges(style)) {
+    if (o.off.has(cls)) continue;
+    const r = union(rules.filter((x) => x[2] === 1 || (x[2] === 2 && o.on.has(cls))).map((x): [number, number] => [x[0], x[1]]));
+    if (r.length) out.set(cls, r);
+  }
+  return out;
+}
+
+/** Classes in the hit list at `zoom`. */
+export function hitClassesAt(ranges: ReadonlyMap<number, Ranges>, zoom: number): Set<number> {
+  const out = new Set<number>();
+  for (const [cls, r] of ranges) if (r.some(([a, b]) => zoom >= a && zoom < b)) out.add(cls);
+  return out;
+}
+
+const NAMED: FilterSpecification = ["all", ["has", "name"], ["!=", ["get", "name"], ""], ["!", ["to-boolean", ["coalesce", ["get", "anonymous"], false]]]];
+
+/**
+ * Invisible layers for hit-testing the `areas` layer, so a click can list everything under the
+ * cursor as Encarta's pop-up menu does (V11), including label-only areas that no layer draws
+ * (regions, basins). One layer per zoom range with the classes in the hit list there; lines and
+ * points are hit-tested on their drawn layers. MapLibre queries layers by geometry, not opacity.
+ */
+export function hitLayers(style: StyleSpecification, ranges: ReadonlyMap<number, Ranges>): LayerSpecification[] {
+  const byRange = new Map<string, number[]>();
+  for (const [cls, rs] of ranges) {
+    for (const [a, b] of rs) {
+      const key = `${a.toFixed(2)}:${b.toFixed(2)}`;
+      const v = byRange.get(key) ?? [];
+      v.push(cls);
+      byRange.set(key, v);
+    }
+  }
   const out: LayerSpecification[] = [];
+  const keys = [...byRange.keys()].sort();
   for (const source of vectorSources(style)) {
-    out.push({
-      id: `${HIT_PREFIX}areas-${source}`,
-      type: "fill",
-      source,
-      "source-layer": "areas",
-      filter,
-      paint: { "fill-opacity": 0, "fill-color": "#000" },
+    keys.forEach((key, i) => {
+      const [a, b] = key.split(":").map(Number) as [number, number];
+      const classes = byRange.get(key)!.sort((x, y) => x - y);
+      out.push({
+        id: `${HIT_PREFIX}areas-${source}-${i}`,
+        type: "fill",
+        source,
+        "source-layer": "areas",
+        minzoom: a,
+        maxzoom: b,
+        filter: ["all", NAMED, ["in", ["get", "class"], ["literal", classes]]] as FilterSpecification,
+        paint: { "fill-opacity": 0, "fill-color": "#000" },
+      });
     });
   }
   return out;
@@ -173,5 +221,8 @@ export function layerState(layer: LayerSpecification, o: ClassOverrides): LayerS
   if (!keep.length) return { visible: false, filter: l.filter };
   if (keep.length === ids.length) return { visible: true, filter: l.filter };
   const classFilter = keep.length === 1 ? ["==", ["get", "class"], keep[0]] : ["in", ["get", "class"], ["literal", keep]];
+  // `["all", <class test>, <draw-over mask test>]`: keep the mask test (docs/atlas-output.md "Styles").
+  const f = l.filter;
+  if (Array.isArray(f) && f[0] === "all") return { visible: true, filter: ["all", classFilter, ...f.slice(2)] };
   return { visible: true, filter: classFilter };
 }

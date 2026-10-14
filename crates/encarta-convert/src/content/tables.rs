@@ -14,6 +14,7 @@ fn cell_inlines(t: &mut Tracker, e: &Element) -> Vec<Inline> {
     let mut cx = Ctx {
         t,
         title: None,
+        alt_title: &[],
         squash: true,
     };
     inline::children(&mut cx, e)
@@ -182,6 +183,7 @@ fn entry(t: &mut Tracker, e: &Element) -> Value {
                 let mut cx = Ctx {
                     t,
                     title: None,
+                    alt_title: &[],
                     squash: true,
                 };
                 for l in inline::children(&mut cx, c) {
@@ -310,7 +312,10 @@ pub fn inline_from_json(v: &Value) -> Option<Inline> {
         "radical" => Inline::Radical(s("c")),
         "overline" => Inline::Overline(s("c")),
         "vector" => Inline::Vector(s("c")),
-        "title-ref" => Inline::TitleRef(c()),
+        "title-ref" => Inline::TitleRef {
+            title: v["title"].as_array().map(|a| a.iter().filter_map(inline_from_json).collect()).unwrap_or_else(c),
+            alt: v["alt"].as_array().map(|a| a.iter().filter_map(inline_from_json).collect()).unwrap_or_default(),
+        },
         _ => Inline::Unknown {
             name: s("t"),
             c: c(),

@@ -249,6 +249,10 @@ fn cmd_table(o: &Opts) -> Result<()> {
             "Label Font" => serde_json::to_value(tables::label_fonts(b)?)?,
             "ShieldId" => serde_json::to_value(tables::shield_ids(b)?)?,
             "MillerStyles" => serde_json::to_value(tables::miller_styles(b)?)?,
+            "GeoTrans" => serde_json::to_value(tables::geo_trans(b)?)?,
+            "MinRect" => serde_json::to_value(tables::min_rects(b)?)?,
+            "Unicode Attributes" => serde_json::to_value(tables::unicode_attributes(b)?)?,
+            "Font Conv" => serde_json::to_value(tables::font_conv(b)?)?,
             "G1G2 to Unicode" => {
                 let g = g1()?;
                 let all: Vec<u8> = (0x20..=0xFF).collect();

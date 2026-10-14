@@ -74,3 +74,85 @@ export function siteMapMarker(cfg: SiteMapConfig, x: number, z: number, yawDeg: 
   const heading = (((Math.round(360 - yawDeg + 90 - rot) % 360) + 360) % 360);
   return { px, py, heading };
 }
+
+export type SiteMapMarker = { px: number; py: number; heading: number };
+
+/**
+ * §4.2 step 4: the host redraws the map only when the heading changes by more than 2° or the
+ * position by more than 2 px (per axis). `prev` null always redraws.
+ */
+export function markerMoved(prev: SiteMapMarker | null, next: SiteMapMarker | null): boolean {
+  if (!prev || !next) return prev !== next;
+  const dh = Math.abs(((next.heading - prev.heading + 540) % 360) - 180);
+  return dh > 2 || Math.abs(next.px - prev.px) > 2 || Math.abs(next.py - prev.py) > 2;
+}
+
+/**
+ * The view wedge as canvas arc angles (radians, y down): centred on the heading (degrees,
+ * counter-clockwise from +x with y up, §4.2 step 3), `fieldOfViewDeg` wide.
+ */
+export function wedgeAngles(headingDeg: number, fieldOfViewDeg: number): [number, number] {
+  const h = (headingDeg * Math.PI) / 180;
+  const half = (fieldOfViewDeg * Math.PI) / 360;
+  return [-h - half, -h + half];
+}
+
+/** The site-map window's size in Encarta (VM: screen (1,129)–(173,323)); the map images are two halves of this size. */
+export const SITE_MAP_WINDOW: [number, number] = [172, 194];
+
+/**
+ * Draws the site-map window: the image's left half (the plain map), its right half (the tinted
+ * map) inside the view wedge, then the "you are here" marker. `image` may be null (blank map).
+ */
+export function drawSiteMap(
+  g: CanvasRenderingContext2D,
+  image: CanvasImageSource | null,
+  imageSize: [number, number],
+  cfg: SiteMapConfig | null,
+  marker: SiteMapMarker | null,
+): void {
+  const [w, h] = SITE_MAP_WINDOW;
+  const half = Math.floor(imageSize[0] / 2);
+  g.save();
+  g.imageSmoothingEnabled = false;
+  g.fillStyle = "#fff";
+  g.fillRect(0, 0, w, h);
+  if (image && half > 0) g.drawImage(image, 0, 0, half, imageSize[1], 0, 0, half, imageSize[1]);
+  if (cfg && marker) {
+    const [a0, a1] = wedgeAngles(marker.heading, cfg.fieldOfViewDeg);
+    g.save();
+    g.beginPath();
+    g.moveTo(marker.px, marker.py);
+    g.arc(marker.px, marker.py, w + h, a0, a1);
+    g.closePath();
+    g.clip();
+    if (image && half > 0) g.drawImage(image, half, 0, half, imageSize[1], 0, 0, half, imageSize[1]);
+    else {
+      g.fillStyle = "#f7e3d6";
+      g.fillRect(0, 0, w, h);
+    }
+    g.restore();
+    drawMarker(g, marker.px, marker.py);
+  }
+  g.restore();
+}
+
+/** Our "you are here" marker: a four-way arrow in the host's marker colour, outlined in white. */
+function drawMarker(g: CanvasRenderingContext2D, x: number, y: number): void {
+  const cx = x + 0.5, cy = y + 0.5;
+  g.beginPath();
+  for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
+    // arrow head 6 px from the centre, 5 px wide
+    g.moveTo(cx + dx * 6.5, cy + dy * 6.5);
+    g.lineTo(cx + dx * 3.5 - dy * 2.5, cy + dy * 3.5 + dx * 2.5);
+    g.lineTo(cx + dx * 3.5 + dy * 2.5, cy + dy * 3.5 - dx * 2.5);
+    g.closePath();
+  }
+  g.rect(cx - 2.5, cy - 2.5, 5, 5);
+  g.lineJoin = "round";
+  g.lineWidth = 2;
+  g.strokeStyle = "#fff";
+  g.stroke();
+  g.fillStyle = "#103463";
+  g.fill();
+}

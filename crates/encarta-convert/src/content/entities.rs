@@ -265,14 +265,16 @@ pub fn entity_owned(tag: &str) -> Option<String> {
 pub fn private_use(c: char) -> Option<&'static str> {
     Some(match c {
         '\u{F6FE}' => "ą",
-        '\u{F700}' => "å",  // "Lågen", "Stångebro" (glyph: a with ring/dot above)
+        '\u{F700}' => "å",  // "Lågen", "Stångebro": a with ring above (VM capture of Lillehammer)
         '\u{F717}' => "C\u{306}",
         '\u{F718}' => "c\u{306}",
-        '\u{F71B}' => "ć",  // "Milošević"; also in "flèche" (approximate)
+        '\u{F71B}' => "ć",  // "Milošević": c with acute (VM capture of Communism); also in "flèche"
         '\u{F727}' => "ᗡ",  // reversed capital D ("Ds back to back")
         '\u{F72F}' => "ę",
-        '\u{F73D}' => "Ϝ",  // early letter form in the history of G (approximate)
-        '\u{F73E}' => "Ⅎ",  // turned F (approximate)
+        // Two archaic forms of digamma in the history of F (VM capture of the article F): the
+        // nearest Unicode letters are digamma and Pamphylian digamma.
+        '\u{F73D}' => "Ϝ",
+        '\u{F73E}' => "Ͷ",
         '\u{F745}' => "ḫ",
         '\u{F746}' => "Ḫ",
         '\u{F760}' => "M\u{304}",

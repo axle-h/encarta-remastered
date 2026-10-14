@@ -1,7 +1,9 @@
 //! `.x` model + `.3lt` lights + load-time object state → glTF nodes, meshes and materials.
 //!
 //! - Coordinates: z is negated for positions and normals, and each fan triangle's winding is
-//!   reversed, `(0,i,i+1)` → `(0,i+1,i)` (§5.6). UVs are unchanged.
+//!   reversed, `(0,i,i+1)` → `(0,i+1,i)` (§5.6). V is flipped, `v' = 1 − v`: the engine fills
+//!   every texture surface bottom-up (row 0 = the image's bottom row, §5.6), so the disc's v = 0
+//!   samples the image's bottom row, while glTF v = 0 is its top row.
 //! - Vertices are split on (position index, normal index, baked colour, flicker weights), since
 //!   normals are indexed separately (§5.3) and light lists are per face corner (§7.2.3).
 //! - Lighting is baked into `COLOR_0` with the engine's formula (§7.2.3) for every static light;
@@ -395,7 +397,7 @@ pub fn build(tour: &Tour, state: &LoadState, separate: &BTreeSet<usize>) -> Resu
                         if !uv[0].is_finite() || !uv[1].is_finite() {
                             stats.non_finite_uvs += 1;
                         }
-                        pb.uvs.push(uv.map(|c| if c.is_finite() { c } else { 0.0 }));
+                        pb.uvs.push(gltf_uv(uv));
                         pb.colours.push([colour[0], colour[1], colour[2], 255]);
                         stats.max_flicker_lights_per_vertex = stats.max_flicker_lights_per_vertex.max(key.4.len());
                         pb.flicker.push(key.4.iter().map(|&(s, w)| (s, f32::from_bits(w))).collect());
@@ -587,9 +589,15 @@ pub fn build(tour: &Tour, state: &LoadState, separate: &BTreeSet<usize>) -> Resu
         "textures".into(),
         json!(materials.iter().filter_map(|m| m.texture_name.as_ref().map(|n| json!({ "name": n, "file": m.texture_file, "resolution": m.resolution, "keyed": m.keyed }))).collect::<Vec<_>>()),
     );
-    b.extras.insert("coordinateConversion".into(), json!("z negated, triangle winding reversed; UVs unchanged (tours-3d.md §5.6)"));
+    b.extras.insert("coordinateConversion".into(), json!("z negated, triangle winding reversed; v = 1 − v (tours-3d.md §5.6)"));
 
     Ok(Geometry { builder: b, roots, draw_units, meshes: placements, face_map, materials, flicker_slots, flicker_sets, clouds, stats })
+}
+
+/// A disc UV in glTF convention: `(u, 1 − v)`, non-finite components as 0 (before the flip).
+pub fn gltf_uv(uv: [f32; 2]) -> [f32; 2] {
+    let [u, v] = uv.map(|c| if c.is_finite() { c } else { 0.0 });
+    [u, 1.0 - v]
 }
 
 fn primitive(b: &mut Builder, pb: PrimBuild, mat: usize, flicker_sets: usize, stats: &mut MergeStats) -> Value {
