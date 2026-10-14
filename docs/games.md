@@ -147,8 +147,9 @@ except where the art tells the story.
 - **Subjects.** The player may restrict the nine categories (labels are mindmaze.md's inferred names).
 - **Answer anchors.** After each question the dialog links the correct answer's article, at the paragraph that
   answers the clue (below).
-- **Sound.** Effects through `<audio>`; `intro.mid`, `bgloop1–3.mid` and `question.mid` through a small oscillator
-  synth over the shared MIDI reader (drums left out). Sound and music can be switched off.
+- **Sound.** Effects through `<audio>`; `intro.mid`, `bgloop1–3.mid` and `question.mid` looped through the shared
+  General MIDI soundfont synth (web-client.md; the old oscillator synth, drums left out, when the server has no
+  soundfont). Sound and music can be switched off.
 - **Players** (name, subjects, floor, score, rewards, questions seen, the floor in progress) are kept in this
   browser's `localStorage`; a returning player resumes the floor. Questions already seen are dealt last.
 - Not used: `rmofdoor`, `atrium`, `grating`, `maninst`, `parrot` as a scene (it is a prop), `match1/2.wav`,

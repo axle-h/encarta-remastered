@@ -57,7 +57,7 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
 | `src/api/` | typed client for api.md (`client.ts`, in-memory cache, AbortSignal), `useApi` hook, response types |
 | `src/content/` | the content model of content-schema §8 (`model.ts`), React inline renderer (`Inlines.tsx`), link mapping |
 | `src/article/` | article reader: body renderer, layout rules (`layout.ts`), media column boxes, side panels, find bar, pronunciation |
-| `src/media/` | media viewer overlay, players (audio with captions, audio sets, video with WebVTT, MIDI), variant selection (`pick.ts`), MIDI reader and synth, Ruffle loader (`ruffle.ts`), its device fonts (`ruffleFonts.ts`) and Flash interactives (`FlashPlayer.tsx`) |
+| `src/media/` | media viewer overlay, players (audio with captions, audio sets, video with WebVTT, MIDI), variant selection (`pick.ts`), MIDI reader (`midi.ts`), soundfont loader (`soundfont.ts`) and General MIDI synth (`synth.ts`), Ruffle loader (`ruffle.ts`), its device fonts (`ruffleFonts.ts`) and Flash interactives (`FlashPlayer.tsx`) |
 | `src/pages/` | home, browse, item dispatcher (+ `itemRoute.ts`: feature records, topic timelines, panoramas, Map Trek stops), views of the other item kinds (`ItemKinds.tsx`: web links, contributors, quotation authors, tour nodes, Map Trek, online features), panoramic tours (`PanoramaTour.tsx`, `panorama.ts`), search, media gallery, dictionary (+ `wordWheel.ts`), timeline (+ pure layout/date helpers), tours, favorites, help, atlas placeholder |
 | `src/panorama/` | the native panorama player ([Panoramas](#panoramas)): cylinder geometry, WebGL and Canvas 2D renderers, `PanoramaView`, parameters from the data, the image-SWF reader, single panoramas in the media viewer |
 | `src/components/Menu.tsx` | the accessible menu button (arrows, Home/End, Esc, ←/→ along a `menubar`) used by every menu |
@@ -118,8 +118,30 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
   picture on hover.
 - **Audio**: Opus, then AAC, from the item's `audio` file; captions (`cc` → WebVTT) are shown as text
   under the player. Audio sets (`audionested`) are children: a picture plus audio items. **MIDI** (236
-  music files, e.g. national anthems) plays through our own SMF reader and a small WebAudio synth
-  (oscillator voice per GM family, noise drums); the plan's soundfont synth would replace the voices.
+  music files, e.g. national anthems) plays through our own SMF reader and General MIDI soundfont synth
+  (`synth.ts`) over the Fluid R3 GM soundfont of `encarta-convert soundfont` (media.md §8). The first Play loads
+  the presets and samples the song needs (50–75 samples, a few MB of FLAC, for an orchestral anthem; the time
+  display shows the progress), then
+  notes are scheduled 0.5 s ahead on WebAudio: one sample voice per matching region with its loop, root pitch,
+  lowpass filter (also cutting the interpolation images of samples played below their pitch), volume and
+  modulation envelopes, vibrato, pan, a reverb send (a generated 1.8 s impulse) and a chorus send (three
+  modulated delays). Channel volume, expression, pan, mod wheel, reverb, chorus, pitch bend (RPN 0 range), bank
+  select (unknown banks fall back to GM bank 0, unknown kits to Standard) and the sustain pedal follow the
+  SoundFont default modulators; channel 10 is drums (bank 128). Not modelled: the modulation LFO, "loop until
+  release" (looped throughout) and the soundfont's own modulators. Without a soundfont on the server the old
+  oscillator synth plays. MindMaze's music uses the same synth, looped.
+  Checked against FluidSynth 2.6 with the same soundfont (scripts kept out of the repo: libfluidsynth through
+  ctypes, our engine in headless Chromium on an `OfflineAudioContext`): single notes of piano, strings, trumpet,
+  harp and timpani, effects off, follow FluidSynth's loudness through attack, sustain and release (0.25 s windows,
+  a constant offset from the output gain; ours is 2 dB louder). On 20 disc songs (every twelfth MIDI) with effects
+  on, ours is 2.3–3.8 dB louder by design (`SYNTH_GAIN` 0.3 against FluidSynth's 0.2); beyond that offset the
+  100 ms loudness envelope differs by a standard deviation of 0.3–1.4 dB (2.5–3.9 dB for the two organ pieces,
+  whose sound is mostly FluidSynth's stronger chorus and reverb), spectral centroids agree within 6 %, stereo
+  width within 1 dB (organ: 4 dB narrower), no sample clips and the loudest peak is −1.8 dBFS (a limiter at
+  −2 dBFS guards the rest). Bugs found this way: releases ramped from the last envelope event instead of note-off,
+  and pitched-down samples sounded bright from interpolation images. In headless Chromium against the release
+  server: East Timor's anthem loads 70 soundfont files and plays (position advancing, Stop works, no console
+  errors); MindMaze loads its three presets.
 - **Video**: WebM (VP9) then MP4, the converter's poster, WebVTT captions as a `<track>`.
 - **Dictionary**: the word wheel is `lookup?around=8`: the eight headwords before the typed text, then the following
   ones, in the reader's order (hyphens ignored), homographs numbered "Paris (1)", "Paris (2)" (`wordWheel.ts`), as in
@@ -230,7 +252,9 @@ decoded size and horizon match an independent survey of all 167.
   helpers and word-wheel labels, title-ref parts, font faces, atlas URL, IAF player URLs, WebVTT cues, MIDI reader on
   a synthetic SMF) and `src/components.test.tsx` (jsdom: inline renderer with "X or Y" titles, article body with a
   cluster box, text-column and margin items, sidebar teasers, the Kids layout, no per-box requests, outline and
-  inline tables, search box autocomplete, media viewer URL/keyboard behaviour), all on synthetic data.
+  inline tables, search box autocomplete, media viewer URL/keyboard behaviour), and `src/media/synth.test.ts` (MIDI
+  controllers, bank select, sustain pedal and RPN 0; SF2 units, GM preset fallback, region choice, envelope
+  scheduling up to note-off), all on synthetic data.
 - In Chrome against the real server: home, History category, Zebra (outline, strip, viewer, audio set,
   Quick Facts, Related Articles, pronunciation), China and East Timor (atlas panel, Facts and Figures
   Quick Facts, inline tables, MIDI anthem), Jim Carrey's sidebar, Zulu Sangoma video, search and
@@ -275,7 +299,6 @@ decoded size and horizon match an independent survey of all 167.
 - Vasco da Gama's missing ocean fill was seen once (the first headless run against a cold server: the full-frame
   ocean rectangle and the graticule absent, land drawn) and not again in 30 runs (wgpu-webgl, webgl, canvas,
   WebGPU; sizes 460–700 px; throttled network; in the app). Unexplained; watch for it on real GPUs.
-- MIDI uses simple synthesized voices, not a General MIDI soundfont.
 - Parental Controls of the dictionary window are dropped by choice (PLAN.md).
 - Item kinds, menus, Favorites, print and the panoramic tours added by the parity audit: see [parity.md](parity.md).
 - Panoramas: none of the player's behaviour has been compared with the VM yet. The open questions are the tour

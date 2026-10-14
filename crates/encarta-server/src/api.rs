@@ -51,6 +51,7 @@ pub async fn meta(State(st): St) -> ApiResult<Json<Value>> {
         "extracted_fallback": st.extracted.is_some(),
         "tours": st.tours,
         "atlas": st.atlas,
+        "soundfont": st.soundfont,
         "fonts": st.fonts.iter().map(|f| format!("/fonts/{f}")).collect::<Vec<_>>(),
         "static": st.static_dir.is_some(),
     })))

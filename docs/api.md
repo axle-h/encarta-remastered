@@ -55,9 +55,9 @@ The search index is built by `encarta-convert search` (→ `out/search/`, about 
 ```json
 { "server": "encarta-server 0.1.0", "content": {"schema_version": "2", ...meta table},
   "search": { ...out/search/meta.json } | null, "media_manifest": true, "extracted_fallback": false,
-  "tours": true, "atlas": true, "fonts": ["/fonts/REFSAN.TTF", …], "static": true }
+  "tours": true, "atlas": true, "soundfont": true, "fonts": ["/fonts/REFSAN.TTF", …], "static": true }
 ```
-`content` is `null` without a content database. `fonts` lists the font files of `out/fonts/` (see "Fonts"); `[]`
+`content` is `null` without a content database. `soundfont` says whether `out/soundfont/index.json` exists. `fonts` lists the font files of `out/fonts/` (see "Fonts"); `[]`
 when that folder is missing.
 
 ## Items and articles
@@ -367,9 +367,11 @@ device fonts (web-client.md). `encarta-convert content` copies these 17 TTFs of 
   `"pmtiles://https://host/atlas/vector/earth.pmtiles"`. A path under `/atlas/` that is not a file (e.g. the
   client route `/atlas/place/{gid}`) gets the SPA.
 - `/out/atlas/…` (same files and rewriting, `404` when missing) and `/out/tours/…` → `out/tours/` (tour
-  `index.json`, `<id>/scene.json`, `scene.glb`, `pvs.bin`, `images/`, `cursors/`): the same paths as the Vite dev
-  server's `/out` middleware. Nothing else under `out/` is served (no databases).
-- Atlas and tour files: `Cache-Control: public, max-age=3600` plus `ETag`/`Last-Modified` revalidation.
+  `index.json`, `<id>/scene.json`, `scene.glb`, `pvs.bin`, `images/`, `cursors/`) and `/out/soundfont/…` →
+  `out/soundfont/` (the MIDI synth's General MIDI soundfont: `index.json`, `presets/{bank}-{program}.json`,
+  `samples/{id}.flac` as `audio/flac`; media.md §8): the same paths as the Vite dev server's `/out` middleware.
+  Nothing else under `out/` is served (no databases).
+- Atlas, tour and soundfont files: `Cache-Control: public, max-age=3600` plus `ETag`/`Last-Modified` revalidation.
 - `/assets/…` → `web/dist/assets/` with `Cache-Control: public, max-age=31536000, immutable` (Vite's hashed
   names); a missing asset is `404`, not the SPA. Other files of `web/dist` and `index.html` get `no-cache`.
 - Anything else (`GET`/`HEAD`) that is not a file → `web/dist/index.html` (SPA fallback). Unknown `/api/…` is a

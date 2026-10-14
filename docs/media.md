@@ -369,3 +369,43 @@ that showed only a pushpin went from 972 to 910 and the silent linked sounds fro
 genuinely not on the disc: no file of that name or stem in any container of either edition (Kids copies included), no
 DATA item whose thumbnail, credit or title leads to a matching picture, and for the sounds no DATA audio item with the
 same recording; the 31 `proxy.jpg` and 9 `.swf` records are unlinked placeholders.
+
+## 8. General MIDI soundfont (`encarta-convert soundfont`)
+
+The disc's MIDI files (244 unique: the 236 music items, MindMaze's five and a few more) are kept as they are and played in the browser by
+our soundfont synth (web-client.md). The instrument sounds come from a freely licensed General MIDI soundfont, not
+from the disc: `encarta-convert soundfont [--sf2 FILE]` (or `ENCARTA_SF2`) reads an SF2, by default **Fluid R3 GM**
+(Frank Wen, MIT licence; Fedora package `fluid-soundfont-gm`, `/usr/share/soundfonts/FluidR3_GM.sf2`), and writes
+`out/soundfont/` (about 8 s, 89 MB; `src/soundfont.rs`, reader `src/soundfont/sf2.rs` written from the public
+SoundFont 2.04 specification):
+
+```text
+out/soundfont/index.json                 name, copyright, comment (INFO chunk), licence file, source {file, bytes},
+                                          presets [{bank, program, name, regions}]
+out/soundfont/LICENSE.txt                the soundfont's licence (copied when the default soundfont is used)
+out/soundfont/presets/{bank}-{program}.json   {bank, program, name, regions: [...], samples: {id: {rate, length}}}
+out/soundfont/samples/{id}.flac          one sample: 16-bit mono at its own rate, lossless so loops stay sample-exact
+out/report/soundfont.json                presets, regions, samples, PCM and FLAC bytes, failures
+```
+
+Only General MIDI banks are written: bank 0 (128 melodic presets) and bank 128 (31 drum kits): 159 presets,
+16,331 regions, 1,417 samples (148 MB of PCM, 86 MB as FLAC). A region is one preset zone × one instrument zone
+whose key and velocity ranges overlap, with the generators resolved as the specification says (instrument local,
+else instrument global, else default; plus the preset's local-else-global offset for the generators allowed at
+preset level). Region fields (omitted when default):
+
+| field | meaning |
+|---|---|
+| `keys`, `vels` | intersected ranges |
+| `sample`, `root`, `tune`, `scale` | sample id; root key (`overridingRootKey`, else the sample's pitch); coarse·100 + fine + the sample's pitch correction, cents; cents per key (100) |
+| `offset`, `end`, `loop`, `loopStart`, `loopEnd` | frames relative to the sample's start (address offsets applied); `loop` 1 or 3 |
+| `attenuation`, `pan`, `reverb`, `chorus`, `exclusive` | cB; −500…500; sends in 0.1 %; exclusive class |
+| `volEnv`, `volEnvKey` | delay, attack, hold, decay (timecents), sustain (cB), release; hold/decay timecents per key |
+| `modEnv`, `modEnvKey`, `modEnvToFilter`, `modEnvToPitch` | written when the modulation envelope drives filter or pitch |
+| `filterFc`, `filterQ` | lowpass cutoff (absolute cents, clamped to 1500–13500; omitted when open) and resonance (cB) |
+| `vibrato` | vibrato LFO depth (cents), frequency (absolute cents), delay (timecents) |
+
+The SF2's own modulators are not exported (Fluid R3's 747 instrument modulators mostly switch off the default
+velocity-to-cutoff one); the synth applies the specification's default modulators itself. A re-run keeps the
+FLAC files unless the source soundfont changed (`source` in `index.json`). The server serves the directory at
+`/out/soundfont/` (api.md); `out/` is synced to the cluster with the rest of the data.

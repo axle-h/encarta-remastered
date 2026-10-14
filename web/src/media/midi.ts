@@ -1,7 +1,8 @@
 /**
  * Standard MIDI File reader (public SMF 1.0 format): formats 0 and 1, PPQ or SMPTE time division,
- * running status, tempo changes. Produces a flat, time-sorted list of notes in seconds for the
- * WebAudio synth in `MidiPlayer`.
+ * running status, tempo changes. Produces a flat, time-sorted list of notes in seconds, plus the
+ * channel controls the soundfont synth (`synth.ts`) automates. The sustain pedal is applied here:
+ * a note released while the pedal is down ends when the pedal lifts.
  */
 
 export interface MidiNote {
@@ -14,6 +15,19 @@ export interface MidiNote {
   channel: number;
   /** General MIDI program (0–127) in force on the channel at note-on. */
   program: number;
+  /** Bank select (CC 0) in force at the last program change; 128 on the percussion channel 10. */
+  bank: number;
+}
+
+/** Controllers the synth follows; `bend` is the pitch wheel already scaled to cents. */
+export type MidiControlKind = "volume" | "expression" | "pan" | "modulation" | "reverb" | "chorus" | "bend";
+
+export interface MidiControl {
+  t: number;
+  channel: number;
+  kind: MidiControlKind;
+  /** 0–127 for controllers; cents for `bend`. */
+  value: number;
 }
 
 export interface MidiSong {
@@ -21,7 +35,12 @@ export interface MidiSong {
   tracks: number;
   duration: number;
   notes: MidiNote[];
+  /** Time-sorted controller changes. */
+  controls: MidiControl[];
 }
+
+const CONTROLLERS: Record<number, MidiControlKind> = { 1: "modulation", 7: "volume", 10: "pan", 11: "expression", 91: "reverb", 93: "chorus" };
+export const PERCUSSION_CHANNEL = 9;
 
 class Reader {
   pos = 0;
@@ -66,7 +85,7 @@ class Reader {
 interface RawEvent {
   tick: number;
   order: number;
-  kind: "on" | "off" | "tempo" | "program";
+  kind: "on" | "off" | "tempo" | "program" | "cc" | "bend";
   channel: number;
   a: number;
   b: number;
@@ -140,7 +159,9 @@ export function parseMidi(data: ArrayBuffer | Uint8Array): MidiSong {
         continue;
       }
       const second = r.u8();
-      if (hi === 0x90 && second > 0) events.push({ tick, order: order++, kind: "on", channel: ch, a: first, b: second });
+      if (hi === 0xb0) events.push({ tick, order: order++, kind: "cc", channel: ch, a: first, b: second });
+      else if (hi === 0xe0) events.push({ tick, order: order++, kind: "bend", channel: ch, a: ((second << 7) | first) - 8192, b: 0 });
+      else if (hi === 0x90 && second > 0) events.push({ tick, order: order++, kind: "on", channel: ch, a: first, b: second });
       else if (hi === 0x80 || hi === 0x90) events.push({ tick, order: order++, kind: "off", channel: ch, a: first, b: 0 });
     }
     r.pos = end;
@@ -161,32 +182,72 @@ export function parseMidi(data: ArrayBuffer | Uint8Array): MidiSong {
     return seconds;
   };
   const programs = new Array<number>(16).fill(0);
-  const open = new Map<number, { t: number; velocity: number; program: number }[]>();
+  const banks = new Array<number>(16).fill(0);
+  const bankSelect = new Array<number>(16).fill(0);
+  const bendRange = new Array<number>(16).fill(2);
+  const rpn = new Array<number>(16).fill(0x3fff);
+  const pedal = new Array<boolean>(16).fill(false);
+  type Open = { t: number; velocity: number; program: number; bank: number; released: boolean };
+  const open = new Map<number, Open[]>();
   const notes: MidiNote[] = [];
+  const controls: MidiControl[] = [];
+  const finish = (key: number, s: Open, now: number) =>
+    notes.push({ t: s.t, d: Math.max(0.02, now - s.t), note: key % 128, velocity: s.velocity, channel: Math.floor(key / 128), program: s.program, bank: s.bank });
   for (const e of events) {
     const now = toSec(e.tick);
+    const ch = e.channel;
     if (e.kind === "tempo") usPerQuarter = e.a;
-    else if (e.kind === "program") programs[e.channel] = e.a;
-    else {
-      const key = e.channel * 128 + e.a;
+    else if (e.kind === "program") {
+      programs[ch] = e.a;
+      banks[ch] = bankSelect[ch]!;
+    } else if (e.kind === "bend") controls.push({ t: now, channel: ch, kind: "bend", value: (e.a / 8192) * bendRange[ch]! * 100 });
+    else if (e.kind === "cc") {
+      const kind = CONTROLLERS[e.a];
+      if (kind) controls.push({ t: now, channel: ch, kind, value: e.b });
+      else if (e.a === 0) bankSelect[ch] = e.b;
+      else if (e.a === 101) rpn[ch] = (e.b << 7) | (rpn[ch]! & 0x7f);
+      else if (e.a === 100) rpn[ch] = (rpn[ch]! & 0x3f80) | e.b;
+      else if (e.a === 6 && rpn[ch] === 0) bendRange[ch] = e.b; // RPN 0: pitch bend sensitivity
+      else if (e.a === 64) {
+        pedal[ch] = e.b >= 64;
+        if (!pedal[ch]) {
+          for (let k = ch * 128; k < ch * 128 + 128; k++) {
+            const stack = open.get(k);
+            if (!stack?.some((s) => s.released)) continue;
+            for (const s of stack.filter((s) => s.released)) finish(k, s, now);
+            open.set(k, stack.filter((s) => !s.released));
+          }
+        }
+      }
+    } else {
+      const key = ch * 128 + e.a;
       if (e.kind === "on") {
         const stack = open.get(key) ?? [];
-        stack.push({ t: now, velocity: e.b, program: programs[e.channel] ?? 0 });
-        open.set(key, stack);
+        // A key struck again while held by the pedal: the old note ends here.
+        for (const s of stack.filter((s) => s.released)) finish(key, s, now);
+        const held = stack.filter((s) => !s.released);
+        held.push({ t: now, velocity: e.b, program: programs[ch] ?? 0, bank: ch === PERCUSSION_CHANNEL ? 128 : banks[ch]!, released: false });
+        open.set(key, held);
       } else {
-        const s = open.get(key)?.shift();
-        if (s) notes.push({ t: s.t, d: Math.max(0.02, now - s.t), note: e.a, velocity: s.velocity, channel: e.channel, program: s.program });
+        const stack = open.get(key);
+        const s = stack?.find((s) => !s.released);
+        if (!stack || !s) continue;
+        if (pedal[ch]) s.released = true;
+        else {
+          stack.splice(stack.indexOf(s), 1);
+          finish(key, s, now);
+        }
       }
     }
   }
   // Notes never switched off end with the song.
   const endSec = seconds;
   for (const [key, stack] of open) {
-    for (const s of stack) notes.push({ t: s.t, d: Math.max(0.1, endSec - s.t), note: key % 128, velocity: s.velocity, channel: Math.floor(key / 128), program: s.program });
+    for (const s of stack) finish(key, s, Math.max(endSec, s.t + 0.1));
   }
   notes.sort((a, b) => a.t - b.t || a.note - b.note);
   const duration = notes.reduce((m, n) => Math.max(m, n.t + n.d), endSec);
-  return { format, tracks: ntracks, duration, notes };
+  return { format, tracks: ntracks, duration, notes, controls };
 }
 
 export function midiFrequency(note: number): number {

@@ -294,6 +294,9 @@ fn atlas_and_tours(out: &Path) {
     std::fs::create_dir_all(out.join("tours/0001")).unwrap();
     std::fs::write(out.join("tours/index.json"), r#"{"format":"encarta-tours-index","tours":[]}"#).unwrap();
     std::fs::write(out.join("tours/0001/scene.json"), r#"{"id":"0001"}"#).unwrap();
+    std::fs::create_dir_all(out.join("soundfont/samples")).unwrap();
+    std::fs::write(out.join("soundfont/index.json"), r#"{"name":"Synthetic","presets":[]}"#).unwrap();
+    std::fs::write(out.join("soundfont/samples/0.flac"), b"fLaC").unwrap();
 }
 
 pub fn spa(dir: &Path) {

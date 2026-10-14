@@ -23,6 +23,7 @@ const mimeTypes: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
+  ".flac": "audio/flac",
 };
 
 function serveOut(): Plugin {

@@ -13,7 +13,7 @@ This repository contains **no Microsoft code or content**. You supply your own d
 
 ```
 crates/encarta-formats   readers for the disc formats (+ `eit`, `catalog`, `akc`, `findidx`, `smallfmt`, `tour`, `mad`, `director` CLIs)
-crates/encarta-convert   one-time converter from the disc to out/ (`content`, `media`, `tours`, `atlas`, `search`, `all`)
+crates/encarta-convert   one-time converter from the disc to out/ (`content`, `media`, `tours`, `atlas`, `search`, `soundfont`, `all`)
 crates/encarta-search    tantivy search index, autocomplete and spelling
 crates/encarta-server    axum server: the API, media, tiles, tours and the web client
 web/                     React + Vite + TypeScript client (3D tours in web/src/tours)
@@ -42,6 +42,8 @@ target/release/smallfmt timeline extracted/iso/EE/ENCARTA/TIMELINE.DAT
 target/release/tour check extracted/eit/CONTENT/WORLD/7015/
 
 target/release/encarta-convert all            # extracted/ → out/ (content, media, tours, atlas, search)
+target/release/encarta-convert soundfont      # GM soundfont for the MIDI synth → out/soundfont/ (needs an SF2,
+                                              #   default /usr/share/soundfonts/FluidR3_GM.sf2; --sf2 FILE)
 (cd web && npm ci && npm run build)
 target/release/encarta-server --out out --static web/dist   # http://localhost:8080
 ```

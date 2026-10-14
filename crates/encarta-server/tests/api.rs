@@ -417,6 +417,10 @@ async fn static_trees_and_spa() {
     assert_eq!(get(&app, "/out/tours/nope.json").await.status(), 404);
     assert_eq!(get(&app, "/out/content.sqlite").await.status(), 404);
     assert_eq!(get(&app, "/out/tours/../content.sqlite").await.status(), 404);
+    assert_eq!(json(&app, "/out/soundfont/index.json").await.1["name"], "Synthetic");
+    let res = get(&app, "/out/soundfont/samples/0.flac").await;
+    assert_eq!(res.headers()[header::CONTENT_TYPE], "audio/flac");
+    assert_eq!(get(&app, "/out/soundfont/../content.sqlite").await.status(), 404);
 
     let res = get(&app, "/assets/app-1a2b3c.js").await;
     assert_eq!(res.headers()[header::CACHE_CONTROL], "public, max-age=31536000, immutable");
@@ -490,6 +494,7 @@ async fn disc_tree_and_fonts() {
 
     let (_, meta) = json(&app, "/api/meta").await;
     assert_eq!(meta["fonts"], serde_json::json!(["/fonts/REFSAN.TTF"]));
+    assert_eq!(meta["soundfont"], true);
     let res = get(&app, "/fonts/refsan.ttf").await;
     assert_eq!(res.status(), 200);
     assert_eq!(res.headers()[header::CONTENT_TYPE], "font/ttf");

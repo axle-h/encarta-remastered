@@ -1,9 +1,11 @@
 /**
  * Game sounds and music: one-shot effects through <audio> (the converter's Opus/AAC/MP3 variants)
- * and looping MIDI music through a small WebAudio synth over the shared SMF reader.
+ * and looping MIDI music through the shared soundfont synth (a small oscillator synth when the
+ * server has no soundfont).
  */
 import type { MediaInfo } from "../api/types";
 import { parseMidi, midiFrequency, type MidiSong } from "../media/midi";
+import { prepareInstruments, SoundfontEngine } from "../media/synth";
 import { playableAudio } from "./api";
 
 let muted = false;
@@ -86,6 +88,12 @@ function voice(program: number, channel: number): { type: OscillatorType; gain: 
   return { type: "triangle", gain: 0.4 };
 }
 
+/**
+ * The soundfont synth's gain under `volume`: at the default 0.12 the music plays about 6 dB under
+ * the media player's level, near the oscillator fallback's.
+ */
+const SOUNDFONT_MUSIC_GAIN = 4;
+
 /** Loops a MIDI file until stopped or replaced. */
 export function playMusic(url: string | undefined, volume = 0.12) {
   if (!url || muted || !musicOn) return;
@@ -123,14 +131,20 @@ export function playMusic(url: string | undefined, volume = 0.12) {
     const len = Math.max(song.duration, 1);
     timer = setTimeout(() => !stopped && schedule(song, at + len), Math.max(0, (at + len - ac.currentTime - 1) * 1000));
   };
-  void loadSong(url).then((song) => {
-    if (song && !stopped) schedule(song, ac.currentTime + 0.1);
+  let engine: SoundfontEngine | null = null;
+  void loadSong(url).then(async (song) => {
+    if (!song || stopped) return;
+    const instruments = await prepareInstruments(song).catch(() => null);
+    if (stopped) return;
+    if (instruments) engine = new SoundfontEngine(ac, master, song, instruments, { loop: true, volume: SOUNDFONT_MUSIC_GAIN });
+    else schedule(song, ac.currentTime + 0.1);
   });
   current = {
     url,
     stop: () => {
       stopped = true;
       if (timer) clearTimeout(timer);
+      engine?.stop();
       master.gain.setTargetAtTime(0, ac.currentTime, 0.05);
       for (const o of nodes.slice()) {
         try {

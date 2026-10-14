@@ -11,7 +11,7 @@
 //! for tests; use a separate `--out`).
 
 pub mod atlas;
-mod ffmpeg;
+pub(crate) mod ffmpeg;
 mod iax;
 mod jobs;
 mod manifest;

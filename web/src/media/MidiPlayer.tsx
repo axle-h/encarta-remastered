@@ -1,22 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../components/Icons";
 import { midiFrequency, parseMidi, type MidiNote, type MidiSong } from "./midi";
+import { prepareInstruments, SoundfontEngine, type Instruments } from "./synth";
+
+interface Playback {
+  position(): number;
+  stop(): void;
+}
 
 /**
- * Plays a MIDI file with a small WebAudio synthesizer (oscillator voices per General MIDI family,
- * noise for percussion). PLAN Step 2 intends a soundfont synth; this is the self-contained
- * stand-in so music items play without extra downloads.
+ * Plays a MIDI file with the General MIDI soundfont synth (`synth.ts`). The song's instruments load
+ * on the first Play; without a soundfont on the server, a small oscillator synth plays instead.
  */
 export function MidiPlayer({ src, captions }: { src: string; captions?: string }) {
   const [song, setSong] = useState<MidiSong | null>(null);
   const [error, setError] = useState("");
   const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState<{ done: number; total: number } | null>(null);
   const [pos, setPos] = useState(0);
   const [cues, setCues] = useState<Cue[]>([]);
-  const engine = useRef<Engine | null>(null);
+  const engine = useRef<Playback | null>(null);
+  const ctx = useRef<AudioContext | null>(null);
+  /** undefined: not loaded yet; null: no soundfont (oscillator fallback). */
+  const instruments = useRef<Instruments | null | undefined>(undefined);
+  const generation = useRef(0);
 
   useEffect(() => {
     const ctl = new AbortController();
+    const gen = ++generation.current;
+    instruments.current = undefined;
     fetch(src, { signal: ctl.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -34,8 +46,11 @@ export function MidiPlayer({ src, captions }: { src: string; captions?: string }
     }
     return () => {
       ctl.abort();
+      if (generation.current === gen) generation.current++;
       engine.current?.stop();
       engine.current = null;
+      void ctx.current?.close();
+      ctx.current = null;
     };
   }, [src, captions]);
 
@@ -61,15 +76,36 @@ export function MidiPlayer({ src, captions }: { src: string; captions?: string }
     return () => cancelAnimationFrame(raf);
   }, [playing, song]);
 
-  const toggle = () => {
-    if (!song) return;
+  const start = (s: MidiSong, from: number) => {
+    const ac = ctx.current;
+    if (!ac) return;
+    engine.current?.stop();
+    const inst = instruments.current;
+    engine.current = inst ? new SoundfontEngine(ac, ac.destination, s, inst, { from }) : new OscEngine(ac, s, from);
+  };
+
+  const toggle = async () => {
+    if (!song || loading) return;
     if (playing) {
       engine.current?.stop();
       engine.current = null;
       setPlaying(false);
       return;
     }
-    engine.current = new Engine(song, pos >= song.duration ? 0 : pos);
+    // The context is made inside the click so the browser lets it play.
+    ctx.current ??= new AudioContext();
+    if (ctx.current.state === "suspended") void ctx.current.resume();
+    if (instruments.current === undefined) {
+      const gen = generation.current;
+      setLoading({ done: 0, total: 0 });
+      const inst = await prepareInstruments(song, (done, total) => {
+        if (generation.current === gen) setLoading({ done, total });
+      }).catch(() => null);
+      if (generation.current !== gen) return;
+      instruments.current = inst;
+      setLoading(null);
+    }
+    start(song, pos >= song.duration ? 0 : pos);
     setPlaying(true);
   };
 
@@ -78,7 +114,7 @@ export function MidiPlayer({ src, captions }: { src: string; captions?: string }
   return (
     <div className="enc-midi">
       <div className="enc-midi-bar">
-        <button type="button" className="enc-midi-play" onClick={toggle} disabled={!song} aria-label={playing ? "Stop" : "Play"}>
+        <button type="button" className="enc-midi-play" onClick={() => void toggle()} disabled={!song || !!loading} aria-label={playing ? "Stop" : "Play"}>
           {playing ? <span className="enc-midi-stop" /> : <Icon name="play" size={14} />}
         </button>
         <input
@@ -91,14 +127,11 @@ export function MidiPlayer({ src, captions }: { src: string; captions?: string }
           onChange={(e) => {
             const p = Number(e.target.value);
             setPos(p);
-            if (playing && song) {
-              engine.current?.stop();
-              engine.current = new Engine(song, p);
-            }
+            if (playing && song) start(song, p);
           }}
         />
-        <span className="enc-midi-time">
-          {fmt(pos)} / {song ? fmt(song.duration) : "–"}
+        <span className="enc-midi-time" aria-live="polite">
+          {loading ? `Loading instruments${loading.total ? ` ${Math.round((100 * loading.done) / loading.total)}%` : "…"}` : `${fmt(pos)} / ${song ? fmt(song.duration) : "–"}`}
         </span>
       </div>
       {cues.length > 0 && <div className="enc-audio-cue">{cue?.text ?? ""}</div>}
@@ -167,9 +200,11 @@ function voiceFor(program: number): { type: OscillatorType; attack: number; rele
   }
 }
 
-/** Schedules the song's notes slightly ahead of time on an AudioContext. */
-class Engine {
-  private ctx: AudioContext;
+/**
+ * The fallback synth when the server has no soundfont: an oscillator voice per GM family and
+ * filtered noise for percussion, scheduled slightly ahead on the player's AudioContext.
+ */
+class OscEngine implements Playback {
   private out: GainNode;
   private t0: number;
   private next = 0;
@@ -177,8 +212,11 @@ class Engine {
   private noise: AudioBuffer;
   private notes: MidiNote[];
 
-  constructor(song: MidiSong, from: number) {
-    this.ctx = new AudioContext();
+  constructor(
+    private readonly ctx: AudioContext,
+    song: MidiSong,
+    from: number,
+  ) {
     const comp = this.ctx.createDynamicsCompressor();
     this.out = this.ctx.createGain();
     this.out.gain.value = 0.5;
@@ -247,6 +285,7 @@ class Engine {
 
   stop() {
     window.clearInterval(this.timer);
-    void this.ctx.close();
+    this.out.gain.setTargetAtTime(0, this.ctx.currentTime, 0.03);
+    setTimeout(() => this.out.disconnect(), 300);
   }
 }

@@ -33,6 +33,7 @@ pub fn mime_for_ext(ext: &str) -> Option<&'static str> {
         "mp3" => "audio/mpeg",
         "opus" | "ogg" => "audio/ogg",
         "m4a" => "audio/mp4",
+        "flac" => "audio/flac",
         "wma" => "audio/x-ms-wma",
         "mid" | "midi" => "audio/midi",
         "swa" => "audio/x-swa",

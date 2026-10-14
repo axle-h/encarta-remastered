@@ -63,6 +63,8 @@ pub struct AppState {
     pub static_dir: Option<PathBuf>,
     pub tours: bool,
     pub atlas: bool,
+    /// `out/soundfont/index.json` exists (`encarta-convert soundfont`).
+    pub soundfont: bool,
 }
 
 fn log(msg: impl AsRef<str>) {
@@ -147,6 +149,7 @@ impl AppState {
         let static_dir = cfg.static_dir.clone().filter(|d| d.is_dir());
         let st = AppState {
             tours: out.join("tours").is_dir(),
+            soundfont: out.join("soundfont/index.json").is_file(),
             atlas: out.join("atlas").is_dir(),
             out,
             content,
@@ -270,6 +273,7 @@ pub fn router(st: Arc<AppState>) -> Router {
         .route("/atlas/{*path}", get(files::atlas))
         .route("/out/atlas/{*path}", get(files::out_atlas))
         .route("/out/tours/{*path}", get(files::out_tours))
+        .route("/out/soundfont/{*path}", get(files::out_soundfont))
         .route("/assets/{*path}", get(files::assets))
         .fallback(files::fallback)
         .with_state(st)

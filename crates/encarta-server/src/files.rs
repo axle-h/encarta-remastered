@@ -296,6 +296,12 @@ pub async fn out_tours(State(st): State<Arc<AppState>>, UrlPath(rel): UrlPath<St
     serve_tree(&req, &st.out.join("tours"), &rel, DATA_CACHE).await.unwrap_or_else(|| StatusCode::NOT_FOUND.into_response())
 }
 
+/// `/out/soundfont/{*path}`: the MIDI synth's General MIDI soundfont (`encarta-convert soundfont`).
+pub async fn out_soundfont(State(st): State<Arc<AppState>>, UrlPath(rel): UrlPath<String>, req: Request) -> Response {
+    let req = Req::from(req);
+    serve_tree(&req, &st.out.join("soundfont"), &rel, DATA_CACHE).await.unwrap_or_else(|| StatusCode::NOT_FOUND.into_response())
+}
+
 /// Font files (`.ttf`, `.otf`, `.woff`, `.woff2`) directly in `dir`, sorted; empty when missing.
 pub fn font_files(dir: &Path) -> Vec<String> {
     let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
