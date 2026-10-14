@@ -114,6 +114,21 @@
   line-height: 1;
 }
 
+/* The tours' instruction: one bold white line near the top of the view until the first drag. */
+.panov-instruction {
+  position: absolute;
+  top: 15%;
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0 8px;
+  color: #fff;
+  font: bold 12px Tahoma, Verdana, var(--ui), sans-serif;
+  text-align: center;
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+  pointer-events: none;
+}
+
 /* Text labels: bold white, black outline, a thin leader down to the object. */
 .panov-label {
   padding: 0 0 14px;
@@ -274,6 +289,17 @@
   margin: -4px 0 0 -4px;
   border-width: 1px;
   background: #ffd250;
+}
+
+/* A picture with a sound: a speaker (vm-findings (e)). */
+.pano-site-pt.audio {
+  width: 11px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 9'%3E%3Cpath d='M0 3h2l3-3v9L2 6H0z' fill='%23555'/%3E%3Cpath d='M6.5 2.5q1.5 2 0 4M8 1q3 3.5 0 7' fill='none' stroke='%23555'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 /* "You are here": the current scene's point. */

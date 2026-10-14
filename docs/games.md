@@ -42,8 +42,8 @@ Customizer, Globe/Flat and style controls; the locator globe and zoom slider sta
 areas are coarse outlines in the atlas data, so they are tinted at 42 % rather than filled **(ours)**. Countries fit
 their bounding box (antimeridian-safe), cities a regional view (zoom 3.6) **(ours, close to the VM's 600-mile scale
 bar)**. After a right pick the next question appears at once; after question 20 a "Scores" dialog opens (VM, vm-findings.md › UI parity pass). The end shows the score and a
-per-level table of the ten best scores in this browser **(ours)**. Not done: the VM's locator globe, zoom slider and
-hand tool (MapLibre's zoom buttons and dragging instead).
+per-level table of the ten best scores in this browser **(ours)**. Not done: the VM's full score table, Try Again
+reopening the start dialog, the 9-tick slider look.
 
 ## Quizzes (SWQUIZ)
 

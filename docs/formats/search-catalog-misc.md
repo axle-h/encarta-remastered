@@ -167,7 +167,7 @@ The NETSTR length counts bytes (10 for `en-US`). `answers` = 0. The file is exac
   Observed (2026-10-14): both are single files, not BTREE/DATA/PROPERTY directories. `$OSParentalControl` is 77,177
   bytes: an 8-byte header, then a 617,352-bit set with 56,627 bits set and long 0xFF and zero runs. `$OSParentalControlWW` is 26,194
   bytes: an 8-byte header with 295 bits set. Neither holds refIds or UTF-16 text, which suggests a hashed membership
-  structure. The hash and the mapping to headwords are not yet specified.
+  structure. Not decoded: parental controls are dropped by choice (PLAN.md), so both streams are intentionally omitted.
 - **`$WW$CTCATALOG` is the exception that carries data.** Decoded: see [msworld.md](msworld.md) §3. Each key is a u32 (MSWORLD: the media content id; TIMELINE: the item number), and the title is a property (property 1 in MSWORLD, property 0 in TIMELINE). An MSWORLD value looks like
   `i;L36640;B14632.jpg;P14632.JSM;U0;M631500205;CPaul A. Souders/Corbis`
   (type; L = place id; B = image file; P = thumbnail; U = paired item; M = legacy id; **C = credit line**). 5,413 records (4,775 images, 330 sounds, 308 animal images).

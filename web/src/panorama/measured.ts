@@ -12,6 +12,15 @@ export const TOUR = {
   secondsPerTurn: 18.3,
   /** (c) A click on the view pauses auto-pan; it resumed by itself 9 to 10 s later. */
   autoResumeMs: 9500,
+  /** (c) Auto-pan moves the view in jumps, 7 to 8 a second. */
+  autoStepsPerSecond: 7.5,
+  /**
+   * (c) Dragging turns the view at a speed proportional to the pointer's distance from the press
+   * point: view px/s per px (least squares through 10 → 38, 25 → 98, 50 → 176, 100 → 380).
+   */
+  dragRate: 3.75,
+  /** (d) The bold white line across the top of the view, removed after the first drag of the tour. */
+  instruction: "To rotate the image, hold down your mouse button and drag in any direction.",
   /** (d) Hotspot box colour (181,203,148), black fill. */
   hotspotColour: "#b5cb94",
   /** (e) Site-map view wedge tint (247,227,214). */

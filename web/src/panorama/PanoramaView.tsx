@@ -36,8 +36,8 @@ export interface PanoHotspot {
   /** The marker box in picture pixels (`quadrant`), when the record has one. */
   marker?: PanoRect | null;
   title: string;
-  /** "scene" leads to another scene of the tour; "media" opens a media page. */
-  kind: "scene" | "media";
+  /** "scene" leads to another scene of the tour; "media" and "audio" (a picture with a sound) open a media page. */
+  kind: "scene" | "media" | "audio";
 }
 
 export interface PanoLabel {
@@ -62,6 +62,10 @@ export interface PanoramaViewProps {
   hotspots?: PanoHotspot[];
   labels?: PanoLabel[];
   onHotspot?: (h: PanoHotspot) => void;
+  /** A line across the top of the view (the tours' instruction); the caller clears it in `onDrag`. */
+  instruction?: string | null;
+  /** Called when a drag on the view moves it. */
+  onDrag?: () => void;
   /** Called when the view settles after the user moved it (debounced), with the yaw in degrees. */
   onSettle?: (yaw: number) => void;
   /** Live view, for callers that read the yaw at the moment they navigate away. */
@@ -142,7 +146,8 @@ export function PanoramaView(props: PanoramaViewProps) {
   const viewRef = useRef<PanoView | null>(null);
   const limits = useRef<Limits>({ minF: 1, maxF: 1 });
   const keys = useRef(new Set<string>());
-  const drag = useRef<{ x: number; y: number; view: PanoView; moved: boolean } | null>(null);
+  /** The press point, the pointer's current offset from it in view pixels, and the view at the press. */
+  const drag = useRef<{ x: number; y: number; dx: number; dy: number; view: PanoView; moved: boolean } | null>(null);
   const anim = useRef<{ yaw: number; f?: number } | null>(null);
   const raf = useRef(0);
   const last = useRef(0);
@@ -150,6 +155,8 @@ export function PanoramaView(props: PanoramaViewProps) {
   const autoRef = useRef(auto);
   autoRef.current = auto;
   const autoDir = useRef(1);
+  /** Time since the last auto-pan jump, in seconds. */
+  const autoAcc = useRef(0);
   const callbacks = useRef(props);
   callbacks.current = props;
 
@@ -301,26 +308,46 @@ export function PanoramaView(props: PanoramaViewProps) {
         next = { ...next, yaw: next.yaw + dy * k, f: next.f + df * k };
         if (Math.abs(dy) < 0.05 && Math.abs(df) < 0.5) anim.current = null;
         moving = true;
+      } else if (drag.current && p.dragRate) {
+        // Rate drag: the view turns toward the pointer, faster the farther it is from the press point.
+        const d = drag.current;
+        next = {
+          ...next,
+          yaw: next.yaw + (Math.atan2(d.dx * p.dragRate * dt, next.f) * 180) / Math.PI,
+          shift: p.tilt ? next.shift + d.dy * p.dragRate * dt : next.shift,
+        };
+        moving = true;
       } else if (autoRef.current && !drag.current) {
-        let yaw = next.yaw + autoDir.current * p.autoPan * dt;
-        const yr = yawRange(g, next.f, p.viewWidth);
-        if (yr && (yaw <= yr[0] || yaw >= yr[1])) {
-          autoDir.current = -autoDir.current;
-          yaw = Math.min(Math.max(yaw, yr[0]), yr[1]);
+        let step = p.autoPan * dt;
+        if (p.autoStepsPerSecond) {
+          const period = 1 / p.autoStepsPerSecond;
+          const n = Math.floor((autoAcc.current += dt) / period);
+          autoAcc.current -= n * period;
+          step = p.autoPan * period * n;
         }
-        next = { ...next, yaw };
+        if (step) {
+          let yaw = next.yaw + autoDir.current * step;
+          const yr = yawRange(g, next.f, p.viewWidth);
+          if (yr && (yaw <= yr[0] || yaw >= yr[1])) {
+            autoDir.current = -autoDir.current;
+            yaw = Math.min(Math.max(yaw, yr[0]), yr[1]);
+          }
+          next = { ...next, yaw };
+        }
         moving = true;
       }
       if (moving) {
-        setView(next);
-        draw();
+        if (next !== v) {
+          setView(next);
+          draw();
+        }
         if (pan || tilt || zoomKey || anim.current) notifySettle();
         raf.current = requestAnimationFrame(tick);
       } else {
         last.current = 0;
       }
     },
-    [geometry, p.maxSpeed, p.tilt, p.autoPan, p.viewWidth, setView, draw, notifySettle],
+    [geometry, p.maxSpeed, p.tilt, p.autoPan, p.autoStepsPerSecond, p.dragRate, p.viewWidth, setView, draw, notifySettle],
   );
 
   const kick = useCallback(() => {
@@ -370,9 +397,13 @@ export function PanoramaView(props: PanoramaViewProps) {
     draw();
   }, [cssW, cssH, draw, mode]);
 
+  // A running loop keeps the `tick` it started with; restart it on the new one (e.g. once the picture's geometry is known).
   useEffect(() => {
-    if (auto) kick();
-  }, [auto, kick, pic]);
+    if (!auto && !raf.current) return;
+    cancelAnimationFrame(raf.current);
+    raf.current = 0;
+    kick();
+  }, [auto, kick]);
 
   useEffect(
     () => () => {
@@ -426,16 +457,23 @@ export function PanoramaView(props: PanoramaViewProps) {
       pauseTimer.current = window.setTimeout(() => setPaused(false), p.autoResumeMs);
     } else stopAuto();
     anim.current = null;
-    drag.current = { x: e.clientX, y: e.clientY, view: v, moved: false };
+    drag.current = { x: e.clientX, y: e.clientY, dx: 0, dy: 0, view: v, moved: false };
     e.currentTarget.setPointerCapture(e.pointerId);
     e.currentTarget.focus({ preventScroll: true });
   };
   const move = (e: ReactPointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     if (!d) return;
-    const dx = (e.clientX - d.x) / scale;
-    const dy = (e.clientY - d.y) / scale;
-    if (Math.abs(dx) + Math.abs(dy) > 2) d.moved = true;
+    const dx = (d.dx = (e.clientX - d.x) / scale);
+    const dy = (d.dy = (e.clientY - d.y) / scale);
+    if (!d.moved && Math.abs(dx) + Math.abs(dy) > 2) {
+      d.moved = true;
+      callbacks.current.onDrag?.();
+    }
+    if (p.dragRate) {
+      kick();
+      return;
+    }
     // Grab-and-drag: the picture point under the pointer follows it (near the centre column).
     setView({ yaw: d.view.yaw - (Math.atan2(dx, d.view.f) * 180) / Math.PI, f: d.view.f, shift: p.tilt ? d.view.shift - dy : d.view.shift });
     draw();
@@ -521,6 +559,7 @@ export function PanoramaView(props: PanoramaViewProps) {
             <div className="enc-spinner" />
           </div>
         )}
+        {props.instruction && pic && <p className="panov-instruction">{props.instruction}</p>}
         {(error || mode === "none") && <p className="panov-error">{error ?? "This browser cannot draw the panorama."}</p>}
         <div className={`panov-overlay${marks ? "" : " hidden"}`} ref={overlay}>
           {labels.map((l, i) => (
@@ -562,7 +601,7 @@ export function PanoramaView(props: PanoramaViewProps) {
                 onClick={() => callbacks.current.onHotspot?.(h)}
               >
                 <span className="panov-mark-icon" aria-hidden="true">
-                  {h.kind === "scene" ? "✥" : "▣"}
+                  {h.kind === "scene" ? "✥" : h.kind === "audio" ? <SpeakerIcon /> : "▣"}
                 </span>
                 {h.title}
               </button>
@@ -602,5 +641,15 @@ export function PanoramaView(props: PanoramaViewProps) {
         </span>
       </div>
     </div>
+  );
+}
+
+/** The audio hotspots' speaker (vm-findings (d)). */
+function SpeakerIcon() {
+  return (
+    <svg width="10" height="9" viewBox="0 0 10 9" fill="currentColor">
+      <path d="M0 3h2l3-3v9L2 6H0z" />
+      <path d="M6.5 2.5q1.5 2 0 4M8 1q3 3.5 0 7" fill="none" stroke="currentColor" strokeWidth="1" />
+    </svg>
   );
 }

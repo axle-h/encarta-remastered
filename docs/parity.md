@@ -21,10 +21,10 @@ that closed in 2009). *(ours)* marks behaviour chosen here where the original is
 
 | | done | partial | missing | n/a |
 |---|---|---|---|---|
-| Features (134 rows below) | 96 | 23 | 8 | 7 |
+| Features (134 rows below) | 100 | 22 | 4 | 8 |
 
-Fixed in this audit: 25 items (see [Fixes made](#fixes-made-in-this-audit)). The largest remaining gaps, in
-priority order, are in [Remaining gaps](#remaining-gaps-priority-order).
+Fixed in this audit: 25 items (see [Fixes made](#fixes-made-in-this-audit)). The remaining gaps, in
+priority order, are the "Next" list in [PLAN.md](PLAN.md).
 
 ---
 
@@ -120,7 +120,7 @@ priority order, are in [Remaining gaps](#remaining-gaps-priority-order).
 | Pronunciation audio | done | | — |
 | Copy | done | `EntryTools` (this audit): entry or selection with source line | wording *(ours)* |
 | Print | done | prints the entry alone (print style sheet) (this audit) | — |
-| Parental Controls (hide offensive words) | missing | 1,424 entries carry `offensive`/`taboo` labels | (S: a setting that filters those entries and wheel rows) |
+| Parental Controls (hide offensive words) | n/a | dropped by choice (PLAN.md): nothing is hidden, as on Wikipedia | — |
 | Separate window (EDICT.EXE, 765×480) | n/a | a page here | — |
 
 ## Search
@@ -180,14 +180,14 @@ priority order, are in [Remaining gaps](#remaining-gaps-priority-order).
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| 16 tours (Westminster Abbey, Alcatraz, USS Missouri …): 65 scenes, labels, hotspots, site maps, scene pictures | done | `PanoramaTour` (this audit; before it no page showed them): wrapping panorama strip, labels at their `x`,`y`, hotspots (`shed`) to scenes or pictures, site map with scene points, scene text | matches the VM measurements (gaps table row 2) |
+| 16 tours (Westminster Abbey, Alcatraz, USS Missouri …): 65 scenes, labels, hotspots, site maps, scene pictures | done | `PanoramaTour` (this audit; before it no page showed them): wrapping panorama strip, labels at their `x`,`y`, hotspots (`shed`) to scenes or pictures, site map with scene points, scene text | single panoramas' `initangle` and zoom were never measured (PLAN.md › Needs the VM) |
 
 ## Games and quizzes
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
 | Geography Quiz: 4 levels, 20 questions, 5 buttons, points | done | VM `fixtures/geoquiz` | — |
-| Geography Quiz locator globe, zoom slider, hand tool; after-answer and end screens | missing | games.md | never captured (M) |
+| Geography Quiz locator globe, zoom slider, hand tool; after-answer and end screens | partial | `games/geoquiz/QuizMap.tsx` on `<Atlas quizMode>`; Scores dialog after question 20 | the VM's full score table, Try Again reopening the start dialog, the 9-tick slider look |
 | Quizzes (1,811 SWQUIZ) | partial | native quiz player per question group | the board-game engine (`BGAControl`) is not rebuilt (L) |
 | Match games (64) | done | native | — |
 | MindMaze, City Climate, Population Chart | n/a | extras (not in 2009) | — |
@@ -220,12 +220,11 @@ priority order, are in [Remaining gaps](#remaining-gaps-priority-order).
 | Copy with source line | partial | see Edit › Copy | wording *(ours)* |
 | Export / Save As, Send to Word (Works task launcher) | n/a | `EE/WORKS` omitted (media.md §4) | — |
 
-## Settings and parental controls
+## Settings
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
 | Options dialog (5 pages: General, Encarta Updates, Closed Captioning, World Atlas, Quality) | done | `app/OptionsDialog.tsx`, `settings/settings.tsx` (VM 2026-10-14): text size, captions (audio and video), atlas crosshairs, lat/long format, units, linear stats are wired | startup and menu sounds are stored only (no sounds yet) |
-| Parental controls (encyclopedia, web links) | missing | not captured; dictionary labels exist | (S–M after a VM look) |
 | Kids / Premium switch | done | `/kids` | — |
 
 ## Accessibility
@@ -355,25 +354,9 @@ Client (`web/`, tests in `src/parity.test.ts{,x}`):
 24. Dictionary Copy and Print.
 25. Item pages list `referenced_by` when DATA gives no "appears in".
 
-## Remaining gaps (priority order)
+## Remaining gaps
 
-Estimates on the plan's scale (S ≈ days, M ≈ 1–2 weeks, L ≈ 2–4 weeks).
-
-| # | Gap | Why it matters | Estimate |
-|---|---|---|---|
-| 1 | VM pass over the UI that was never captured: done 2026-10-14 ([vm-findings.md › UI parity pass](vm-findings.md)). Not captured: the Azuchi site map, `initangle` for single panoramas, panorama zoom, and what the Music toggle plays | rows marked *(ours)* still need checking against these captures | S (adjust) |
-| 2 | Panoramas: tour scenes now follow the VM (opening yaw, FOV from width, 624×289, auto-pan 18.3 s/turn, always-visible hotspot boxes, site-map wedge). Left: audio hotspot icon, instruction line, ~7 Hz stepped pan, measured drag speed, singles' `initangle` (not measurable) | 16 tours and 151 panoramas | S |
-| 3 | Ruffle gaps in the IAF player (fills, script limits) and a test pass over Kids copies and DragDrop/CrossFade/ZFL/BGA controls | 860 interactives | M |
-| 4 | Board-game engine for the 10 `BGAControl` games | quizzes play without their boards | L |
-| 5 | Index terms: done (search results that expand; aliases) | — | — |
-| 6 | Parental controls: one check box in the Dictionaries window that hides flagged headwords from the dictionary and the search's Dictionaries category, nothing else. Options dialog: 5 pages (General, Updates, Closed Captioning, World Atlas, Quality) ([vm-findings.md › UI parity pass](vm-findings.md)) | missing feature: the flagged list is DICTA.EIT `$OSParentalControl` (8-byte header + 617,352-bit set, ≈9 % set) and `$OSParentalControlWW` (295 bits), a hashed membership structure, not refIds or text; the hash needs a spec from the decompiled dictionary code (spec side) | M |
-| 7 | Tour Music menu (find the music data) and the tours' remaining [VM] items | missing menu entry | S–M |
-| 8 | Geography Quiz: on `<Atlas quizMode>` with locator globe, zoom and hand tool, next question at once, Scores dialog after 20 (done). Left: the VM's full score table, Try Again reopening the start dialog, the 9-tick slider look | small | S |
-| 9 | MSWORLD.ITR: done; 910 pictures and 146 sounds are not on the disc | — | — |
-| 10 | MIDI soundfont | 236 music files sound synthetic | M |
-| 11 | Timeline: open items in the Timeline view at the event; event pop-up media; essay pictures | VM behaviour | S |
-| 12 | Accessibility: media viewer focus trap, timeline list alternative, axe pass | | S |
-| 13 | Inline-table box border, country introductions placement (content-schema §11) | visual parity | S |
+The open work, in priority order, is the "Next" list in [PLAN.md](PLAN.md).
 
 ## Performance (production build served by `encarta-server`)
 

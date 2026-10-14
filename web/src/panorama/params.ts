@@ -30,6 +30,10 @@ export interface PanoParams {
   autoStart: boolean;
   /** A click on the view pauses auto-pan for this long (ms); absent = auto-pan stays off. */
   autoResumeMs?: number;
+  /** Auto-pan moves in this many jumps a second; absent = smoothly. */
+  autoStepsPerSecond?: number;
+  /** Dragging turns at this many view px/s per px of pointer distance from the press point; absent = grab-and-drag. */
+  dragRate?: number;
   /** Fastest keyboard pan in degrees per second. */
   maxSpeed: number;
   /** The view's own size in view pixels; the page scales it to fit. */
@@ -114,7 +118,8 @@ export const DISPLAY = { width: 544, height: 380 };
  * A tour scene, as measured in the original (panorama/measured.ts): a 624 x 289 view that opens
  * with the picture's left edge at the view centre (`panangle` does not set the yaw; it only
  * orients the site-map wedge, see wedgeAngle in geometry.ts), a field of view from the picture
- * width (tourHfov) and auto-pan on at one turn in 18.3 s.
+ * width (tourHfov), auto-pan on at one turn in 18.3 s in 7.5 jumps a second, and dragging that turns
+ * at a speed set by the pointer's distance from the press point.
  */
 export function tourParams(_meta: Record<string, unknown> | undefined, picture: { width: number; height: number }): PanoParams {
   return {
@@ -126,6 +131,8 @@ export function tourParams(_meta: Record<string, unknown> | undefined, picture: 
     autoPan: TOUR_AUTO_PAN,
     autoStart: true,
     autoResumeMs: TOUR.autoResumeMs,
+    autoStepsPerSecond: TOUR.autoStepsPerSecond,
+    dragRate: TOUR.dragRate,
     maxSpeed: DEFAULTS.maxSpeed,
     viewWidth: TOUR.viewWidth,
     viewHeight: TOUR.viewHeight,

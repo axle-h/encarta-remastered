@@ -18,15 +18,24 @@ interface Scene {
   hotspots: Item[];
   site: Item | null;
   siteHotspots: Item[];
+  /** Hotspot destinations that are pictures with a sound (shown with a speaker). */
+  audio: Set<number>;
 }
 
-async function loadScene(id: number, s: AbortSignal): Promise<Scene> {
+/** A picture node with an `audio` media child: 12 hotspot destinations, e.g. Westminster Abbey's Choir Stalls. */
+function hasSound(item: Item): boolean {
+  return item.kind === "audio" || (item.children ?? []).some((c) => c.kind === "media" && c.item_kind === "audio");
+}
+
+async function loadScene(id: number, scenes: Set<number>, s: AbortSignal): Promise<Scene> {
   const item = await api.item(id, s);
   const all = (ids: number[]) => Promise.all(ids.map((x) => api.item(x, s).catch(() => null))).then((l) => l.filter((x): x is Item => !!x));
   const [labels, hotspots, sites] = await Promise.all([all(childIds(item, "label")), all(childIds(item, "hotspot")), all(childIds(item, "site"))]);
   const site = sites[0] ?? null;
   const siteHotspots = site ? await all(childIds(site, "hotspot")) : [];
-  return { item, labels, hotspots, site, siteHotspots };
+  const dests = new Set([...hotspots, ...siteHotspots].map(destOf).filter((d): d is number => !!d && !scenes.has(d)));
+  const audio = new Set((await all([...dests])).filter(hasSound).map((d) => d.ref_id));
+  return { item, labels, hotspots, site, siteHotspots, audio };
 }
 
 /** `?yaw=` as degrees, or null. */
@@ -53,11 +62,13 @@ export function PanoramaTour({ tour }: { tour: Item }) {
   const wanted = Number(search.get("scene"));
   const current = sceneSet.has(wanted) ? wanted : (scenes[0]?.ref_id ?? 0);
   const yaw = yawParam(search.get("yaw"));
-  const scene = useApi(current ? (s) => loadScene(current, s) : null, [current]);
+  const scene = useApi(current ? (s) => loadScene(current, sceneSet, s) : null, [current]);
   const view = useRef<PanoView | null>(null);
   // Tour Settings (vm-findings, Panoramas layout): both on by default, kept while the tour is open.
   const [showMarks, setShowMarks] = useState(true);
   const [autoRotate, setAutoRotate] = useState(true);
+  // The instruction line goes after the first drag and stays gone for the tour (VM: Sanctuary opened without it).
+  const [dragged, setDragged] = useState(false);
 
   /** Records the current yaw in this history entry, so Back comes back to it. */
   const keepYaw = () => {
@@ -86,7 +97,7 @@ export function PanoramaTour({ tour }: { tour: Item }) {
       <aside className="pano-side">
         <p className="itempage-kicker">Virtual Tour</p>
         <h1 className="trek-title">{tour.title}</h1>
-        {sc?.site && <SiteMap site={sc.site} hotspots={sc.siteHotspots} current={current} scenes={sceneSet} titles={titles} onOpen={open} viewRef={view} panangle={panangleOf(sc.item)} pictureWidth={pictureWidth(sc.item)} />}
+        {sc?.site && <SiteMap site={sc.site} hotspots={sc.siteHotspots} audio={sc.audio} current={current} scenes={sceneSet} titles={titles} onOpen={open} viewRef={view} panangle={panangleOf(sc.item)} pictureWidth={pictureWidth(sc.item)} />}
         <ol className="trek-stops" aria-label="Scenes">
           {scenes.map((c, i) => (
             <li key={c.ref_id}>
@@ -115,6 +126,8 @@ export function PanoramaTour({ tour }: { tour: Item }) {
             onMarksChange={setShowMarks}
             autoOn={autoRotate}
             onAutoChange={setAutoRotate}
+            instruction={dragged ? null : TOUR.instruction}
+            onDrag={() => setDragged(true)}
             key={sc.item.ref_id}
             scene={sc}
             scenes={sceneSet}
@@ -139,6 +152,7 @@ export function PanoramaTour({ tour }: { tour: Item }) {
 function SiteMap({
   site,
   hotspots,
+  audio,
   current,
   scenes,
   titles,
@@ -147,6 +161,7 @@ function SiteMap({
   panangle,
   pictureWidth,
 }: {
+  audio: Set<number>;
   viewRef: MutableRefObject<PanoView | null>;
   panangle: number;
   pictureWidth: number;
@@ -175,7 +190,7 @@ function SiteMap({
           <button
             key={h.ref_id}
             type="button"
-            className={`pano-site-pt${here ? " current" : ""}${scenes.has(dest) ? "" : " picture"}`}
+            className={`pano-site-pt${here ? " current" : ""}${scenes.has(dest) ? "" : audio.has(dest) ? " audio" : " picture"}`}
             style={{ left: p.x, top: p.y }}
             title={title}
             aria-label={title}
@@ -200,7 +215,11 @@ function ScenePanorama({
   onMarksChange,
   autoOn,
   onAutoChange,
+  instruction,
+  onDrag,
 }: {
+  instruction: string | null;
+  onDrag: () => void;
   marksOn: boolean;
   onMarksChange: (on: boolean) => void;
   autoOn: boolean;
@@ -225,9 +244,10 @@ function ScenePanorama({
         const dest = destOf(h);
         if (!rect || !dest) return [];
         const title = h.title && h.title !== "TBD" ? h.title : (titles.get(dest) ?? `Item ${dest}`);
-        return [{ id: h.ref_id, rect, marker: quadrantRect(h.meta), title, kind: scenes.has(dest) ? ("scene" as const) : ("media" as const) }];
+        const kind = scenes.has(dest) ? ("scene" as const) : scene.audio.has(dest) ? ("audio" as const) : ("media" as const);
+        return [{ id: h.ref_id, rect, marker: quadrantRect(h.meta), title, kind }];
       }),
-    [scene.hotspots, scenes, titles],
+    [scene.hotspots, scene.audio, scenes, titles],
   );
   const labels = useMemo<PanoLabel[]>(
     () =>
@@ -260,6 +280,8 @@ function ScenePanorama({
         onMarksChange={onMarksChange}
         autoOn={autoOn}
         onAutoChange={onAutoChange}
+        instruction={instruction}
+        onDrag={onDrag}
         maxScale={2}
       />
     </div>

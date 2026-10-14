@@ -183,11 +183,14 @@ the yaw.
 | opening yaw | `initangle`: degrees from the picture's left edge to the view centre (180 = the picture's middle, 103 of 167) | x = 0 at the view centre for every scene; `default/@panangle` only orients the site-map view wedge *(VM: vm-findings.md › UI parity pass, Panoramas)*. `lightangle` (always `panangle`/10) is unused |
 | zoom-in limit | `maxzoom` % of the opening view (200; one scene has 50, read as "no zoom-in") | 200 % *(ours)* |
 | vertical look | `tilt` (`on` everywhere) | on *(ours)* |
-| auto-pan | `auto` (3 everywhere), read as degrees per second *(ours: constant on the disc, so its unit cannot be derived)*. It runs when the panorama opens and stops at the first drag, key or button | on at open, 18.3 s per turn; a click pauses it and it resumes after 9.5 s; Tour Settings toggles it and the labels and hot spots *(VM: vm-findings.md › UI parity pass, Panoramas)* |
+| auto-pan | `auto` (3 everywhere), read as degrees per second *(ours: constant on the disc, so its unit cannot be derived)*. It runs when the panorama opens and stops at the first drag, key or button | on at open, 18.3 s per turn in 7.5 jumps a second; a click pauses it and it resumes after 9.5 s; Tour Settings toggles it and the labels and hot spots *(VM: vm-findings.md › UI parity pass, Panoramas)* |
 | keyboard pan speed | `maxspeed` (50 everywhere), read as degrees per second at the opening zoom *(ours)* | 50 *(ours)* |
 | unused | `quality`, `interlace` (45; FlashVR's own rendering), `hsvisibility` (0; vrslides have no hotspots), `src`, `name`, and `flashvr.xml` (player chrome only: preloader, menu, pan/stop quality; no geometry) | `coord3d`, `refid` |
 
-**Tours.** Hotspots (`shed`) are boxes with an icon and title, always visible while labels and hot spots are on; the site map draws the current view wedge. A hotspot whose `destmedia` is
+**Tours.** Hotspots (`shed`) are boxes with an icon and title, always visible while labels and hot spots are on: a
+four-way arrow for a scene, a speaker for a picture with a sound (a node with an `audio` media child, 12 of them), a
+square for other pictures. Until the first drag of the tour, the VM's instruction ("To rotate the image, hold down your
+mouse button and drag in any direction.") runs across the top of the view. A hotspot whose `destmedia` is
 a scene of the tour opens that scene (`?scene=`); any other opens the destination's media page (`/item/{id}`),
 as the 3D tours do in the VM. Before leaving, the page writes the current yaw into its own history entry
 (`?scene=&yaw=`, replace), so Back returns to the same scene and direction. The yaw is also written, debounced,
@@ -195,10 +198,11 @@ when a drag or key ends. `quadrant` (four points; 287 of 318 make a 10 × 24 box
 19 are cut to 0 width at the picture's right edge) is drawn as a fixed-size marker: blue for scenes, yellow for
 media *(ours: the marker's look was never captured)*. Labels are centred on their `x`, `y`. The "Labels and hot
 spots" check box hides both. The site map shows the left half of its picture. Its points lead to scenes (large) and
-pictures (small), and the current scene's point is the "you are here" marker. The records give no map
-orientation, so no view wedge is drawn.
+pictures (small) or pictures with a sound (a speaker), and the current scene's point is the "you are here" marker,
+with the view wedge (yaw − `panangle`) drawn from it.
 
-**Controls** (both kinds): drag (grab), ←/→ pan, ↑/↓ look up and down, +/− (main row or keypad) and the wheel zoom,
+**Controls** (both kinds): drag (single panoramas grab; tours turn toward the pointer at 3.75 view px/s per px of
+distance from the press point, as measured, vertically too *(ours)*), ←/→ pan, ↑/↓ look up and down, +/− (main row or keypad) and the wheel zoom,
 Home returns to the opening view, A toggles auto-pan. There are also buttons for left/right, zoom, Auto and Reset,
 and a status line with the hotspot title and the field of view. Keys stop at the view, so the media viewer's ←/→
 do not change the item while a panorama has focus.
@@ -248,7 +252,7 @@ decoded size and horizon match an independent survey of all 167.
   Kids copies (`edition=kids`), DragDrop/CrossFade/ZFL/BGA controls, quizzes (SWQUIZ) and timeline pop-ups were not
   tried. The players ask for "Trebuchet MS" and other device fonts that Ruffle does not have (it substitutes).
 - MIDI uses simple synthesized voices, not a General MIDI soundfont.
-- Parental Controls of the dictionary window and Encarta's Options are not implemented (not captured in the VM).
+- Parental Controls of the dictionary window are dropped by choice (PLAN.md).
 - Item kinds, menus, Favorites, print and the panoramic tours added by the parity audit: see [parity.md](parity.md).
 - Panoramas: none of the player's behaviour has been compared with the VM yet. The open questions are the tour
   scenes' yaw origin, the `quadrant` marker's look, `auto`/`maxspeed` units, the scenes' horizon and field of view,
