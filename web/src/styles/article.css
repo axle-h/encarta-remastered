@@ -620,6 +620,17 @@
   width: 100%;
 }
 
+/* The VM's box: 0.75pt #566C90 border on the sides and bottom (none on top), column header row filled #566C90 */
+.art-text .enc-inline-table .enc-table {
+  border: 1px solid #566c90;
+  border-top: 0;
+}
+
+.art-text .enc-inline-table .enc-table th {
+  background: #566c90;
+  color: #dcdfe3;
+}
+
 .enc-inline-table-title {
   font: bold 12px var(--sans);
   color: var(--heading);

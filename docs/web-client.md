@@ -291,7 +291,8 @@ decoded size and horizon match an independent survey of all 167.
 
 - Placement residue is the converter's (content-schema §11.1): country introductions and items the VM carries into
   the next section.
-- Inline tables lack the VM's blue box border; the Quick Facts and atlas panels are unchanged.
+- Inline tables in encyclopedia articles carry the VM's box (0.75pt #566C90 sides and bottom, filled header row,
+  from the capture CSS); the Quick Facts and atlas panels are unchanged.
 - Interactives under Ruffle 0.7.1: see the test pass below. `MatchGame` exhausts Ruffle's memory (games.md) and is
   native. In the `BGAControl` boards, picture answers drew blank until the server patched the skin (games.md). Trebuchet MS, the players' main font,
   is approximated by the disc's Tahoma; Lucida Console and Impact by Arial. No VM

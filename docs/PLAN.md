@@ -27,8 +27,7 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 
 ## Next (priority order)
 
-1. **Article layout**: the inline-table box border; country introductions and overflow into the next section
-   (content-schema §11). S
+1. **Article layout**: country introductions and overflow into the next section (content-schema §11). S
 2. **Atlas**: alternate label style (w6), area-pen masks, road-shield source, flat-view re-tiling off the main
    thread, time zones in the click menu (V11 shows none). M
 3. **Performance**: `Cache-Control` on API responses; WOFF2 fonts (a converter step; keep the TTFs, which Ruffle

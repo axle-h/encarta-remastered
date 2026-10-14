@@ -80,7 +80,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Web Sites panel (right column, VM `761568934`) | done | `LinksPanel` with 8 shown + "Show all" (this audit); 31,976 links on 17,612 items | — |
 | Contributors ("Contributed By") | done | | — |
 | Sidebar teasers and sidebar layout | done | VM `631522251` | categories `SBA`/`SBP` unconfirmed |
-| Inline tables (`tableinline`) | partial | | blue box border of the VM missing (web-client.md) |
+| Inline tables (`tableinline`) | done | box border and header fill from the capture CSS | |
 | "X or Y" alternative titles | done | VM `461510929` | — |
 | Specialty and private-use glyphs | done | content-schema §7 | — |
 | Pronunciation speaker | done | | — |
