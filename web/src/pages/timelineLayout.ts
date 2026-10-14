@@ -158,3 +158,11 @@ export function topicWindow(events: TimelineEvent[], min: number, max: number): 
   const pad = Math.max(5, (hi - lo) / 10);
   return [Math.max(min, Math.floor(lo - pad)), Math.min(max, Math.ceil(hi + pad))];
 }
+
+/** The window an event opens in: a period or essay fitted to its span, a point a century (or a quarter of a deep-time year) around it. */
+export function eventWindow(ev: TimelineEvent, min: number, max: number): [number, number] {
+  if (ev.end && ev.end.year > ev.start.year) return topicWindow([ev], min, max);
+  const y = ev.start.year;
+  const half = Math.abs(y) > 100_000 ? Math.abs(y) / 4 : 50;
+  return [Math.max(min, y - half), Math.min(max, y + half)];
+}

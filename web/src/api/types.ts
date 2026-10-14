@@ -110,6 +110,8 @@ export interface TimelineEvent {
   date_text?: string;
   start_text?: string;
   end_text?: string;
+  /** An essay's bar picture (only with `text=1`): the thumbnail of its first media child. */
+  picture?: { url: string; width?: number | null; height?: number | null; title?: string | null } | null;
   /** Title size rank: 5 = largest (importance 1), 1 = smallest, 0 unranked. */
   prominence?: number;
 }

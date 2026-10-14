@@ -1092,6 +1092,34 @@
   border-color: #8c7547;
 }
 
+/* The essay's picture hangs under the bar's start, its label beside it */
+.tl-bar-pic {
+  position: absolute;
+  top: 7px;
+  left: 0;
+  width: 24px;
+  height: 24px;
+  object-fit: cover;
+  z-index: 1;
+}
+
+.tl-bar-label.pic {
+  left: 24px;
+}
+
+.tl-detail-pic {
+  float: left;
+  margin: 0 12px 8px 0;
+  max-width: 140px;
+  font-size: 12px;
+}
+
+.tl-detail-pic img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
 .tl-bar:hover .tl-bar-label,
 .tl-bar.current .tl-bar-label {
   border-color: var(--orange);

@@ -198,7 +198,8 @@ the default; anything else is `400`). `text=1` adds each event's body text.
 or `essay` (striped bar); `label` the boxed bar label (periods and essays only; "HISTORICAL ESSAY: …"); `date_text`
 the pop-up date line ("4? BC - AD 29?"); `prominence` the title size rank (5 = largest, 0 unranked). `has_article`: the event
 item has a body (`/api/article/{ref_id}`; the 13,061 timeline topics have none). `text` (only with `text=1`): the
-plain text of that body, paragraphs joined by `\n`.
+plain text of that body, paragraphs joined by `\n`. `picture` (essays, only with `text=1`): `{ "url", "width", "height",
+"title" }`, the thumbnail of the essay's first media child, drawn on its bar.
 
 ## MindMaze
 

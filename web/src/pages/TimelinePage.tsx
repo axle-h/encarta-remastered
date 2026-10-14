@@ -7,7 +7,7 @@ import { Html } from "../components/Html";
 import { Icon } from "../components/Icons";
 import { useDocumentTitle } from "../components/useDocumentTitle";
 import { eventDateText, yearLabel } from "./timelineDates";
-import { categoryIndex, displayOf, ERAS, pan, placeEvents, prominenceOf, ticks, titleSize, topicWindow, zoom, type Placed } from "./timelineLayout";
+import { categoryIndex, displayOf, ERAS, pan, placeEvents, prominenceOf, eventWindow, ticks, titleSize, topicWindow, zoom, type Placed } from "./timelineLayout";
 
 const LANE_H = 30;
 const BAND_LIMIT = 400;
@@ -21,6 +21,10 @@ export function TimelinePage() {
   const min = meta.data?.min_year ?? -4_700_000_000;
   const max = meta.data?.max_year ?? 2010;
   const year = params.get("year");
+  // `?event=` opens the Timeline at an event with its pop-up (what `msencarta://id=` does in the VM).
+  const eventId = Number(params.get("event")) || null;
+  const eventItem = useApi(eventId ? (s) => api.item(eventId, s) : null, [eventId]);
+  const opened = useRef<number | null>(null);
   const initial = (): [number, number] => {
     const f = Number(params.get("from"));
     const t = Number(params.get("to"));
@@ -55,6 +59,15 @@ export function TimelinePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topic.data, term]);
   const [selected, setSelected] = useState<TimelineEvent | null>(null);
+  useEffect(() => {
+    const ev = eventItem.data?.timeline;
+    if (!eventId || !ev || opened.current === eventId) return;
+    opened.current = eventId;
+    if (!explicitWindow.current) setWin(eventWindow(ev, min, max));
+    explicitWindow.current = false;
+    setSelected(ev);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventItem.data, eventId]);
   const bandRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(900);
 
@@ -80,8 +93,9 @@ export function TimelinePage() {
     if (region) p.set("region", region);
     if (q) p.set("q", q);
     if (term) p.set("term", term);
+    if (eventId) p.set("event", String(eventId));
     setParams(p, { replace: true });
-  }, [from, to, category, region, q, term, setParams]);
+  }, [from, to, category, region, q, term, eventId, setParams]);
 
   const filters = { from, to, category: category || undefined, region: region || undefined, q: q || undefined, term: term || undefined };
   // The band shows the window's most important events (one request, `order=importance`).
@@ -195,7 +209,11 @@ export function TimelinePage() {
         ))}
       </div>
       <div className="tl-lower">
-        {selected && <EventDetail ev={selected} onClose={() => setSelected(null)} />}
+        {selected && <EventDetail ev={selected} onClose={() => {
+              setSelected(null);
+              // Drop `?event=` so a reload doesn't reopen the pop-up.
+              if (eventId) setParams((p) => (p.delete("event"), p), { replace: true });
+            }} />}
         <ol className="tl-list">
           {events.map((ev) => (
             <li key={ev.seq} className={selected?.seq === ev.seq ? "current" : ""}>
@@ -245,7 +263,8 @@ function BandEvent({ p, top, current, onSelect }: { p: Placed; top: number; curr
         title={title}
       >
         <span className="tl-bar-line" />
-        <span className="tl-bar-label" style={{ maxWidth: Math.max(p.w, 170) }}>
+        {ev.picture && <img className="tl-bar-pic" src={ev.picture.url} alt="" />}
+        <span className={`tl-bar-label${ev.picture ? " pic" : ""}`} style={{ maxWidth: Math.max(p.w, 170) }}>
           {label}
         </span>
       </button>
@@ -269,7 +288,14 @@ function EventDetail({ ev, onClose }: { ev: TimelineEvent; onClose: () => void }
   const item = useApi(ev.ref_id ? (s) => api.item(ev.ref_id!, s) : null, [ev.ref_id]);
   // The event's text comes with the event; the article is fetched only for older servers.
   const text = useApi(ev.text === undefined && (ev.has_article ?? item.data?.has_article) ? (s) => api.article(ev.ref_id!, undefined, s) : null, [ev.seq, item.data]);
-  const articles = (item.data?.media ?? []).filter((m) => m.kind === "article" || m.group === "article");
+  // The pop-up shows the event's first picture and lists everything it links to (VM, jesus-popup).
+  const children = item.data?.children ?? [];
+  const pictureId = children.find((c) => c.item_kind === "media")?.ref_id;
+  const picture = useApi(pictureId ? (s) => api.item(pictureId, s) : null, [pictureId]);
+  const pic = picture.data?.files?.find((f) => f.role === "picon") ?? picture.data?.files?.find((f) => f.role === "thumb");
+  const links = [...children.map((c) => ({ id: c.ref_id, title: c.title })), ...(item.data?.media ?? []).filter((m) => m.kind === "article" || m.group === "article").map((a) => ({ id: a.ref_id, title: a.title }))].filter(
+    (l, i, all) => l.title && all.findIndex((o) => o.id === l.id) === i,
+  );
   return (
     <aside className="tl-detail">
       <button type="button" className="tl-detail-close" onClick={onClose} aria-label="Close">
@@ -290,15 +316,25 @@ function EventDetail({ ev, onClose }: { ev: TimelineEvent; onClose: () => void }
       ) : (
         item.data?.preview_html && <Html className="tl-detail-text" html={item.data.preview_html} />
       )}
+      {pictureId && pic && (
+        <figure className="tl-detail-pic">
+          <Link to={`/item/${pictureId}`}>
+            <img src={pic.url} alt={picture.data?.title ?? ""} width={pic.width ?? undefined} height={pic.height ?? undefined} />
+          </Link>
+          <figcaption>
+            <Link to={`/item/${pictureId}`}>{picture.data?.title}</Link> · <Link to={`/item/${pictureId}`}>Expand</Link>
+          </figcaption>
+        </figure>
+      )}
       {item.data?.caption_html && <Html className="tl-detail-text" html={item.data.caption_html} />}
       <p className="tl-detail-tags">
         {[...(ev.categories ?? []), ...(ev.regions ?? [])].join(" · ")}
       </p>
-      {articles.length > 0 && (
-        <ul className="tl-detail-links">
-          {articles.map((a) => (
-            <li key={a.ref_id}>
-              <Link to={`/item/${a.ref_id}`}>{a.title}</Link>
+      {links.length > 0 && (
+        <ul className="tl-detail-links" aria-label="Related links">
+          {links.map((a) => (
+            <li key={a.id}>
+              <Link to={`/item/${a.id}`}>{a.title}</Link>
             </li>
           ))}
         </ul>

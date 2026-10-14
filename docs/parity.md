@@ -91,7 +91,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Contributors as items (2,034) | done | `ContributorView` (this audit; was empty) | 9 % have no articles in this edition |
 | Yearbook (archive) articles (18,707) and Homework Starter intros | done | 50/50 render | how 2009 browsed them was not captured |
 | Citation guides (`quickstart`, 2) | done | render as articles | — |
-| Essay bars' picture on the timeline | missing | web-client.md known gap | (S) |
+| Essay bars' picture on the timeline | done | 24 px thumbnail of the essay's first media child (`picture` in `/api/timeline?text=1`) | VM draws it 64 px; ours is smaller to fit the lanes |
 
 ## Media
 
@@ -142,8 +142,8 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Eras, zoom, pan, category and region filters | done | | — |
 | Event pop-up with date line "4? BC - AD 29?" | done | VM `jesus-popup.png` | — |
 | Topic timelines (28 named + 13,033 search targets) | done | `/timeline?term=` over TIMELINE.DAT terms (this audit; `timeline_term` was converted but unused, topics opened a thumbnail) | 1 in 50 sampled targets has neither a term nor a matching event title |
-| Timeline items open in the timeline (`msencarta://id=`) | partial | events open their article page with "Show on the Timeline" | the VM opens the Timeline view at the event (S) |
-| Event pop-ups with media (Flash in 2009) | partial | event text and articles | media in pop-ups not shown (2009 needed Flash; S) |
+| Timeline items open in the timeline (`msencarta://id=`) | done | an event item redirects to `/timeline?event=` (window fitted, pop-up open) | — |
+| Event pop-ups with media (Flash in 2009) | done | pop-up shows the first media child's picture (links to its page) and lists related links (VM `jesus-popup.png`) | the 2009 Flash pop-up chrome is not reproduced |
 
 ## World Atlas
 

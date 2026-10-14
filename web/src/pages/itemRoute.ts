@@ -85,6 +85,10 @@ export function itemRedirect(item: Item): string | null {
     case "feature": {
       return featureHref(item.subtype);
     }
+    case "timeline-event": {
+      // Like the VM, an event opens the Timeline view at the event, its pop-up open.
+      return item.timeline ? `/timeline?event=${item.ref_id}` : null;
+    }
     case "timeline-topic": {
       const term = topicTerm(item.sort_title || item.title || "");
       return term ? `/timeline?term=${encodeURIComponent(term)}` : "/timeline";

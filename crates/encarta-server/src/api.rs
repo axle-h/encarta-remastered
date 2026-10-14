@@ -145,14 +145,31 @@ fn timeline_event(o: &Map<String, Value>) -> Value {
     if let Some(h) = o.get("has_article").and_then(|v| v.as_i64()) {
         m.insert("has_article".into(), json!(h != 0));
     }
-    if let Some(t) = o.get("text") {
-        m.insert("text".into(), t.clone());
+    for k in ["text", "picture"] {
+        if let Some(t) = o.get(k) {
+            m.insert(k.into(), t.clone());
+        }
     }
     Value::Object(m)
 }
 
 /// `timeline_event` columns plus `has_article` (the event item has a body).
 const TIMELINE_COLS: &str = "t.*, EXISTS(SELECT 1 FROM article a WHERE a.ref_id = t.ref_id) AS has_article";
+
+/// The picture on an essay's bar: the thumbnail of its first media child (VM, essay-pastoralism).
+fn essay_picture(c: &Connection, ref_id: i64) -> rusqlite::Result<Option<Value>> {
+    c.prepare_cached(
+        "SELECT f.file_name, f.width, f.height, i.title FROM item_child ch
+         JOIN item i ON i.ref_id = ch.child_ref_id AND i.kind = 'media'
+         JOIN item_file f ON f.ref_id = ch.child_ref_id AND f.role = 'thumb'
+         WHERE ch.ref_id = ?1 ORDER BY ch.ordinal LIMIT 1",
+    )?
+    .query_row([ref_id], |r| {
+        let name: String = r.get(0)?;
+        Ok(json!({ "url": format!("/media/file/{name}"), "width": r.get::<_, Option<i64>>(1)?, "height": r.get::<_, Option<i64>>(2)?, "title": r.get::<_, Option<String>>(3)? }))
+    })
+    .optional()
+}
 
 /// Plain text of an event's body (its paragraphs joined), or None.
 fn event_text(c: &Connection, ref_id: i64) -> rusqlite::Result<Option<String>> {
@@ -809,6 +826,11 @@ pub async fn timeline(State(st): St, Query(q): Query<TimelineQuery>) -> ApiResul
                     if let Some(id) = o.get("ref_id").and_then(|v| v.as_i64())
                         && let Some(t) = event_text(c, id)? {
                             o.insert("text".into(), json!(t));
+                        }
+                    if o.get("display").and_then(|v| v.as_str()) == Some("essay")
+                        && let Some(id) = o.get("ref_id").and_then(|v| v.as_i64())
+                        && let Some(p) = essay_picture(c, id)? {
+                            o.insert("picture".into(), p);
                         }
                 }
             }

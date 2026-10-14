@@ -6,7 +6,7 @@ import { addFavorite, moveFavorite, pageTitle, parseFavorites, removeFavorite, r
 import { mediaClass } from "./media/pick";
 import { archiveUrl, lifeDates, metaText, webLinkUrl } from "./pages/ItemKinds";
 import { featureHref, itemRedirect, mapTrekUrl, topicTerm, translatePair } from "./pages/itemRoute";
-import { topicWindow } from "./pages/timelineLayout";
+import { eventWindow, topicWindow } from "./pages/timelineLayout";
 
 describe("favorites", () => {
   it("adds newest first, renames instead of duplicating, removes and moves", () => {
@@ -87,6 +87,14 @@ describe("item routes", () => {
     expect(topicTerm("Dodo Becomes Extinct")).toBe("Dodo Becomes Extinct");
     expect(itemRedirect(item({ kind: "timeline-topic", title: "Women's Rights Topic Timeline" }))).toBe("/timeline?term=Women's%20Rights");
     expect(itemRedirect(item({ kind: "timeline-topic", title: "" }))).toBe("/timeline");
+  });
+
+  it("opens timeline events in the Timeline at the event", () => {
+    const e: TimelineEvent = { seq: 1, title: "Jesus Christ", start: { year: -4 } };
+    expect(itemRedirect(item({ ref_id: 77, kind: "timeline-event", timeline: e }))).toBe("/timeline?event=77");
+    expect(itemRedirect(item({ ref_id: 77, kind: "timeline-event" }))).toBeNull();
+    expect(eventWindow(e, -5000, 2010)).toEqual([-54, 46]);
+    expect(eventWindow({ ...e, start: { year: 1939 }, end: { year: 1945 } }, -5000, 2010)).toEqual([1934, 1950]);
   });
 
   it("opens icon-only panoramas in their viewer and Map Trek stops in their trek", () => {

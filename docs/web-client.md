@@ -155,7 +155,8 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
   each event by its `display` (timeline.md §3.2): a point is a category-coloured square and the title, sized by
   `prominence` (importance 1 largest); a period an orange bar from start to end with its boxed upper-case `label`; an
   essay a two-tone striped bar with "HISTORICAL ESSAY: …". Dates (band tooltips, list, pop-up) are the converter's
-  `date_text` ("4? BC - AD 29?"). Eras jump between windows of very
+  `date_text` ("4? BC - AD 29?"). An essay bar carries the thumbnail of its first media child. `/timeline?event={id}` opens
+  at an event with its pop-up (event items redirect there). Eras jump between windows of very
   different spans (4.7 billion years ago to 2006).
 - **Tours**: `TourView` mounts `mountTour` with `baseUrl: "/out/tours"`, maps the labels checkbox to
   `2D.ON`/`2D.OFF`, and opens `HOTSPOTCLICKED` ids in a side panel (`/api/item/{id}`).
@@ -282,7 +283,7 @@ decoded size and horizon match an independent survey of all 167.
   (Periodic Table: Iron), slide-show labels (Castle: Keep, Turret; Vasco da Gama: 1), narrated audio buttons
   (Counterpoint: the MP3 loads and the progress bar runs), BGA boards and questions (games.md). SWQUIZ media: every
   picture and sound of the 1,811 quizzes in each edition (1,274 + 626 references, 968 files) resolves and loads.
-  Timeline pop-ups have no Flash here (the timeline is native; their media are the PLAN's Timeline item). Ruffle logs only stubs
+  Timeline pop-ups have no Flash here (the timeline is native; the pop-up shows the event's first picture). Ruffle logs only stubs
   (`System.security.allowDomain`, `Sound.getBytesLoaded/Total`), "Cannot enumerate Undefined" and the device fonts.
   Ruffle's "hardware acceleration is disabled" box appears on first mouse-over only with a CPU (software) adapter.
 
@@ -290,7 +291,6 @@ decoded size and horizon match an independent survey of all 167.
 
 - Placement residue is the converter's (content-schema §11.1): country introductions and items the VM carries into
   the next section.
-- Essay bars have no thumbnail (the VM shows the essay's picture at the bar's start; the event rows carry no file).
 - Inline tables lack the VM's blue box border; the Quick Facts and atlas panels are unchanged.
 - Interactives under Ruffle 0.7.1: see the test pass below. `MatchGame` exhausts Ruffle's memory (games.md) and is
   native. In the `BGAControl` boards, picture answers drew blank until the server patched the skin (games.md). Trebuchet MS, the players' main font,
