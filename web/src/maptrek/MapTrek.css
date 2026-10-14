@@ -1,0 +1,149 @@
+/* The Map Trek dialog: brown #765C26 body, #CEB57B banner and button borders. */
+.mt-dialog {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  padding: 8px 10px 10px;
+  background: #765c26;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font: 11px Tahoma, Verdana, sans-serif;
+}
+.mt-banner {
+  margin-bottom: 6px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid #ceb57b;
+  color: #ceb57b;
+  font: 23px Tahoma, Verdana, sans-serif;
+  text-align: right;
+}
+.mt-body {
+  display: flex;
+  gap: 8px;
+  min-height: 0;
+  height: 300px;
+}
+.mt-text {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 6px 8px;
+  background: #fff;
+  color: #000;
+}
+.mt-trek-title {
+  margin: 0 0 6px;
+  color: #765c26;
+  font: bold 12px Tahoma, Verdana, sans-serif;
+}
+.mt-thumb {
+  float: left;
+  width: 80px;
+  margin: 0 8px 4px 0;
+  font-size: 9px;
+  text-align: center;
+}
+.mt-thumb img {
+  display: block;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 2px;
+  object-fit: cover;
+}
+.mt-thumb figcaption {
+  margin: 0;
+}
+.mt-stop-text .art-inline-title {
+  margin: 0 0 4px;
+  font: bold 11px Tahoma, Verdana, sans-serif;
+}
+.mt-stop-text .art-inline-open {
+  display: none;
+}
+.mt-list {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 170px;
+  background: #fff;
+}
+.mt-list ol {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.mt-list li button {
+  display: block;
+  width: 100%;
+  padding: 2px 6px;
+  border: 0;
+  background: none;
+  color: #000;
+  font: 8pt Tahoma, Verdana, sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+.mt-list li button.current {
+  background: #a9a9a9;
+  color: #fff;
+}
+.mt-count {
+  padding: 3px 6px;
+  background: #333;
+  color: #fff;
+  font-size: 8pt;
+}
+.mt-buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.mt-spacer {
+  flex: 1;
+}
+.mt-button {
+  min-width: 72px;
+  padding: 3px 10px;
+  border: 1px solid #ceb57b;
+  background: #765c26;
+  color: #fff;
+  font: 11px Tahoma, Verdana, sans-serif;
+  cursor: pointer;
+}
+.mt-button:disabled {
+  color: #ceb57b;
+  cursor: default;
+}
+.mt-page {
+  position: relative;
+  height: calc(100vh - var(--chrome-h));
+}
+@media (max-width: 760px) {
+  .mt-body {
+    flex-direction: column;
+    height: auto;
+  }
+  .mt-list {
+    width: auto;
+    max-height: 120px;
+  }
+  .mt-text {
+    max-height: 200px;
+  }
+}
+@media print {
+  .mt-dialog {
+    display: none;
+  }
+}
+.mt-page .trek-map {
+  position: absolute;
+  inset: 0;
+}

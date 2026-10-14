@@ -29,6 +29,9 @@ import { Atlas } from "./atlas";
   `link.kindLabel` is `article`, `flag-media`, `photo:people` …; all of them are items that `/item/{refId}` shows.
   Without the callback the component navigates to `/item/{refId}`.
 - `initialPlace` is read on mount. To move an open atlas, remount it (the app keys it by route).
+- Options (`useSettings()`): `atlasCrosshairs` draws a centre crosshair, `latLongFormat` formats the About this Map
+  readout (`atlas/format.ts`), `units` seeds the scale bar and altitude units, `atlasLinearStats` blends stat colours
+  linearly between the ramp ends instead of the default equal-width classes.
 - `highlightEntity`, `quizMode`, `onPlaceClick`, `focus`, `markerAt` and `dragPan` are what the Geography Quiz uses: the highlight is drawn by extra layers (`encarta-highlight-*`, filter `["==", ["id"], entity]`)
   under the symbols; in quiz mode the symbols and the styling stay, every name goes.
 - Dev page: `web/atlas.html` (`?style=&lat=&lon=&alt=`, `?place=<entity>`, `?url=msencarta://…`, `?view=flat`,

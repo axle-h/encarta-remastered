@@ -4,7 +4,7 @@
  * 40,000-odd items (all searchable) opened on "Nothing to display".
  */
 import { Suspense, useState } from "react";
-import { Link, Navigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { Item, ItemRef } from "../api/types";
 import { useApi } from "../api/useApi";
@@ -15,8 +15,12 @@ import { useDocumentTitle } from "../components/useDocumentTitle";
 import { Inlines } from "../content/Inlines";
 import { itemHref } from "../content/links";
 import type { Inline } from "../content/model";
-import { tourIdFor, uniqueByRef } from "../media/pick";
+import { MapTrekPanel } from "../maptrek/MapTrekPanel";
+import { fileByRole, fileUrl, tourIdFor, uniqueByRef } from "../media/pick";
 import { ONLINE_FEATURES, mapTrekUrl } from "./itemRoute";
+
+/** The Features > Map Treks browse page (app/featuresData.ts). */
+const MAP_TREKS_PAGE = 701713686;
 import { isPanoramicTour } from "./panorama";
 
 /** First string of a DATA meta value (`["text"]`, `"text"` or inline content). */
@@ -209,6 +213,7 @@ export function OnlineFeatureView({ item }: { item: Item }) {
  */
 export function MapTrekView({ item, kids }: { item: Item; kids: boolean }) {
   useDocumentTitle(item.title);
+  const navigate = useNavigate();
   const [search, setSearch] = useSearchParams();
   const stops = (item.children ?? []).filter((c) => c.item_kind === "maptrek-stop" || c.kind === "stop");
   const wanted = Number(search.get("stop"));
@@ -217,34 +222,17 @@ export function MapTrekView({ item, kids }: { item: Item; kids: boolean }) {
   const idx = stops.findIndex((s) => s.ref_id === current);
   const stop = useApi(current ? (s) => api.item(current, s) : null, [current]);
   const url = mapTrekUrl(stop.data?.meta?.source_attrs as Record<string, unknown> | undefined);
-  const go = (id: number) => {
+  const go = (i: number) => {
+    const id = stops[i]?.ref_id;
+    if (!id) return;
     setFallback(id);
     setSearch({ stop: String(id) }, { replace: true });
   };
+  const media = stop.data?.media?.[0];
+  const thumb = media?.thumb ?? fileByRole(stop.data, "thumb", "picon");
+  const caption = media?.caption_html ?? stop.data?.caption_html;
   return (
-    <div className="trek">
-      <aside className="trek-side">
-        <p className="itempage-kicker">Map Trek</p>
-        <h1 className="trek-title">{item.title}</h1>
-        <ol className="trek-stops">
-          {stops.map((s, i) => (
-            <li key={s.ref_id}>
-              <button type="button" className={s.ref_id === current ? "current" : ""} aria-current={s.ref_id === current ? "step" : undefined} onClick={() => go(s.ref_id)}>
-                <span className="trek-num">{i + 1}</span> {s.title}
-              </button>
-            </li>
-          ))}
-        </ol>
-        <div className="trek-nav">
-          <button type="button" className="enc-button" disabled={idx <= 0} onClick={() => go(stops[idx - 1]!.ref_id)}>
-            Previous stop
-          </button>
-          <button type="button" className="enc-button" disabled={idx < 0 || idx >= stops.length - 1} onClick={() => go(stops[idx + 1]!.ref_id)}>
-            Next stop
-          </button>
-        </div>
-        <div className="trek-text">{current ? <ArticleInline key={current} id={current} kids={kids} /> : <p className="enc-muted">This Map Trek has no stops.</p>}</div>
-      </aside>
+    <div className="mt-page">
       <section className="trek-map" aria-label="Map">
         {AtlasLazy && url ? (
           <Suspense fallback={<div className="enc-loading"><div className="enc-spinner" /></div>}>
@@ -254,6 +242,17 @@ export function MapTrekView({ item, kids }: { item: Item; kids: boolean }) {
           <div className="enc-loading">{stop.loading ? <div className="enc-spinner" /> : <p className="enc-muted">No map view for this stop.</p>}</div>
         )}
       </section>
+      <MapTrekPanel
+        trekTitle={item.title ?? "Map Trek"}
+        stops={stops.map((s) => ({ id: s.ref_id, title: s.title ?? "" }))}
+        index={idx}
+        thumbSrc={fileUrl(thumb)}
+        caption={caption ? <Html as="span" html={caption} /> : undefined}
+        onSelect={go}
+        onNewTrek={() => navigate(`/item/${MAP_TREKS_PAGE}`)}
+      >
+        {current ? <ArticleInline key={current} id={current} kids={kids} /> : <p>This Map Trek has no stops.</p>}
+      </MapTrekPanel>
     </div>
   );
 }

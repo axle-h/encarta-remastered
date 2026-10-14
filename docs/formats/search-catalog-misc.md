@@ -164,6 +164,10 @@ The NETSTR length counts bytes (10 for `en-US`). `answers` = 0. The file is exac
   then `u32 len` and a UTF-16 display string. **The refId equals the entry's file name** in the EIT (`701704016`, `1861583167` confirmed).
 - `$FX*FTI/DATA` is bit-packed InfoTech full-text postings. `$OBJINST` is persisted ITIR object configuration (CLSID streams `l>=teB…`), not data.
 - `$OSParentalControl*` = flagged-entry list and wheel for the dictionary's offensive-word filter.
+  Observed (2026-10-14): both are single files, not BTREE/DATA/PROPERTY directories. `$OSParentalControl` is 77,177
+  bytes: an 8-byte header, then a 617,352-bit set with 56,627 bits set and long 0xFF and zero runs. `$OSParentalControlWW` is 26,194
+  bytes: an 8-byte header with 295 bits set. Neither holds refIds or UTF-16 text, which suggests a hashed membership
+  structure. The hash and the mapping to headwords are not yet specified.
 - **`$WW$CTCATALOG` is the exception that carries data.** Decoded: see [msworld.md](msworld.md) §3. Each key is a u32 (MSWORLD: the media content id; TIMELINE: the item number), and the title is a property (property 1 in MSWORLD, property 0 in TIMELINE). An MSWORLD value looks like
   `i;L36640;B14632.jpg;P14632.JSM;U0;M631500205;CPaul A. Souders/Corbis`
   (type; L = place id; B = image file; P = thumbnail; U = paired item; M = legacy id; **C = credit line**). 5,413 records (4,775 images, 330 sounds, 308 animal images).

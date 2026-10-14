@@ -669,3 +669,19 @@
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(0, 0, 0, 0.5);
   background: radial-gradient(circle, #fff 0 2px, transparent 2.5px 4px, rgba(255, 255, 255, 0.95) 4.5px 5.5px, transparent 6px);
 }
+
+/* Options > Atlas crosshairs: a cross at the map centre. */
+.enc-atlas-crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 21px;
+  height: 21px;
+  margin: -10px 0 0 -10px;
+  pointer-events: none;
+  z-index: 2;
+  background:
+    linear-gradient(#000, #000) center / 1px 100% no-repeat,
+    linear-gradient(#000, #000) center / 100% 1px no-repeat;
+  filter: drop-shadow(0 0 1px #fff);
+}

@@ -46,10 +46,22 @@ export const DEFAULT_RAMP: StatRamp = {
   negative: [],
 };
 
-/** Colour of one value. Class 1 is the lightest (near 0), the last the extreme. */
-export function statColour(value: number, ramp: StatRamp, maxPos: number, minNeg: number): string | null {
+const HEX = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i;
+
+/** Blends the ramp's lightest and darkest colours (the Options "linear scale"); the nearest class when they are not hex. */
+function blend(list: string[], t: number): string | null {
+  const a = HEX.exec(list[0] ?? "");
+  const b = HEX.exec(list[list.length - 1] ?? "");
+  if (!a || !b) return null;
+  const k = Math.min(1, Math.max(0, t));
+  const ch = (i: number) => Math.round(parseInt(a[i]!, 16) + (parseInt(b[i]!, 16) - parseInt(a[i]!, 16)) * k).toString(16).padStart(2, "0");
+  return `#${ch(1)}${ch(2)}${ch(3)}`;
+}
+
+/** Colour of one value. Class 1 is the lightest (near 0), the last the extreme; `linear` blends continuously instead. */
+export function statColour(value: number, ramp: StatRamp, maxPos: number, minNeg: number, linear = false): string | null {
   if (!Number.isFinite(value)) return null;
-  const pick = (list: string[], t: number) => (list.length ? list[Math.min(list.length - 1, Math.max(0, Math.floor(t * list.length)))]! : null);
+  const pick = (list: string[], t: number) => (list.length ? (linear ? blend(list, t) : null) ?? list[Math.min(list.length - 1, Math.max(0, Math.floor(t * list.length)))]! : null);
   if (value >= 0 || !ramp.negative.length) {
     const t = maxPos > 0 ? Math.max(0, value) / maxPos : 0;
     return pick(ramp.positive, t);
@@ -58,7 +70,7 @@ export function statColour(value: number, ramp: StatRamp, maxPos: number, minNeg
   return pick(ramp.negative, t);
 }
 
-export function colourValues(values: readonly { country_id: number; value?: number | null }[], ramp: StatRamp): Map<number, string> {
+export function colourValues(values: readonly { country_id: number; value?: number | null }[], ramp: StatRamp, linear = false): Map<number, string> {
   let maxPos = 0;
   let minNeg = 0;
   for (const v of values) {
@@ -69,7 +81,7 @@ export function colourValues(values: readonly { country_id: number; value?: numb
   const out = new Map<number, string>();
   for (const v of values) {
     if (typeof v.value !== "number") continue;
-    const c = statColour(v.value, ramp, maxPos, minNeg);
+    const c = statColour(v.value, ramp, maxPos, minNeg, linear);
     if (c) out.set(v.country_id, c);
   }
   return out;

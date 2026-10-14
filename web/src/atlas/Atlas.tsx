@@ -45,6 +45,8 @@ import {
   type MillerImage,
 } from "./miller";
 import { LOOK_PROTOCOL, bakedLooks, createLookProtocol } from "./recolour";
+import { useSettings } from "../settings/settings";
+import { formatLatLong } from "./format";
 import { colourValues, DEFAULT_RAMP, statRamp } from "./stats";
 import { buildStyle, defaultVisibleClasses, styleMeta, type Projection, type StyleMeta } from "./style";
 import { altitudeForView, altitudeForZoom, formatAltitude, maxZoomAt, pOverMForPane, parseMsEncartaUrl, quantiseShift, zoomForView, zoomShift, DEFAULT_P_OVER_M } from "./zoom";
@@ -210,7 +212,11 @@ export function Atlas({
   const [overrides, setOverrides] = useState<ClassOverrides>(EMPTY);
   const [labelScale, setLabelScale] = useState(1);
   const [lookOverride, setLookOverride] = useState<string | undefined>();
-  const [units, setUnits] = useState<"imperial" | "metric">("imperial");
+  const { settings } = useSettings();
+  const [units, setUnits] = useState<"imperial" | "metric">(settings.units === "us" ? "imperial" : "metric");
+  // The Options dialog's choice wins whenever it changes; the Customizer can still override it.
+  useEffect(() => setUnits(settings.units === "us" ? "imperial" : "metric"), [settings.units]);
+  const unitSys = units === "imperial" ? "us" : "metric";
   const [hoverHighlight, setHoverHighlight] = useState(false);
   const [paneHeight, setPaneHeight] = useState(0);
   /** Real latitude of the view centre at the last move end (for the zoom shift). */
@@ -347,7 +353,7 @@ export function Atlas({
     const r = raw ? statRamp(raw) : DEFAULT_RAMP;
     return r.positive.length ? r : DEFAULT_RAMP;
   }, [raw]);
-  const statColours = useMemo(() => colourValues(statValues, ramp), [statValues, ramp]);
+  const statColours = useMemo(() => colourValues(statValues, ramp, settings.atlasLinearStats), [statValues, ramp, settings.atlasLinearStats]);
   live.current.colours = statsOn ? statColours : new Map();
 
   const sourcesOf = useCallback((s: StyleSpecification | null) => (s ? vectorSources(s) : []), []);
@@ -880,14 +886,14 @@ export function Atlas({
                   step={0.01}
                   value={Math.min(Math.max(zoom, minz), maxz)}
                   aria-label="Altitude"
-                  aria-valuetext={formatAltitude(altitude)}
+                  aria-valuetext={formatAltitude(altitude, unitSys)}
                   onChange={(e) => mapRef.current?.jumpTo({ zoom: Number(e.target.value) })}
                 />
                 <button type="button" aria-label="Zoom in" onClick={() => zoomTo(zoom + 1)}>
                   +
                 </button>
                 <span className="enc-atlas-alt" title="Camera altitude (Encarta's zoom unit)">
-                  {formatAltitude(altitude)}
+                  {formatAltitude(altitude, unitSys)}
                 </span>
               </div>
               {!quizMode && <div className="enc-atlas-seg" role="group" aria-label="View">
@@ -905,6 +911,7 @@ export function Atlas({
         <div className="enc-atlas-body">
           <div className="enc-atlas-mapwrap">
             <div className="enc-atlas-map" ref={container} />
+            {settings.atlasCrosshairs && <div className="enc-atlas-crosshair" aria-hidden="true" />}
             {error && <div className="enc-atlas-error">{error}</div>}
             {tooltip && !menu && (
               <div className="enc-atlas-tip" style={{ left: tooltip.x + 14, top: tooltip.y + 16 }}>
@@ -981,12 +988,12 @@ export function Atlas({
                   </dd>
                   <dt>Altitude range</dt>
                   <dd>
-                    {formatAltitude(meta.maxAltitudeKm ?? altitudeForZoom(meta.minzoom, stylePOverM))} to {formatAltitude(meta.minAltitudeKm ?? altitudeForZoom(meta.maxzoom, stylePOverM))}
+                    {formatAltitude(meta.maxAltitudeKm ?? altitudeForZoom(meta.minzoom, stylePOverM), unitSys)} to {formatAltitude(meta.minAltitudeKm ?? altitudeForZoom(meta.maxzoom, stylePOverM), unitSys)}
                     {meta.minRects.length ? `; down to 5 km in ${meta.minRects.length} city and island boxes` : ""}
                   </dd>
                   <dt>Now</dt>
                   <dd>
-                    {formatAltitude(altitude)} (zoom {zoom.toFixed(2)}), {center.lat.toFixed(2)}°, {center.lon.toFixed(2)}°
+                    {formatAltitude(altitude, unitSys)} (zoom {zoom.toFixed(2)}), {formatLatLong(center.lat, center.lon, settings.latLongFormat)}
                   </dd>
                   <dt>Scale</dt>
                   <dd>

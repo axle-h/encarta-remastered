@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { Item } from "../api/types";
 import { useApi } from "../api/useApi";
+import { useSettings } from "../settings/settings";
 import { MidiPlayer } from "./MidiPlayer";
 import { audioSources, captionTracks, fileByRole, hasAudio, isMidi, originalUrl, posterUrl, videoSources } from "./pick";
 
 /** An audio player; captions from the item's `cc` track are shown under it as they play. */
 export function AudioPlayer({ item, autoPlay = false, compact = false }: { item: Item; autoPlay?: boolean; compact?: boolean }) {
+  const { captions } = useSettings().settings;
   const audio = fileByRole(item, "audio");
   const sources = audioSources(audio);
   const tracks = captionTracks(item);
@@ -50,7 +52,7 @@ export function AudioPlayer({ item, autoPlay = false, compact = false }: { item:
           <track key={t.src} kind="captions" src={t.src} label={t.label} srcLang={t.lang} default />
         ))}
       </audio>
-      {!compact && tracks.length > 0 && <div className="enc-audio-cue" aria-live="polite">{cue}</div>}
+      {!compact && captions && tracks.length > 0 && <div className="enc-audio-cue" aria-live="polite">{cue}</div>}
     </div>
   );
 }
@@ -90,6 +92,7 @@ function AudioSet({ item, autoPlay, compact }: { item: Item; autoPlay: boolean; 
 }
 
 export function VideoPlayer({ item, autoPlay = false }: { item: Item; autoPlay?: boolean }) {
+  const { captions } = useSettings().settings;
   const video = fileByRole(item, "video");
   const sources = videoSources(video);
   const tracks = captionTracks(item);
@@ -111,7 +114,7 @@ export function VideoPlayer({ item, autoPlay = false }: { item: Item; autoPlay?:
         <source key={s.src} src={s.src} type={s.type || undefined} />
       ))}
       {tracks.map((t, i) => (
-        <track key={t.src} kind="captions" src={t.src} label={t.label} srcLang={t.lang} default={i === 0} />
+        <track key={t.src} kind="captions" src={t.src} label={t.label} srcLang={t.lang} default={captions && i === 0} />
       ))}
     </video>
   );

@@ -75,7 +75,11 @@ export function encartaAltitude(zoom: number, pOverM = DEFAULT_P_OVER_M): number
 }
 
 /** Short human altitude: "50,000 km", "3,000 km", "12.5 km". */
-export function formatAltitude(km: number): string {
+export function formatAltitude(km: number, units: "metric" | "us" = "metric"): string {
+  if (units === "us") {
+    const mi = km / 1.609344;
+    return mi >= 100 ? `${Math.round(mi).toLocaleString("en-US")} mi` : `${mi.toFixed(mi >= 10 ? 0 : 1)} mi`;
+  }
   if (km >= 100) return `${Math.round(km).toLocaleString("en-US")} km`;
   if (km >= 10) return `${km.toFixed(0)} km`;
   return `${km.toFixed(1)} km`;

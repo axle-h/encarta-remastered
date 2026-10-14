@@ -158,7 +158,7 @@ priority order, are in [Remaining gaps](#remaining-gaps-priority-order).
 | Map Legend, Map Customizer | done | | legend captions are class names |
 | Statistics: Choose Statistic, table, details, hover | done | VM V14 | binning unknown |
 | Locator globe | done | | — |
-| Map Trek (171 treks, 680 stops, from the Geography pages) | done | `MapTrekView` (this audit; treks showed a thumbnail, stops their text only): stop list, stop text, atlas at the stop's lat/long/alt/style | look and controls of the 2009 Map Trek never captured *(ours)* |
+| Map Trek (171 treks, 680 stops, from the Geography pages) | done | `MapTrekView`: full-height atlas plus the VM's modeless Map Trek panel (`maptrek/MapTrekPanel.tsx`: banner, stop text and thumbnail, stop list, Stop n of N, New Trek / Back / Next) | look and controls of the 2009 Map Trek never captured *(ours)* |
 | "About this map" notes (1,516) | done | render as articles | — |
 | Live weather / news links (147 `livemedia`) | n/a | MSN services | shown as link pages with the 2008 address |
 
@@ -224,7 +224,7 @@ priority order, are in [Remaining gaps](#remaining-gaps-priority-order).
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| Options dialog (5 pages: General, Encarta Updates, Closed Captioning, World Atlas, Quality) | partial | `app/OptionsDialog.tsx`, `settings/settings.tsx` (VM 2026-10-14); text size is wired | startupSound, menuSounds, captions and the atlas options are stored but not yet used (S) |
+| Options dialog (5 pages: General, Encarta Updates, Closed Captioning, World Atlas, Quality) | done | `app/OptionsDialog.tsx`, `settings/settings.tsx` (VM 2026-10-14): text size, captions (audio and video), atlas crosshairs, lat/long format, units, linear stats are wired | startup and menu sounds are stored only (no sounds yet) |
 | Parental controls (encyclopedia, web links) | missing | not captured; dictionary labels exist | (S–M after a VM look) |
 | Kids / Premium switch | done | `/kids` | — |
 
@@ -366,7 +366,7 @@ Estimates on the plan's scale (S ≈ days, M ≈ 1–2 weeks, L ≈ 2–4 weeks)
 | 3 | Ruffle gaps in the IAF player (fills, script limits) and a test pass over Kids copies and DragDrop/CrossFade/ZFL/BGA controls | 860 interactives | M |
 | 4 | Board-game engine for the 10 `BGAControl` games | quizzes play without their boards | L |
 | 5 | Index terms: done (search results that expand; aliases) | — | — |
-| 6 | Parental controls: one check box in the Dictionaries window that hides flagged headwords from the dictionary and the search's Dictionaries category, nothing else. Options dialog: 5 pages (General, Updates, Closed Captioning, World Atlas, Quality) ([vm-findings.md › UI parity pass](vm-findings.md)) | missing feature | S–M |
+| 6 | Parental controls: one check box in the Dictionaries window that hides flagged headwords from the dictionary and the search's Dictionaries category, nothing else. Options dialog: 5 pages (General, Updates, Closed Captioning, World Atlas, Quality) ([vm-findings.md › UI parity pass](vm-findings.md)) | missing feature: the flagged list is DICTA.EIT `$OSParentalControl` (8-byte header + 617,352-bit set, ≈9 % set) and `$OSParentalControlWW` (295 bits), a hashed membership structure, not refIds or text; the hash needs a spec from the decompiled dictionary code (spec side) | M |
 | 7 | Tour Music menu (find the music data) and the tours' remaining [VM] items | missing menu entry | S–M |
 | 8 | Geography Quiz: on `<Atlas quizMode>` with locator globe, zoom and hand tool, next question at once, Scores dialog after 20 (done). Left: the VM's full score table, Try Again reopening the start dialog, the 9-tick slider look | small | S |
 | 9 | MSWORLD.ITR: done; 910 pictures and 146 sounds are not on the disc | — | — |
