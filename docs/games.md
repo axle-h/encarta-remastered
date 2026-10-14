@@ -68,7 +68,14 @@ events (`score`, `keys`, `dialog`, `newboard`, `newpip`, `endgame`, `retreat`, c
 from Africa, United States State Capitals, Spelling Bee, Math Matrix, Wilderness Adventure, Sports Mountain); in
 Postcards from Africa a postcard opens the Sahara board and a suitcase a SWQUIZ question with its picture (loaded from
 `dswMedia/quiz/{id}/`), answers, reward text, Media Credits and continue; in Wilderness Adventure Start and a
-destination lead to the Woods board. Whole games have not been played through. The quiz player above remains the
+destination lead to the Woods board. A scripted headless-Chromium pass (click lists over the DevTools protocol, SwiftShader) then drove the boards
+further: United States State Capitals was played to its ending (Region 4: all 11 stars answered, score 4 of 11, the
+fireworks screen "Keep playing to memorize all the state capitals!"); Animal Paths showed pips opening a question, the
+reveal, a check or cross on the pip and the score; Continental Quiz, Time Traveler, Body of Knowledge, Math Matrix
+(level, then "Find the button that activates the matrix!"), Spelling Bee, Sports Mountain (question, reveal, continue),
+Wilderness Adventure (balloon to destination) and Postcards from Africa (suitcases 10 to 40) all reached their first
+interaction. No script error or missing file. The other nine were not played to an ending; the reveal's continue button
+moves with the text, so a script must read each screen. The quiz player above remains the
 way to play a question group on its own.
 
 ## Match games

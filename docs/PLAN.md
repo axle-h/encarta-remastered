@@ -20,16 +20,16 @@ Effort key: S ≈ days, M ≈ 1–2 weeks, L ≈ 2–4 weeks.
 | 4 Web client core | done | [web-client.md](web-client.md) |
 | 5 Atlas | done | [atlas-client.md](atlas-client.md) |
 | 6 3D tours | done | [tour-runtime.md](tour-runtime.md) |
-| 7 Games | done; the board games run under Ruffle, not yet played through | [games.md](games.md) |
+| 7 Games | done; the board games run under Ruffle; US State Capitals played to its ending, the other nine only partly | [games.md](games.md) |
 | 8 Parity audit | in progress: the list below | [parity.md](parity.md) |
 
 Dropped by choice: parental controls (the dictionary's offensive-word filter); like Wikipedia, nothing is hidden.
 
 ## Next (priority order)
 
-1. **Board games under Ruffle**: play each of the 10 `BGAControl` games to the end (boards, pips, timers, keys,
-   endings). The boards and their quiz questions already run in the disc's IAF player under Ruffle (games.md); build
-   a native engine only for a game that breaks. S
+1. **Board games under Ruffle**: finish playing the other nine `BGAControl` games to the end (pips, timers, keys,
+   endings). US State Capitals is done (games.md); the rest open and answer questions but were not driven to an
+   ending. Build a native engine only for a game that breaks (none has so far). S
 2. **Geography Quiz**: the VM's full score table, Try Again reopening the start dialog, the 9-tick slider look. S
 3. **MIDI soundfont**: 236 music files sound synthetic. M
 4. **Timeline**: open items in the Timeline view at the event; media in event pop-ups; essay bar pictures. S
