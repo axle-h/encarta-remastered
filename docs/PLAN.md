@@ -27,25 +27,23 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 
 ## Next (priority order)
 
-1. **3D tours**, from the VM pass: Music from the seven "3DVT: Ambient Audio" records (701504966–701504972), the
-   site-map marker in light blue 0x6371B5 on a location box. S
-2. **Ruffle gaps** in the IAF player (Vasco da Gama map fills; the `MatchGame` script limit) and a test pass over
+1. **Ruffle gaps** in the IAF player (Vasco da Gama map fills; the `MatchGame` script limit) and a test pass over
    Kids copies, DragDrop/CrossFade/ZFL/BGA controls, SWQUIZ media and timeline pop-ups. 860 interactives. M
-3. **Board-game engine** for the 10 `BGAControl` games (Flash boards → Ruffle); their quizzes play without boards. L
-4. **Geography Quiz**: the VM's full score table, Try Again reopening the start dialog, the 9-tick slider look. S
-5. **MIDI soundfont**: 236 music files sound synthetic. M
-6. **Timeline**: open items in the Timeline view at the event; media in event pop-ups; essay bar pictures. S
-7. **Accessibility**: media viewer focus trap, timeline list alternative, axe pass. S
-8. **Article layout**: the inline-table box border; country introductions and overflow into the next section
+2. **Board-game engine** for the 10 `BGAControl` games (Flash boards → Ruffle); their quizzes play without boards. L
+3. **Geography Quiz**: the VM's full score table, Try Again reopening the start dialog, the 9-tick slider look. S
+4. **MIDI soundfont**: 236 music files sound synthetic. M
+5. **Timeline**: open items in the Timeline view at the event; media in event pop-ups; essay bar pictures. S
+6. **Accessibility**: media viewer focus trap, timeline list alternative, axe pass. S
+7. **Article layout**: the inline-table box border; country introductions and overflow into the next section
    (content-schema §11). S
-9. **Atlas**: alternate label style (w6), area-pen masks, road-shield source, flat-view re-tiling off the main
+8. **Atlas**: alternate label style (w6), area-pen masks, road-shield source, flat-view re-tiling off the main
    thread, time zones in the click menu (V11 shows none). M
-10. **Performance**: `Cache-Control` on API responses; WOFF2 fonts (a converter step). S
-11. **Sounds**: startup and menu sounds (the Options setting is stored only). S
+9. **Performance**: `Cache-Control` on API responses; WOFF2 fonts (a converter step). S
+10. **Sounds**: startup and menu sounds (the Options setting is stored only). S
 
 ### Needs the VM
 - Panoramas: single panoramas' `initangle`, panorama zoom.
-- Tours: what the Music toggle plays (no sound device in the guest), the Azuchi site map, the look-vector value behind
+- Tours: whether the Music toggle starts on or off and what it plays (no sound device in the guest; we loop the tour's ambient record), the exact on-box test for the light-blue marker, the Azuchi site map, the look-vector value behind
   the 45° pitch test, the remaining **[VM]** items in [tours-3d.md](formats/tours-3d.md) §10.
 - UI never captured: the ▾ tab under the search box, the Quick Search dialog, the Kids menu bar, Encarta's own
   ranking; rows marked *(ours)* in [parity.md](parity.md).

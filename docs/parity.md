@@ -172,7 +172,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Hotspot → media page, Back restores pose | done | VM | — |
 | Start Over | done | default stop (this audit) | — |
 | Appears in | done | menu of the articles linking the tour (this audit) | — |
-| Music | missing | menu entry in the VM | music source not identified in the data (S–M, needs the VM) |
+| Music | partial | menu entry in the VM | loops the "Ambient Audio" record; default state and what the VM plays unverified (needs the VM) |
 | Credits | done | | — |
 | Tour nodes as items (search hits on stops, hotspots, labels) | done | open the tour at the stop (this audit; showed "Virtual tour stop.") | — |
 

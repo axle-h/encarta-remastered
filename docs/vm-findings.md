@@ -580,7 +580,7 @@ Measured on Westminster Abbey (461545486), Mont-Saint-Michel (461549315) and Alc
 - The Music entry has a speaker icon and toggles between a pressed look (lighter blue box) and normal; nothing else
   changes visually. No sound device exists in the VM, so what plays was not heard. The data has one
   "<tour> 3DVT: Ambient Audio" record per tour (701504966–701504972, a 88–105 s WMA each), which no tour record links;
-  they are the likely source.
+  they are the likely source. **Done in the client:** Music loops the tour's ambient record (off at start, which is a guess).
 
 ### Geography Quiz, full Navigator game (`fixtures/geoquiz/1*.png`, `nav-*`)
 - Start dialog "Geography Quiz": name box, four difficulty radios, OK/Cancel. Map (style 19) with a locator globe, a

@@ -110,6 +110,7 @@ export function drawSiteMap(
   imageSize: [number, number],
   cfg: SiteMapConfig | null,
   marker: SiteMapMarker | null,
+  onLocation = false,
 ): void {
   const [w, h] = SITE_MAP_WINDOW;
   const half = Math.floor(imageSize[0] / 2);
@@ -132,13 +133,28 @@ export function drawSiteMap(
       g.fillRect(0, 0, w, h);
     }
     g.restore();
-    drawMarker(g, marker.px, marker.py);
+    drawMarker(g, marker.px, marker.py, onLocation ? MARKER_ON_LOCATION : MARKER_COLOR);
   }
   g.restore();
 }
 
+/** Marker colour (VM): dark blue 0x103463, light blue 0x6371B5 while the marker is on a location box. */
+export const MARKER_COLOR = "#103463";
+export const MARKER_ON_LOCATION = "#6371B5";
+
+/** Side of a location's box on the map art (its record's x, y is the top-left corner). */
+export const LOCATION_BOX = 11;
+
+/** Whether the marker lies on a location's box (the box grown by 3 px, an approximation of the VM's hit test). */
+export function markerOnLocation(marker: SiteMapMarker | null, locations: readonly { x: number | null; y: number | null }[]): boolean {
+  if (!marker) return false;
+  return locations.some(
+    (l) => l.x !== null && l.y !== null && marker.px >= l.x - 3 && marker.px < l.x + LOCATION_BOX + 3 && marker.py >= l.y - 3 && marker.py < l.y + LOCATION_BOX + 3,
+  );
+}
+
 /** Our "you are here" marker: a four-way arrow in the host's marker colour, outlined in white. */
-function drawMarker(g: CanvasRenderingContext2D, x: number, y: number): void {
+function drawMarker(g: CanvasRenderingContext2D, x: number, y: number, color: string): void {
   const cx = x + 0.5, cy = y + 0.5;
   g.beginPath();
   for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
@@ -153,6 +169,6 @@ function drawMarker(g: CanvasRenderingContext2D, x: number, y: number): void {
   g.lineWidth = 2;
   g.strokeStyle = "#fff";
   g.stroke();
-  g.fillStyle = "#103463";
+  g.fillStyle = color;
   g.fill();
 }

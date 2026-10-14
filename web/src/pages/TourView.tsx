@@ -7,11 +7,13 @@ import { Icon } from "../components/Icons";
 import { MenuButton } from "../components/Menu";
 import { useDocumentTitle } from "../components/useDocumentTitle";
 import {
+  LOCATION_BOX,
   SITE_MAP_WINDOW,
   decodePose,
   drawSiteMap,
   encodePose,
   markerMoved,
+  markerOnLocation,
   mountTour,
   parseWorldLoaded,
   siteMapMarker,
@@ -21,7 +23,8 @@ import {
   type TourScene,
 } from "../tours";
 import type { HotspotTarget, SiteMapImage, TourStop } from "../tours/types";
-import { fileUrl, largeImage } from "../media/pick";
+import { AMBIENT_AUDIO } from "../tours/ambient";
+import { audioSources, fileByRole, fileUrl, largeImage } from "../media/pick";
 import "./TourView.css";
 
 /**
@@ -197,6 +200,7 @@ export function TourView({ tourId }: { tourId: string }) {
             <Icon name="back" size={12} /> All tours
           </Link>
           <span className="tv-menu-gap" />
+          <MusicToggle audioId={meta?.contentId ? (AMBIENT_AUDIO[meta.contentId] ?? null) : null} />
           <button type="button" className={`tv-menu-item${labels ? " tv-on" : ""}`} aria-pressed={labels} onClick={() => setLabels((v) => !v)}>
             Labels and Hot Spots
           </button>
@@ -227,9 +231,6 @@ export function TourView({ tourId }: { tourId: string }) {
     </div>
   );
 }
-
-/** Pixel size of a location's box on the map art (its record's x, y is the top-left corner). */
-const LOCATION_BOX = 11;
 
 /**
  * The site-map window (172×194, §4.2): map image, wedge and marker on a pixel canvas. Clicking a
@@ -266,8 +267,8 @@ function SiteMap({
   }, [image]);
   useEffect(() => {
     const g = canvas.current?.getContext("2d");
-    if (g) drawSiteMap(g, img, size, cfg, marker);
-  }, [img, size, cfg, marker]);
+    if (g) drawSiteMap(g, img, size, cfg, marker, markerOnLocation(marker, locations));
+  }, [img, size, cfg, marker, locations]);
   const [hover, setHover] = useState(false);
   const hit = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -291,6 +292,22 @@ function SiteMap({
         if (l?.stop) onPick(l.stop);
       }}
     />
+  );
+}
+
+/** The Music toggle (VM: a speaker entry that shows pressed while on): loops the tour's ambient audio. */
+function MusicToggle({ audioId }: { audioId: number | null }) {
+  const [on, setOn] = useState(false);
+  const item = useApi(on && audioId ? (s) => api.item(audioId, s) : null, [on, audioId]);
+  const src = audioSources(fileByRole(item.data ?? undefined, "audio"))[0];
+  if (!audioId) return null;
+  return (
+    <>
+      <button type="button" className={`tv-menu-item${on ? " tv-on" : ""}`} aria-pressed={on} onClick={() => setOn((v) => !v)}>
+        <Icon name="speaker" size={12} /> Music
+      </button>
+      {on && src && <audio src={src.src} autoPlay loop aria-hidden="true" />}
+    </>
   );
 }
 

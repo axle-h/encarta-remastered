@@ -39,7 +39,7 @@ background (49,69,107) the menu bar, the control at 616×420 with a 1-px black f
   whose other entries open the hotspots' media; a stop without hotspots is one entry. Choosing a stop also
   shows its article (`stops[].article`) below the map.
 - The menu bar also has the "Labels and Hot Spots" toggle (`2D.ON`/`2D.OFF`) and Credits
-  (`scene.article`). Start Over and Appears in follow the VM; Music is not implemented.
+  (`scene.article`). Start Over and Appears in follow the VM; Music loops the tour's ambient audio record (`web/src/tours/ambient.ts`; starts off, unverified).
 - A hotspot click (or menu entry) replaces the main view with `/item/<destMedia>`, after writing the pose
   and stop to the tour's URL (`?pose=…&stop=…`, history replace), so Back reopens the tour at that pose,
   with its captions, stop text and map. Without a `destMedia` (converted without the catalog) the hotspot
