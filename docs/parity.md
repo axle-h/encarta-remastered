@@ -187,7 +187,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
 | Geography Quiz: 4 levels, 20 questions, 5 buttons, points | done | VM `fixtures/geoquiz` | — |
-| Geography Quiz locator globe, zoom slider, hand tool; after-answer and end screens | partial | `games/geoquiz/QuizMap.tsx` on `<Atlas quizMode>`; Scores dialog after question 20 with the all-level table; Try Again reopens the start dialog | the 9-tick slider look |
+| Geography Quiz locator globe, zoom slider, hand tool; after-answer and end screens | done | `games/geoquiz/QuizMap.tsx` on `<Atlas quizMode>`; Scores dialog after question 20 with the all-level table; Try Again reopens the start dialog | |
 | Quizzes (1,811 SWQUIZ) | done | native quiz player per question group; inside the `BGAControl` boards under Ruffle (questions with media, rewards); all quiz media resolve; all ten boards played to an ending; picture answers show (games.md) | — |
 | Match games (64) | done | native | — |
 | MindMaze, City Climate, Population Chart | n/a | extras (not in 2009) | — |

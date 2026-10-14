@@ -886,9 +886,15 @@ export function Atlas({
                   step={0.01}
                   value={Math.min(Math.max(zoom, minz), maxz)}
                   aria-label="Altitude"
+                  list={quizMode ? "enc-atlas-zoom-ticks" : undefined}
                   aria-valuetext={formatAltitude(altitude, unitSys)}
                   onChange={(e) => mapRef.current?.jumpTo({ zoom: Number(e.target.value) })}
                 />
+                {quizMode && (
+                  <datalist id="enc-atlas-zoom-ticks">
+                    {Array.from({ length: 9 }, (_, i) => <option key={i} value={minz + ((maxz - minz) * i) / 8} />)}
+                  </datalist>
+                )}
                 <button type="button" aria-label="Zoom in" onClick={() => zoomTo(zoom + 1)}>
                   +
                 </button>

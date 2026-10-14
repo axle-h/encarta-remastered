@@ -27,17 +27,16 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 
 ## Next (priority order)
 
-1. **Geography Quiz**: the 9-tick slider look (the score table and Try Again are done). S
-2. **MIDI soundfont**: 236 music files sound synthetic. M
-3. **Timeline**: open items in the Timeline view at the event; media in event pop-ups; essay bar pictures. S
-4. **Accessibility**: media viewer focus trap, timeline list alternative, axe pass. S
-5. **Article layout**: the inline-table box border; country introductions and overflow into the next section
+1. **MIDI soundfont**: 236 music files sound synthetic. M
+2. **Timeline**: open items in the Timeline view at the event; media in event pop-ups; essay bar pictures. S
+3. **Accessibility**: media viewer focus trap, timeline list alternative, axe pass. S
+4. **Article layout**: the inline-table box border; country introductions and overflow into the next section
    (content-schema §11). S
-6. **Atlas**: alternate label style (w6), area-pen masks, road-shield source, flat-view re-tiling off the main
+5. **Atlas**: alternate label style (w6), area-pen masks, road-shield source, flat-view re-tiling off the main
    thread, time zones in the click menu (V11 shows none). M
-7. **Performance**: `Cache-Control` on API responses; WOFF2 fonts (a converter step; keep the TTFs, which Ruffle
+6. **Performance**: `Cache-Control` on API responses; WOFF2 fonts (a converter step; keep the TTFs, which Ruffle
    needs). S
-8. **Sounds**: startup and menu sounds (the Options setting is stored only). S
+7. **Sounds**: startup and menu sounds (the Options setting is stored only). S
 
 ### Needs the VM
 - Panoramas: single panoramas' `initangle`, panorama zoom.

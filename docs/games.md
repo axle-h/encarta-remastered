@@ -44,7 +44,7 @@ their bounding box (antimeridian-safe), cities a regional view (zoom 3.6) **(our
 bar)**. After a right pick the next question appears at once; after question 20 a "Scores" dialog opens (VM, vm-findings.md › UI parity pass). The end shows the score and the
 table "High Scores for Geography Quiz:" (rank, name, points, level; the ten best per level in this browser, best first
 **(ours)**). Try Again reopens the start dialog over the finished question with the name and level kept; Cancel there
-goes back to the previous page (VM). Not done: the 9-tick slider look.
+goes back to the previous page (VM). The zoom slider shows the VM's nine tick marks (a datalist; browsers that skip datalist ticks show a plain slider).
 
 ## Quizzes (SWQUIZ)
 
