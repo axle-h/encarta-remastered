@@ -411,6 +411,9 @@ describe("follow-ups: title-ref, picture sizes, word wheel, fonts, atlas URL, Fl
     expect(css).toContain("font-weight:700;font-style:italic");
     expect(css.split("@font-face")).toHaveLength(3);
     expect(fontFaceCss([])).toBe("");
+    const both = fontFaceCss(["/fonts/REFSAN.TTF", "/fonts/REFSAN.woff2"]);
+    expect(both.split("@font-face")).toHaveLength(2);
+    expect(both).toContain('url("/fonts/REFSAN.woff2") format("woff2"),url("/fonts/REFSAN.TTF") format("truetype")');
   });
 
   it("writes the atlas view into the URL the route reads back", () => {

@@ -15,14 +15,29 @@ const FACES: Record<string, { family: string; weight: number; style: "normal" | 
   "refsanbi.ttf": { family: "MS Reference Sans Serif", weight: 700, style: "italic" },
 };
 
-/** `@font-face` rules for the known font URLs among `urls`. */
+/**
+ * `@font-face` rules for the known fonts among `urls`. A face with a WOFF2 copy lists it first
+ * (smaller); the TTF stays as the fallback.
+ */
 export function fontFaceCss(urls: string[]): string {
-  const rules: string[] = [];
+  const sources = new Map<string, { woff2?: string; ttf?: string }>();
   for (const url of urls) {
-    const f = FACES[(url.split("/").pop() ?? "").toLowerCase()];
+    const file = (url.split("/").pop() ?? "").toLowerCase();
+    const m = /^(.+)\.(ttf|woff2)$/.exec(file);
+    if (!m || !m[1] || !m[2] || !FACES[`${m[1]}.ttf`]) continue;
+    const s = sources.get(m[1]) ?? {};
+    s[m[2] as "ttf" | "woff2"] = url;
+    sources.set(m[1], s);
+  }
+  const rules: string[] = [];
+  for (const [stem, s] of sources) {
+    const f = FACES[`${stem}.ttf`];
     if (!f) continue;
+    const src = [`local("${f.family}")`];
+    if (s.woff2) src.push(`url("${s.woff2}") format("woff2")`);
+    if (s.ttf) src.push(`url("${s.ttf}") format("truetype")`);
     rules.push(
-      `@font-face{font-family:"${f.family}";src:local("${f.family}"),url("${url}") format("truetype");font-weight:${f.weight};font-style:${f.style};font-display:swap}`,
+      `@font-face{font-family:"${f.family}";src:${src.join(",")};font-weight:${f.weight};font-style:${f.style};font-display:swap}`,
     );
   }
   return rules.join("\n");

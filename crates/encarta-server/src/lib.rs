@@ -230,6 +230,23 @@ async fn access_log(req: Request, next: Next) -> Response {
     res
 }
 
+/// Content never changes while the server runs, so API answers may be cached for an hour; the
+/// randomised ones (games, unseeded Mind Maze questions) and anything that already sets the header
+/// are left alone, and errors are never cached.
+async fn api_cache(req: Request, next: Next) -> Response {
+    let path = req.uri().path().to_owned();
+    let seeded = req.uri().query().is_some_and(|q| q.split('&').any(|p| p.starts_with("seed=")));
+    let get = req.method() == axum::http::Method::GET;
+    let mut res = next.run(req).await;
+    if res.headers().contains_key(header::CACHE_CONTROL) {
+        return res;
+    }
+    let random = path.starts_with("/games") || (path == "/mindmaze/questions" && !seeded);
+    let v = if get && res.status().is_success() && !random { files::DATA_CACHE } else { files::NO_CACHE };
+    res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static(v));
+    res
+}
+
 async fn healthz() -> impl IntoResponse {
     ([(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))], "ok")
 }
@@ -261,7 +278,8 @@ pub fn router(st: Arc<AppState>) -> Router {
         .route("/atlas/search", get(api::atlas_search))
         .route("/atlas/place/{entity}", get(api::atlas_place))
         .nest("/games", games::routes())
-        .fallback(|uri: axum::extract::OriginalUri| async move { error::ApiError::not_found(format!("no route {}", uri.path())) });
+        .fallback(|uri: axum::extract::OriginalUri| async move { error::ApiError::not_found(format!("no route {}", uri.path())) })
+        .layer(middleware::from_fn(api_cache));
     Router::new()
         .route("/healthz", get(healthz))
         .nest("/api", api)

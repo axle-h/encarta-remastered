@@ -500,3 +500,19 @@ async fn disc_tree_and_fonts() {
     assert_eq!(res.headers()[header::CONTENT_TYPE], "font/ttf");
     assert_eq!(get(&app, "/fonts/other.ttf").await.status(), 404);
 }
+
+#[tokio::test]
+async fn api_cache_control() {
+    let f = fixture();
+    let app = app(&f.0.config());
+    let cc = |r: &axum::http::Response<Body>| r.headers()[header::CACHE_CONTROL].to_str().unwrap().to_string();
+
+    assert_eq!(cc(&get(&app, "/api/meta").await), "public, max-age=3600");
+    assert_eq!(cc(&get(&app, &format!("/api/item/{ZEBRA}")).await), "public, max-age=3600");
+    // Randomised answers, misses and unknown routes are not cached; a seeded draw is repeatable.
+    assert_eq!(cc(&get(&app, "/api/item/999999").await), "no-cache");
+    assert_eq!(cc(&get(&app, "/api/nope").await), "no-cache");
+    assert_eq!(cc(&get(&app, "/api/mindmaze/questions?level=2").await), "no-cache");
+    assert_eq!(cc(&get(&app, "/api/mindmaze/questions?limit=2&seed=5").await), "public, max-age=3600");
+    assert_eq!(cc(&get(&app, "/api/games/").await), "no-cache");
+}

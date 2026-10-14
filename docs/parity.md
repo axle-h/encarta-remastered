@@ -367,7 +367,7 @@ The open work, in priority order, is the "Next" list in [PLAN.md](PLAN.md).
 | Cache headers | `/assets/*` and `/media/*` `immutable` for a year; `index.html`, `/ruffle/ruffle.js` `no-cache` with ETag; atlas, tours, fonts `max-age=3600` + ETag; Ruffle's hashed wasm and chunks now `immutable` (were revalidated on every open) |
 | Compression | JSON, HTML, JS, CSS brotli/gzip; **new**: Ruffle wasm 14.3 MB → 4.7 MB (br), tour `scene.glb` 15.6 MB → 7.3 MB, `pvs.bin` 2.4 MB → 0.6 MB, disc fonts 251 kB → ~159 kB; ranges and media never |
 | Images by `Accept` | `/media/file/*` answers AVIF or WebP only when smaller than the original and the same width (`Vary: Accept`); e.g. 38 kB JPEG → 25 kB AVIF; WebP that would be larger is not sent |
-| Not done | API responses carry no `Cache-Control` (the client caches in memory); fonts are TTF, WOFF2 would save ~40 % more (needs a converter step, S) |
+| Done | API responses carry `Cache-Control: public, max-age=3600` (not the randomised ones); the MS Reference fonts also ship as WOFF2 (api.md) |
 
 ## Verification
 

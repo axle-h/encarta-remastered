@@ -17,6 +17,7 @@ pub mod survey;
 mod tables;
 mod track;
 mod trees;
+mod woff2;
 mod xml;
 
 use crate::Paths;
@@ -1069,8 +1070,26 @@ fn copy_fonts(extracted: &Path, dir: &Path) -> Result<usize> {
         std::fs::copy(e.path(), &tmp).with_context(|| format!("copying {name}"))?;
         std::fs::rename(&tmp, dir.join(&name))?;
         n += 1;
+        if is_web_font(&name) {
+            write_woff2(&e.path(), &dir.join(Path::new(&name).with_extension("woff2")))?;
+        }
     }
     Ok(n)
+}
+
+/// The faces the web client's CSS names (MS Reference Serif and Sans): these also get a WOFF2 copy.
+fn is_web_font(name: &str) -> bool {
+    let up = name.to_ascii_uppercase();
+    up.ends_with(".TTF") && (up.starts_with("REFSER") || up.starts_with("REFSAN"))
+}
+
+/// `src` (a TrueType file) as WOFF2 at `dst`, via a temporary name like [`copy_fonts`].
+fn write_woff2(src: &Path, dst: &Path) -> Result<()> {
+    let w = woff2::encode(&std::fs::read(src)?).with_context(|| format!("WOFF2 of {}", src.display()))?;
+    let tmp = dst.with_extension("woff2.partial");
+    std::fs::write(&tmp, w)?;
+    std::fs::rename(&tmp, dst)?;
+    Ok(())
 }
 
 #[cfg(test)]

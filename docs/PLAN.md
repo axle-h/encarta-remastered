@@ -27,11 +27,14 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 
 ## Next (priority order)
 
-1. **Performance**: `Cache-Control` on API responses; WOFF2 fonts (a converter step; keep the TTFs, which Ruffle
-   needs). S
-2. **Sounds**: startup and menu sounds (the Options setting is stored only). S
-3. **Atlas size**: `earth.pmtiles` grew 26 % (316 → 399 MB) with the fill masks' water/land split; drop water parts
+1. **Sounds**: startup and menu sounds (the Options setting is stored only). S
+2. **Atlas size**: `earth.pmtiles` grew 26 % (316 → 399 MB) with the fill masks' water/land split; drop water parts
    of classes no style draws or hit-tests there. S
+
+Done 2026-10-14 (performance): `Cache-Control: public, max-age=3600` on API answers (randomised games and unseeded
+Mind Maze draws, errors: `no-cache`); WOFF2 copies of the eight MS Reference faces written by `encarta-convert content`
+(about 53 % smaller, TTFs kept for Ruffle), listed first in the client's `@font-face` (api.md "Fonts"). Re-run
+`encarta-convert content` to get the `.woff2` files.
 
 Done 2026-10-14 (atlas): alternative-name line (`w6`), road shields (labels of shield road classes, our own
 sprites), area-pen draw-over masks, flat-view tiles in Web Workers, time zones out of the click menu (pen group

@@ -348,13 +348,20 @@ Both support `Range` (single ranges; an end past the file is clamped, so `bytes=
 extension: `.jtn`/`.jsm` are JPEG, `.gtn` GIF, `.dib` BMP …), `X-Content-Type-Options: nosniff` and
 `Cache-Control: public, max-age=31536000, immutable` (the bytes behind a URL never change).
 
+## Caching
+
+Every successful `GET /api/…` answer without its own header gets `Cache-Control: public, max-age=3600` (the content
+never changes under a running server). Errors, unknown routes, `/api/games/…` (random draws) and unseeded
+`/api/mindmaze/questions` get `no-cache`.
+
 ## Fonts
 
 `GET /fonts/{file}` — a font of `out/fonts/` (`.ttf`, `.otf`, `.woff`, `.woff2`, name case-insensitive), listed in
 `/api/meta` `fonts`; `Cache-Control: public, max-age=3600`. The web client declares the MS Reference faces it finds
 there (`REFSER*.TTF`, `REFSAN*.TTF`) and hands those and the Tahoma, Times New Roman and Arial files to Ruffle as
 device fonts (web-client.md). `encarta-convert content` copies these 17 TTFs of `AREF/FONTS` to `out/fonts/`
-(content-schema §9). Ruffle reads TrueType/OpenType only, so a WOFF2 step must keep the TTFs.
+(content-schema §9) and writes a `.woff2` beside each `REFSER*`/`REFSAN*` face (null-transform WOFF2, Brotli; about
+53 % smaller). Ruffle reads TrueType/OpenType only, so the TTFs stay; the `@font-face` rules list `local()`, then WOFF2, then TTF.
 
 ## Static files
 

@@ -465,6 +465,7 @@ version = "0.1.0"
 dependencies = [
  "ab_glyph",
  "anyhow",
+ "brotli",
  "encarta-formats",
  "encarta-search",
  "encoding_rs",
