@@ -289,8 +289,7 @@ decoded size and horizon match an independent survey of all 167.
 
 ## Known gaps
 
-- Placement residue is the converter's (content-schema §11.1): country introductions and items the VM carries into
-  the next section.
+- Placement residue is the converter's (content-schema §11.1): the spacing of primary items in four captured sections.
 - Inline tables in encyclopedia articles carry the VM's box (0.75pt #566C90 sides and bottom, filled header row,
   from the capture CSS); the Quick Facts and atlas panels are unchanged.
 - Interactives under Ruffle 0.7.1: see the test pass below. `MatchGame` exhausts Ruffle's memory (games.md) and is

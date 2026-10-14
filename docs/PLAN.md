@@ -27,12 +27,11 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 
 ## Next (priority order)
 
-1. **Article layout**: country introductions and overflow into the next section (content-schema §11). S
-2. **Atlas**: alternate label style (w6), area-pen masks, road-shield source, flat-view re-tiling off the main
+1. **Atlas**: alternate label style (w6), area-pen masks, road-shield source, flat-view re-tiling off the main
    thread, time zones in the click menu (V11 shows none). M
-3. **Performance**: `Cache-Control` on API responses; WOFF2 fonts (a converter step; keep the TTFs, which Ruffle
+2. **Performance**: `Cache-Control` on API responses; WOFF2 fonts (a converter step; keep the TTFs, which Ruffle
    needs). S
-4. **Sounds**: startup and menu sounds (the Options setting is stored only). S
+3. **Sounds**: startup and menu sounds (the Options setting is stored only). S
 
 ### Needs the VM
 - Panoramas: single panoramas' `initangle`, panorama zoom.
@@ -40,7 +39,8 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
   the 45° pitch test, the remaining **[VM]** items in [tours-3d.md](formats/tours-3d.md) §10.
 - UI never captured: the ▾ tab under the search box, the Quick Search dialog, the Kids menu bar, Encarta's own
   ranking; rows marked *(ours)* in [parity.md](parity.md).
-- Data: content-schema §11 questions; a few field meanings in the small formats (1.5).
+- Data: content-schema §11 questions (placement: primary-item spacing in four captured sections); a few field
+  meanings in the small formats (1.5).
 - Interactives: Flash is not installed in the guest, so nothing to compare the Ruffle rendering with (fonts: the
   disc lacks Trebuchet MS; Vasco da Gama's ocean fill went missing once and was not reproduced).
 - Music: how the original's Microsoft GS Wavetable Synth renders the MIDI music (ours plays the Fluid R3 GM

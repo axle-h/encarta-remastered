@@ -1195,9 +1195,17 @@ mod disc_tests {
         let sum = summary_of(&item);
         let c = lib.content(id).unwrap().expect("content record");
         let cdoc = xml::parse(xml_text(&c.bytes).unwrap()).unwrap();
+        // As `write_article`: placements of items not on the disc or marked hidden are left out.
+        let shown = |r: u32| {
+            lib.data(r).unwrap().is_some_and(|d| {
+                let doc = xml::parse(xml_text(&d.bytes).unwrap()).unwrap();
+                !summary_of(&data::convert(&mut Tracker::default(), &doc.root)).hide
+            })
+        };
         let placements: Vec<article::Placement> = sum
             .placements
             .iter()
+            .filter(|p| !article::is_inline_group(&p.2) || shown(p.1))
             .map(|(sec, r, g, seq)| article::Placement {
                 sec: *sec,
                 ref_id: *r,
@@ -1274,5 +1282,158 @@ mod disc_tests {
             let (_, a, _) = convert(&lib, id);
             check_fixture(id, &a);
         }
+    }
+    /// The tokens of an article body in reading order: `('s', id)` section, `('p', id)` paragraph,
+    /// `('a', ref, cluster)` placed item (`cluster` numbers the box it shares, 0 when alone).
+    type Tok = (char, u32, u32);
+
+    /// Reads the tokens from a VM capture's DOM (`fixtures/articles/<id>/article.html`).
+    fn vm_tokens(html: &str) -> Vec<Tok> {
+        let body = &html[html.find("<BODY").unwrap_or(0)..];
+        let body = &body[..body.find("id=ModuleColumn").unwrap_or(body.len())];
+        let mut out = Vec::new();
+        let mut cluster = 0;
+        for tag in body.split('<').skip(1) {
+            let head = &tag[..tag.find('>').unwrap_or(tag.len())];
+            let name = head.split([' ', '\t', '\n', '\r']).next().unwrap_or("");
+            let Some(at) = head.find(" id=").or_else(|| head.find("\nid=")) else {
+                continue;
+            };
+            let id = head[at + 4..].trim_start_matches('"');
+            let id = &id[..id.find(['"', ' ', '\r', '\n']).unwrap_or(id.len())];
+            let split = id.find(|c: char| c.is_ascii_digit()).unwrap_or(id.len());
+            let (kind, num) = id.split_at(split);
+            let Ok(n) = num.parse::<u32>() else {
+                continue;
+            };
+            match (name, kind) {
+                ("DIV", "s") => {
+                    out.push(('s', n, 0));
+                    cluster = 0;
+                }
+                ("P", "p") => {
+                    out.push(('p', n, 0));
+                    cluster = 0;
+                }
+                ("DIV", "MediaClusterCont") => cluster = n + 1,
+                ("SPAN", "a") if cluster > 0 => out.push(('a', n, cluster)),
+                ("DIV" | "TABLE", "a") => {
+                    out.push(('a', n, 0));
+                    cluster = 0;
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
+    fn our_tokens(blocks: &[article::Block], out: &mut Vec<Tok>, clusters: &mut u32) {
+        use article::Block::*;
+        for b in blocks {
+            match b {
+                Section { id, blocks, .. } => {
+                    out.push(('s', *id, 0));
+                    our_tokens(blocks, out, clusters);
+                }
+                Para { id: Some(id), .. } | Intro { id: Some(id), .. } => out.push(('p', *id, 0)),
+                Media { ref_id, .. } => out.push(('a', *ref_id, 0)),
+                Cluster(items) => {
+                    *clusters += 1;
+                    out.extend(items.iter().map(|m| ('a', m.ref_id, *clusters)));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Each placed item's section and the paragraph it precedes (`u32::MAX`: after the last
+    /// one), the items in order, and the members of the box each one is in.
+    #[allow(clippy::type_complexity)]
+    fn positions(toks: &[Tok]) -> (HashMap<u32, (u32, u32)>, Vec<u32>, HashMap<u32, Vec<u32>>) {
+        let (mut pos, mut order, mut boxes) = (HashMap::new(), Vec::new(), HashMap::new());
+        let mut sec = 0;
+        for (i, t) in toks.iter().enumerate() {
+            match t.0 {
+                's' => sec = t.1,
+                'a' if !pos.contains_key(&t.1) => {
+                    let next = toks[i + 1..].iter().take_while(|x| x.0 != 's').find(|x| x.0 == 'p');
+                    pos.insert(t.1, (sec, next.map_or(u32::MAX, |x| x.1)));
+                    order.push(t.1);
+                    let mut members: Vec<u32> = if t.2 == 0 {
+                        vec![t.1]
+                    } else {
+                        toks.iter().filter(|x| x.0 == 'a' && x.2 == t.2).map(|x| x.1).collect()
+                    };
+                    members.sort();
+                    boxes.insert(t.1, members);
+                }
+                _ => {}
+            }
+        }
+        (pos, order, boxes)
+    }
+
+    /// Media placement (content-schema §2) against every encyclopedia article captured in the VM:
+    /// the paragraph each item precedes, the order of the items and the cluster boxes.
+    #[test]
+    fn placement_matches_vm_captures() {
+        let Some(x) = extracted() else {
+            eprintln!("skipped: no extracted/ tree");
+            return;
+        };
+        let Ok(dirs) = std::fs::read_dir(root().join("fixtures/articles")) else {
+            eprintln!("skipped: no VM captures");
+            return;
+        };
+        let lib = Library::open(&x, Edition::Deluxe).unwrap();
+        let (mut items, mut para, mut pairs, mut ordered, mut boxed) = (0, 0, 0, 0, 0);
+        let mut misses = Vec::new();
+        let mut ids: Vec<u32> = dirs.filter_map(|d| d.ok()?.file_name().to_str()?.parse().ok()).collect();
+        ids.sort();
+        for id in ids {
+            let Ok(html) = std::fs::read(root().join(format!("fixtures/articles/{id}/article.html"))) else {
+                continue;
+            };
+            let html = String::from_utf8_lossy(&html);
+            if html.contains("##### frame") || !lib.content(id).unwrap().is_some_and(|c| !c.bytes.is_empty()) {
+                continue;
+            }
+            let (item, a, _) = convert(&lib, id);
+            if item.group != "article" {
+                continue;
+            }
+            let mut ours = Vec::new();
+            our_tokens(&a.blocks, &mut ours, &mut 0);
+            let (vp, vo, vb) = positions(&vm_tokens(&html));
+            let (op, oo, ob) = positions(&ours);
+            let common: Vec<u32> = vo.iter().copied().filter(|r| op.contains_key(r)).collect();
+            let at: HashMap<u32, usize> = oo.iter().enumerate().map(|(i, r)| (*r, i)).collect();
+            pairs += common.len().saturating_sub(1);
+            ordered += common.windows(2).filter(|w| at[&w[0]] < at[&w[1]]).count();
+            for r in &common {
+                items += 1;
+                let shared = |b: &HashMap<u32, Vec<u32>>| -> Vec<u32> {
+                    b[r].iter().copied().filter(|x| op.contains_key(x) && vp.contains_key(x)).collect()
+                };
+                if vp[r] == op[r] {
+                    para += 1;
+                } else {
+                    misses.push(format!("{id}: {r} VM {:?}, ours {:?}", vp[r], op[r]));
+                }
+                if shared(&vb) == shared(&ob) {
+                    boxed += 1;
+                }
+            }
+        }
+        let pct = |a: usize, b: usize| 100.0 * a as f64 / b.max(1) as f64;
+        eprintln!(
+            "{items} items: paragraph {:.1} %, order {:.1} %, cluster {:.1} %\n{}",
+            pct(para, items),
+            pct(ordered, pairs),
+            pct(boxed, items),
+            misses.join("\n")
+        );
+        assert!(items > 1600, "{items} items compared");
+        assert!(pct(para, items) >= 99.0 && pct(ordered, pairs) >= 99.5 && pct(boxed, items) >= 99.5);
     }
 }

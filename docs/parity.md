@@ -72,7 +72,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Show Outline / Show Full Article | done | VM `761575094-outline`, `761563737-outline` | — |
 | Find in Article | done | CSS Highlight API | — |
 | Media strip, Show All Media | done | | — |
-| Inline media placement (text column, margin, clusters) | partial | schema 2; 95.7 % paragraph match against 60 captures | country introductions, overflow into the next section (content-schema §11) |
+| Inline media placement (text column, margin, clusters) | partial | schema 2; 99.4 % paragraph, 100 % order and cluster match against the 25 encyclopedia article captures (`placement_matches_vm_captures`); country introductions and overflow into the next section reproduced | spacing in four sections (content-schema §11) |
 | Quick Facts / Facts and Figures panel | done | | — |
 | World Atlas panel → map at the place | done | | — |
 | Related Articles tree | done | | — |

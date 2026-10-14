@@ -90,35 +90,49 @@ associations with `sec` = section id. Placed groups: `media`, `audio`, `audiones
 (quotation, archive, weblink, furtherread, expert, maps, livemedia are not); items with `hideappears="1"`
 are not. The original computes the layout in native code before its templates run (the templates receive
 `assoc` and `cluster` elements already interleaved with the paragraphs), so the rules below are inferred
-from the 33 article captures (1,657 placed items). Per section, with *m* = the section's own paragraphs
+from the 33 article captures (1,660 placed items). Per section, with *m* = the section's own paragraphs
 (`pkey`/`intro`, not those of subsections) and the items in `sequence` order:
 
-1. Three streams: **sidebars**, **timeline** items (`timeevent`, `timetopic`), and the **primary** stream
-   (everything else). Sequence numbers are only compared within a stream.
-2. Sidebars are spread from paragraph 1 (paragraph 0 when there is no primary item): item *k* of *n* goes
-   before paragraph `start + k·span/n`, `span` = m − 1 (m when starting at 0, at least 1); with more
-   sidebars than `span` they take consecutive paragraphs.
-3. Timeline items start one paragraph after the first sidebar (or where sidebars would start), moved back
-   so that they fit (`start = min(start, max(first, m − n))`), spaced `max(m − start, 1)/n`.
-4. The primary items share the remaining paragraphs ("free slots"; at least slot 0). When there are more
-   items than free slots, consecutive items are grouped front-loaded (each slot takes
-   ceil(remaining / remaining slots)); a group whose members are all *clusterable* (`media`, `audio`,
-   `audionested`, `flash`, `table`, `composite`) becomes a **cluster** — one box in the margin showing one
-   item at a time with a strip of thumbnails; other groups stay separate items in the same slot. Video,
-   timeline items, inline tables, Facts and Figures and virtual tours never cluster.
-5. The primary units then go `step = max(1, ⌊free/units⌋)` slots apart from the first free slot (with more
-   units than slots, several per slot, front-loaded). In one slot: primary first, then the sidebar, then the
-   timeline item. Slot *m* (after the last paragraph) goes before the section's subsections.
+1. Four streams: **sidebars**, the **timeline** stream (`timeevent`, `timetopic` and `virttour`), **Facts and
+   Figures** (`factsandfigures`), and the **primary** stream (everything else). Sequence numbers are only
+   compared within a stream.
+2. Sidebars are spread from paragraph 1 (paragraph 0 when there is no primary item) a whole number of
+   paragraphs apart: item *k* of *n* goes before paragraph `start + k·⌊span/n⌋`, `span` = m − 1 (m when
+   starting at 0, at least 1); with more sidebars than `span` they take consecutive paragraphs.
+3. The timeline stream starts at the same paragraph as the sidebars and skips their paragraphs: of the
+   paragraphs from there on that hold no sidebar, item *k* of *n* takes number `k·⌊avail/n⌋`. When fewer
+   than *n* are left, the items take consecutive paragraphs from the start, sharing the sidebars'. A
+   timeline item has a paragraph of its own or none: those that would go after the last paragraph move
+   on to the **next section in reading order** (subsections included), where they take consecutive
+   paragraphs from its start, after its sidebar, without keeping those paragraphs from its other items;
+   when that section has timeline items of its own, the carried ones go first in its stream. Items carried
+   past the last section close it.
+4. Facts and Figures goes after the last paragraph of its section and takes no paragraph from the others
+   (the five country introductions captured).
+5. The primary items share the remaining paragraphs ("free slots"; at least slot 0). With no more items than
+   free slots they go `step = ⌊free/items⌋` slots apart from the first free slot. With more, the items that
+   cannot share a box (video, inline tables, anything not *clusterable*) take their own free slots first,
+   free slot `k·free/count` for item *k* (when they are at least as many as the free slots, they share them
+   front-loaded and the clusterable items form one box in the last); the *clusterable* items (`media`,
+   `audio`, `audionested`, `flash`, `table`, `composite`) fill the other free slots in sequence order,
+   front-loaded (each slot takes ceil(remaining / remaining slots)), and several in one slot form a
+   **cluster** — one box in the margin showing one item at a time with a strip of thumbnails. In one slot:
+   primary first, then the sidebar, then the timeline item. Slot *m* (after the last paragraph) goes before
+   the section's subsections.
 6. **Column.** Sidebar teasers and video span the **text** column; a `media` picture spans the text column
    when its `files/image` is at least 360 px wide and it is not `NoSquish="1"`, otherwise it is drawn in the
    left **margin** column (192 px picon); an audio set (`audionested`) follows its picture member (by that
    rule, or text when the member has no `image` file and a 216-px picon); everything else, and every
    cluster, is in the margin.
 
-Against the captures this gives the VM's paragraph for 95.7 % of the items, the VM's order for 98.4 %, the
-column for 97.8 % and the cluster grouping for 98.2 % (the old "spread evenly" rule: 66 %, 89 %, — , 89 %).
-The rest are mostly country introductions, where the right-column modules change the flow, and items the
-original moves to the next section when a section is full (not reproduced).
+Against the captures this gives the VM's paragraph for 99.4 % of the items, the VM's order for all of them
+and the VM's cluster boxes for all of them (1,660 items in the 25 encyclopedia articles captured; the test
+`content::disc_tests::placement_matches_vm_captures` measures it when `extracted/` and the captures are
+present). The previous rules (one timeline stream without virtual tours, Facts and Figures among the primary
+items, no carrying) gave 95.7 %, 98.4 % and 98.0 %; the old "spread evenly" rule 66 %, 89 % and 89 %. The rest,
+ten items in four sections, are primary items the VM puts later in the section than `⌊free/items⌋` spacing
+does (Mathematics and United Kingdom introductions, Moon §2, East Timor §13); no rule found over paragraph
+counts or the other items' positions explains all four (§11).
 
 **Sidebar teasers** (`sidebar` placed in an article) are boxes in the text column: header "Sidebars", the
 category by the sidebar's DATA `type` (VM: `SBD` HISTORIC DOCUMENTS, `SBG` GREAT MOMENTS IN SPORTS, `SBH`
@@ -407,8 +421,10 @@ Answered by the VM captures (`docs/vm-findings.md`): the alternative title (§2,
 private-use glyphs (§7), sidebar layout (§2), Kids layout (§2), and the media placement rules (§2).
 Still open:
 
-1. Media placement residue (§2): the country-article introductions (flag and anthem, then the right-column
-   modules) and items carried into the next section when a section has no free paragraph.
+1. Media placement residue (§2): the spacing of the primary items in four sections (Mathematics and United
+   Kingdom introductions, Moon §2, East Timor §13), where the VM leaves more paragraphs between them than
+   `⌊free/items⌋`. Answered: the country introductions (Facts and Figures closes the section) and the items
+   carried into the next section (timeline items and virtual tours).
 2. Sidebar categories `SBA`, `SBP` (not in the captures; the Dutch strings suggest sport and popular culture).
 3. Timeline pop-up wording of full dates and geologic dates (only "4? BC - AD 29?" was observed).
 4. DATAF `pn`, REL/DATAF editions `STE`/`STC` meaning; `section@type` vs heading look (type 6 at top level).

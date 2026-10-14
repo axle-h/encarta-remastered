@@ -607,8 +607,10 @@ pub fn is_clusterable(g: &str) -> bool {
     matches!(g, "media" | "audio" | "audionested" | "flash" | "table" | "composite")
 }
 
-fn is_timeline(g: &str) -> bool {
-    matches!(g, "timeevent" | "timetopic")
+/// Groups laid out in the timeline stream: one per paragraph, and what does not fit moves on to
+/// the next section. Virtual tours are laid out like timeline items (VM).
+fn is_timeline_stream(g: &str) -> bool {
+    matches!(g, "timeevent" | "timetopic" | "virttour")
 }
 
 /// Splits `n` items over `m` slots front-loaded: each slot takes ceil(remaining / remaining slots).
@@ -623,11 +625,13 @@ pub fn distribute(n: usize, m: usize) -> Vec<usize> {
     out
 }
 
-/// Evenly spaced slots for `n` secondary items starting at `start`, over a section of `m` slots.
+/// Sidebar slots: `n` sidebars a whole number of paragraphs apart from `start`, over a section of
+/// `m` slots; consecutive when there are more sidebars than paragraphs.
 fn spread(n: usize, start: usize, m: usize) -> Vec<usize> {
     let span = if start == 0 { m.max(1) } else { m.saturating_sub(1).max(1) };
     if n <= span {
-        (0..n).map(|k| start + k * span / n).collect()
+        let step = span / n.max(1);
+        (0..n).map(|k| start + k * step).collect()
     } else {
         (0..n).map(|k| start + k).collect()
     }
@@ -640,75 +644,117 @@ enum Unit {
     Cluster(Vec<Placement>),
 }
 
+impl Unit {
+    fn of(mut v: Vec<Placement>) -> Unit {
+        if v.len() == 1 { Unit::One(v.remove(0)) } else { Unit::Cluster(v) }
+    }
+}
+
 /// The reader's layout of one section's items over its `m` paragraphs (inferred from the VM captures;
-/// rules in `docs/content-schema.md` §2). Returns `(slot, unit)`; slot `k < m` means "before
-/// paragraph k", `m` means after the last paragraph.
-fn layout_section(items: Vec<Placement>, m: usize) -> Vec<(usize, Unit)> {
+/// rules in `docs/content-schema.md` §2). `carried` are timeline-stream items the previous section
+/// had no paragraph for. Returns `(slot, unit)`, where slot `k < m` means "before paragraph k" and
+/// `m` after the last paragraph, and the items to carry into the next section.
+fn layout_section(items: Vec<Placement>, m: usize, carried: Vec<Placement>) -> (Vec<(usize, Unit)>, Vec<Placement>) {
     let mut sidebars = Vec::new();
     let mut timeline = Vec::new();
+    let mut facts = Vec::new();
     let mut primary = Vec::new();
     for p in items {
         if p.group == "sidebar" {
             sidebars.push(p);
-        } else if is_timeline(&p.group) {
+        } else if is_timeline_stream(&p.group) {
             timeline.push(p);
+        } else if p.group == "factsandfigures" {
+            facts.push(p);
         } else {
             primary.push(p);
         }
     }
     let first = usize::from(!primary.is_empty());
+    // (slot, order within the slot, unit): primary, sidebar, timeline, Facts and Figures.
     let mut out: Vec<(usize, u8, Unit)> = Vec::new();
-    let sp = spread(sidebars.len(), first, m);
-    let mut used: std::collections::HashSet<usize> = sp.iter().copied().collect();
-    for (pos, p) in sp.into_iter().zip(sidebars) {
-        out.push((pos, 1, Unit::One(p)));
+    let sb_slots = spread(sidebars.len(), first, m);
+    let mut used: std::collections::HashSet<usize> = sb_slots.iter().copied().collect();
+    for (pos, p) in sb_slots.iter().zip(sidebars) {
+        out.push((*pos, 1, Unit::One(p)));
+    }
+    let mut carry = Vec::new();
+    let mut place_timeline = |pos: usize, p: Placement, out: &mut Vec<(usize, u8, Unit)>| {
+        if pos < m {
+            out.push((pos, 2, Unit::One(p)));
+            true
+        } else {
+            carry.push(p);
+            false
+        }
+    };
+    // Carried items join the section's own timeline items; alone, they take the paragraphs from
+    // the first one on without keeping them from the other items.
+    if timeline.is_empty() {
+        for (k, p) in carried.into_iter().enumerate() {
+            place_timeline(first + k, p, &mut out);
+        }
+    } else {
+        timeline.splice(0..0, carried);
     }
     if !timeline.is_empty() {
+        // One per paragraph, avoiding the sidebars' paragraphs when there are enough others.
         let n = timeline.len();
-        let start = if out.is_empty() { first } else { first + 1 };
-        let start = start.min(first.max(m.saturating_sub(n)));
-        let span = m.saturating_sub(start).max(1);
-        for (k, p) in timeline.into_iter().enumerate() {
-            let pos = start + k * span / n;
-            used.insert(pos);
-            out.push((pos, 2, Unit::One(p)));
+        let avail: Vec<usize> = (first..m).filter(|s| !used.contains(s)).collect();
+        let slots: Vec<usize> = if n <= avail.len() {
+            let step = avail.len() / n;
+            (0..n).map(|k| avail[k * step]).collect()
+        } else {
+            (0..n).map(|k| first + k).collect()
+        };
+        for (pos, p) in slots.into_iter().zip(timeline) {
+            if place_timeline(pos, p, &mut out) {
+                used.insert(pos);
+            }
         }
+    }
+    for p in facts {
+        out.push((m, 3, Unit::One(p)));
     }
     let mut free: Vec<usize> = (0..m.max(1)).filter(|i| !used.contains(i)).collect();
     if free.is_empty() {
         free.push(0);
     }
-    // More items than free slots: pack consecutive clusterable items into clusters, front-loaded.
-    let mut units = Vec::new();
     if primary.len() > free.len() {
-        let mut it = primary.into_iter();
-        for size in distribute(it.len(), free.len()) {
-            let group: Vec<Placement> = it.by_ref().take(size).collect();
-            if group.len() > 1 && group.iter().all(|p| is_clusterable(&p.group)) {
-                units.push(Unit::Cluster(group));
-            } else {
-                units.extend(group.into_iter().map(Unit::One));
+        // More items than paragraphs: the items that cannot share a box take their own paragraphs,
+        // evenly spaced, and the others fill the rest front-loaded, several to a cluster.
+        let (single, clusterable): (Vec<Placement>, Vec<Placement>) =
+            primary.into_iter().partition(|p| !is_clusterable(&p.group));
+        let rest: Vec<usize> = if single.len() >= free.len() {
+            let mut it = single.into_iter();
+            for (slot, c) in free.iter().zip(distribute(it.len(), free.len())) {
+                for p in it.by_ref().take(c) {
+                    out.push((*slot, 0, Unit::One(p)));
+                }
+            }
+            vec![*free.last().unwrap()]
+        } else {
+            let mine: Vec<usize> = (0..single.len()).map(|k| free[k * free.len() / single.len()]).collect();
+            for (slot, p) in mine.iter().zip(single) {
+                out.push((*slot, 0, Unit::One(p)));
+            }
+            free.into_iter().filter(|s| !mine.contains(s)).collect()
+        };
+        let mut it = clusterable.into_iter();
+        for (slot, c) in rest.iter().zip(distribute(it.len(), rest.len())) {
+            let group: Vec<Placement> = it.by_ref().take(c).collect();
+            if !group.is_empty() {
+                out.push((*slot, 0, Unit::of(group)));
             }
         }
-    } else {
-        units.extend(primary.into_iter().map(Unit::One));
-    }
-    if units.len() > free.len() {
-        let counts = distribute(units.len(), free.len());
-        let mut it = units.into_iter();
-        for (slot, c) in free.iter().zip(counts) {
-            for u in it.by_ref().take(c) {
-                out.push((*slot, 0, u));
-            }
-        }
-    } else if !units.is_empty() {
-        let step = (free.len() / units.len()).max(1);
-        for (k, u) in units.into_iter().enumerate() {
-            out.push((free[k * step], 0, u));
+    } else if !primary.is_empty() {
+        let step = free.len() / primary.len();
+        for (k, p) in primary.into_iter().enumerate() {
+            out.push((free[k * step], 0, Unit::One(p)));
         }
     }
     out.sort_by_key(|x| (x.0, x.1));
-    out.into_iter().map(|(s, _, u)| (s, u)).collect()
+    (out.into_iter().map(|(s, _, u)| (s, u)).collect(), carry)
 }
 
 fn unit_block(u: Unit) -> Block {
@@ -718,26 +764,59 @@ fn unit_block(u: Unit) -> Block {
     }
 }
 
-/// Inserts media/sidebar placements into their sections. Placements for a section that does not
-/// exist (articles without sections) go to the top-level paragraphs.
+/// Inserts media/sidebar placements into their sections, walking the sections in reading order so
+/// that timeline items a section has no paragraph for move on to the next one. Placements for a
+/// section that does not exist (articles without sections) go to the top-level paragraphs.
 fn place_media(blocks: &mut Vec<Block>, placements: &[Placement]) {
     let mut by_sec: std::collections::BTreeMap<u32, Vec<Placement>> = Default::default();
     for p in placements {
         by_sec.entry(p.sec).or_default().push(p.clone());
     }
-    let mut left = Vec::new();
-    for (sec, items) in by_sec {
-        if let Some(items) = insert_into_section(blocks, sec, items) {
-            left.extend(items);
-        }
+    let mut carry = Vec::new();
+    place_in_sections(blocks, &mut by_sec, &mut carry);
+    if !carry.is_empty() {
+        // Nothing follows the last section: its carried items close it.
+        let units = carry.into_iter().map(|p| unit_block(Unit::One(p))).collect();
+        append_to_last_section(blocks, units);
     }
+    let mut left: Vec<Placement> = by_sec.into_values().flatten().collect();
     if !left.is_empty() {
         left.sort_by_key(|p| (p.sequence, p.ref_id));
-        interleave(blocks, left);
+        let carry = interleave(blocks, left, Vec::new());
+        let units = carry.into_iter().map(|p| unit_block(Unit::One(p))).collect();
+        append_to_last_section(blocks, units);
     }
 }
 
-fn interleave(blocks: &mut Vec<Block>, items: Vec<Placement>) {
+fn place_in_sections(
+    blocks: &mut [Block],
+    by_sec: &mut std::collections::BTreeMap<u32, Vec<Placement>>,
+    carry: &mut Vec<Placement>,
+) {
+    for b in blocks.iter_mut() {
+        if let Block::Section { id, blocks: inner, .. } = b {
+            let items = by_sec.remove(id).unwrap_or_default();
+            if !items.is_empty() || !carry.is_empty() {
+                *carry = interleave(inner, items, std::mem::take(carry));
+            }
+            place_in_sections(inner, by_sec, carry);
+        }
+    }
+}
+
+fn append_to_last_section(blocks: &mut Vec<Block>, units: Vec<Block>) {
+    if let Some(Block::Section { blocks: inner, .. }) =
+        blocks.iter_mut().rev().find(|b| matches!(b, Block::Section { .. }))
+    {
+        append_to_last_section(inner, units);
+    } else {
+        blocks.extend(units);
+    }
+}
+
+/// Lays out `items` (and items carried from the previous section) over the paragraphs of `blocks`;
+/// returns the items to carry into the next section.
+fn interleave(blocks: &mut Vec<Block>, items: Vec<Placement>, carried: Vec<Placement>) -> Vec<Placement> {
     let paras: Vec<usize> = blocks
         .iter()
         .enumerate()
@@ -745,8 +824,9 @@ fn interleave(blocks: &mut Vec<Block>, items: Vec<Placement>) {
         .map(|(i, _)| i)
         .collect();
     let m = paras.len();
+    let (slots, carry) = layout_section(items, m, carried);
     let mut at: std::collections::BTreeMap<usize, Vec<Block>> = Default::default();
-    for (slot, u) in layout_section(items, m) {
+    for (slot, u) in slots {
         at.entry(slot.min(m)).or_default().push(unit_block(u));
     }
     let mut out = Vec::with_capacity(blocks.len() + at.len());
@@ -763,22 +843,7 @@ fn interleave(blocks: &mut Vec<Block>, items: Vec<Placement>) {
     let k = out.iter().rposition(|b| !matches!(b, Block::Section { .. })).map_or(0, |i| i + 1);
     out.splice(k..k, tail);
     *blocks = out;
-}
-
-/// Returns the items back when the section is not found.
-fn insert_into_section(blocks: &mut [Block], sec: u32, items: Vec<Placement>) -> Option<Vec<Placement>> {
-    let mut items = Some(items);
-    for b in blocks.iter_mut() {
-        if let Block::Section { id, blocks: inner, .. } = b {
-            if *id == sec {
-                interleave(inner, items.take().unwrap());
-                return None;
-            }
-            items = insert_into_section(inner, sec, items.take().unwrap());
-            items.as_ref()?;
-        }
-    }
-    items
+    carry
 }
 
 fn bib_json(b: &Bib) -> Value {
@@ -1075,15 +1140,21 @@ mod tests {
         assert_eq!(distribute(1, 3), vec![1, 0, 0]);
     }
 
+    fn lay(v: Vec<Placement>, m: usize) -> Vec<(usize, Vec<u32>)> {
+        let (s, carry) = layout_section(v, m, Vec::new());
+        assert!(carry.is_empty(), "{carry:?}");
+        slots(&s)
+    }
+
     #[test]
     fn section_layout_rules() {
         use Column::*;
         // Few items: spaced floor(m / n) paragraphs apart from the first paragraph.
         let v = vec![pl(1, 1, "media", 1, Margin), pl(1, 2, "media", 2, Text), pl(1, 3, "media", 3, Margin)];
-        assert_eq!(slots(&layout_section(v, 7)), vec![(0, vec![1]), (2, vec![2]), (4, vec![3])]);
+        assert_eq!(lay(v, 7), vec![(0, vec![1]), (2, vec![2]), (4, vec![3])]);
         // A sidebar takes the second paragraph; the other items spread over the remaining ones.
         let v = vec![pl(1, 1, "media", 1, Text), pl(1, 9, "sidebar", 1, Text), pl(1, 2, "media", 2, Text)];
-        assert_eq!(slots(&layout_section(v, 7)), vec![(0, vec![1]), (1, vec![9]), (4, vec![2])]);
+        assert_eq!(lay(v, 7), vec![(0, vec![1]), (1, vec![9]), (4, vec![2])]);
         // Timeline items follow the sidebar; more items than free slots pack into clusters.
         let v = vec![
             pl(1, 1, "media", 1, Text),
@@ -1092,16 +1163,83 @@ mod tests {
             pl(1, 7, "sidebar", 7, Text),
             pl(1, 8, "timeevent", 1, Margin),
         ];
-        assert_eq!(
-            slots(&layout_section(v, 3)),
-            vec![(0, vec![1, 2, 3]), (1, vec![7]), (2, vec![8])]
-        );
+        assert_eq!(lay(v, 3), vec![(0, vec![1, 2, 3]), (1, vec![7]), (2, vec![8])]);
         // Only sidebars: from the first paragraph.
         let v = vec![pl(1, 9, "sidebar", 1, Text)];
-        assert_eq!(slots(&layout_section(v, 1)), vec![(0, vec![9])]);
-        // Video does not cluster.
+        assert_eq!(lay(v, 1), vec![(0, vec![9])]);
+        // A video does not cluster; the pictures share one box beside it.
         let v = vec![pl(1, 1, "video", 1, Text), pl(1, 2, "media", 2, Margin), pl(1, 3, "media", 3, Margin)];
-        assert_eq!(slots(&layout_section(v, 1)), vec![(0, vec![1]), (0, vec![2]), (0, vec![3])]);
+        assert_eq!(lay(v, 1), vec![(0, vec![1]), (0, vec![2, 3])]);
+    }
+
+    #[test]
+    fn section_layout_streams() {
+        use Column::*;
+        // Timeline items skip the sidebars' paragraphs, a whole number of paragraphs apart
+        // (United States History section 120).
+        let v = vec![
+            pl(1, 1, "media", 1, Margin),
+            pl(1, 2, "media", 2, Margin),
+            pl(1, 3, "media", 3, Margin),
+            pl(1, 4, "sidebar", 4, Text),
+            pl(1, 5, "sidebar", 5, Text),
+            pl(1, 6, "timeevent", 6, Margin),
+            pl(1, 7, "virttour", 7, Margin),
+        ];
+        assert_eq!(
+            lay(v, 7),
+            vec![(0, vec![1]), (1, vec![4]), (2, vec![6]), (3, vec![2]), (4, vec![5]), (5, vec![7]), (6, vec![3])]
+        );
+        // With more items than paragraphs, videos take their own paragraphs first (United Kingdom
+        // section 215).
+        let v = vec![
+            pl(1, 1, "video", 1, Text),
+            pl(1, 3, "media", 3, Margin),
+            pl(1, 4, "media", 4, Margin),
+            pl(1, 5, "media", 5, Margin),
+            pl(1, 6, "video", 6, Text),
+            pl(1, 7, "media", 7, Margin),
+        ];
+        assert_eq!(lay(v, 4), vec![(0, vec![1]), (1, vec![3, 4]), (2, vec![6]), (3, vec![5, 7])]);
+        // Facts and Figures closes the section and leaves the paragraphs to the others (France).
+        let v = vec![
+            pl(1, 1, "audionested", 1, Margin),
+            pl(1, 2, "factsandfigures", 2, Margin),
+            pl(1, 3, "media", 3, Margin),
+            pl(1, 4, "composite", 4, Margin),
+        ];
+        assert_eq!(lay(v, 10), vec![(0, vec![1]), (3, vec![3]), (6, vec![4]), (10, vec![2])]);
+    }
+
+    #[test]
+    fn timeline_items_carry_into_the_next_section() {
+        use Column::*;
+        // Algebra section 2: one paragraph, taken by the picture; both events move on.
+        let v = vec![pl(2, 1, "flash", 1, Margin), pl(2, 2, "timeevent", 2, Margin), pl(2, 3, "timeevent", 3, Margin)];
+        let (s, carry) = layout_section(v, 1, Vec::new());
+        assert_eq!(slots(&s), vec![(0, vec![1])]);
+        assert_eq!(carry.iter().map(|p| p.ref_id).collect::<Vec<_>>(), vec![2, 3]);
+        // They open the next section, one per paragraph, after its sidebar.
+        let (s, carry) = layout_section(vec![pl(3, 4, "media", 1, Margin), pl(3, 5, "sidebar", 2, Text)], 6, carry);
+        assert!(carry.is_empty());
+        assert_eq!(slots(&s), vec![(0, vec![4]), (1, vec![5]), (1, vec![2]), (2, vec![3])]);
+        // In the blocks: the next section in reading order is the subsection.
+        let d = xml::parse(SAMPLE).unwrap();
+        let mut t = Tracker::default();
+        let placements = vec![pl(2, 10, "media", 1, Margin), pl(2, 11, "timeevent", 2, Margin)];
+        let a = convert(
+            &mut t,
+            &d.root,
+            &ItemInfo {
+                title: None,
+                alt_title: &[],
+                placements: &placements,
+                layout: Layout::Encyclopedia,
+            },
+        );
+        let json = serde_json::to_string(&a.blocks.iter().map(block_json).collect::<Vec<_>>()).unwrap();
+        let at = |r: &str| json.find(r).unwrap();
+        assert!(at("\"ref\":11") > at("Text ") && at("\"ref\":11") < at("Deep."), "{json}");
     }
 
     #[test]
