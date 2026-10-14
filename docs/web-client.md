@@ -269,8 +269,9 @@ decoded size and horizon match an independent survey of all 167.
 - Essay bars have no thumbnail (the VM shows the essay's picture at the bar's start; the event rows carry no file).
 - Inline tables lack the VM's blue box border; the Quick Facts and atlas panels are unchanged.
 - Interactives under Ruffle 0.7.1: see the test pass below. `MatchGame` exhausts Ruffle's memory (games.md) and is
-  native. Trebuchet MS, the players' main font, is approximated by the disc's Tahoma; Lucida Console and Impact by
-  Arial. No VM ground truth: Flash is not installed in the guest (vm-findings.md).
+  native. In the `BGAControl` boards, picture answers draw blank (games.md). Trebuchet MS, the players' main font,
+  is approximated by the disc's Tahoma; Lucida Console and Impact by Arial. No VM
+  ground truth: Flash is not installed in the guest (vm-findings.md).
 - Vasco da Gama's missing ocean fill was seen once (the first headless run against a cold server: the full-frame
   ocean rectangle and the graticule absent, land drawn) and not again in 30 runs (wgpu-webgl, webgl, canvas,
   WebGPU; sizes 460–700 px; throttled network; in the app). Unexplained; watch for it on real GPUs.

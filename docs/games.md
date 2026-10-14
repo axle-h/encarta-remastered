@@ -68,15 +68,37 @@ events (`score`, `keys`, `dialog`, `newboard`, `newpip`, `endgame`, `retreat`, c
 from Africa, United States State Capitals, Spelling Bee, Math Matrix, Wilderness Adventure, Sports Mountain); in
 Postcards from Africa a postcard opens the Sahara board and a suitcase a SWQUIZ question with its picture (loaded from
 `dswMedia/quiz/{id}/`), answers, reward text, Media Credits and continue; in Wilderness Adventure Start and a
-destination lead to the Woods board. A scripted headless-Chromium pass (click lists over the DevTools protocol, SwiftShader) then drove the boards
-further: United States State Capitals was played to its ending (Region 4: all 11 stars answered, score 4 of 11, the
-fireworks screen "Keep playing to memorize all the state capitals!"); Animal Paths showed pips opening a question, the
-reveal, a check or cross on the pip and the score; Continental Quiz, Time Traveler, Body of Knowledge, Math Matrix
-(level, then "Find the button that activates the matrix!"), Spelling Bee, Sports Mountain (question, reveal, continue),
-Wilderness Adventure (balloon to destination) and Postcards from Africa (suitcases 10 to 40) all reached their first
-interaction. No script error or missing file. The other nine were not played to an ending; the reveal's continue button
-moves with the text, so a script must read each screen. The quiz player above remains the
-way to play a question group on its own.
+destination lead to the Woods board.
+
+**All ten boards played to an ending** (headless Chromium over the DevTools protocol, SwiftShader, harness kept out of
+the repo). The harness reads each screen: it finds the answer buttons, the yellow continue / check answer button, the
+scroll arrows and the text field by colour, looks up the open question's answer from the `quiz/{id}/{id}.iax` request,
+and clicks pips at their definition positions. Answers can be forced right or wrong to reach both kinds of ending.
+
+| Board (edition, id) | Run | Ending reached |
+|---|---|---|
+| United States State Capitals | Region 4, 11 stars, 4 right | fireworks "Keep playing to memorize all the state capitals!" |
+| Sports Mountain (kids `00174d78`) | 10/10; again 0/10 | top: "You conquered Sports Mountain in style!" (100); low: "You made it to the top! Want to try again for a better score?" |
+| Body of Knowledge (kids `00174d64`) | Student 14/14 with both side paths; Scientist 0/10 | "PERFECT SCORE in Doctor's Office" bonus, "… path completed", reward 3 "Great job!!" (64); reward 1 "Good effort. Want to try again for a better score?" |
+| Animal Paths (kids `00174d68`) | Pets 14/14 | "PERFECT SCORE in Dog Town" (one bonus per game: the bonus adds the key that the other branch tests), monkey reward 3 "Great job!! You really went bananas!" (120) |
+| Time Traveler (deluxe `00174d70`) | Ancient History 14/14 | "PERFECT SCORE in Ancient Egypt", fireworks "Great job!! You're a Master Historian!" (120) |
+| Continental Quiz (deluxe `00174d74`) | Physical Features 7/7; Lightning Round 6 continents passed, Antarctica failed | fireworks "Fantastic job!! You rule the world!" (7; 6). The Lightning Round's instructions, 30-second timer, "correct answers needed" counter and pass/fail panels work |
+| Spelling Bee (kids `00173a32`) | Level 1, typed words 10/10; a wrong word | "Way to Go!"; the first wrong word ends at once: "Try Again!" |
+| Math Matrix (kids `00173c85`) | +/−: 17 cells, then the portal; ×: portal answered wrong | "You found it! … You only get one chance!", then "You did it! Want to play again?" (27); "Better luck next time." with every cell disabled |
+| Wilderness Adventure (kids `00174d6c`) | Woods, Ocean, Mountains; again all wrong | "You did it!! … You win!", highest reward (parade) "Wow!! You're a hero!" (480); "You ran out of food three times in a row!", the rescue board (helicopter lifts the basket away) |
+| Postcards from Africa (deluxe `001714ab`) | Sahara and Valley of the Kings, all suitcases | "You scored 200 points in just two stops! Way to go!" (200) |
+
+No script error. Two requests fail, both harmless: Math Matrix's win sound `Matrix_Reward_01.mp3` is not on the disc
+(the manifest's `iax_ref` has it unresolved), and Spelling Bee asks once for its own folder (an empty file name).
+Long reveals (Continental Quiz) need the dialog's scroll arrow before continue shows; that is the original layout.
+
+**Defect: picture answers are blank.** In a question whose answers are pictures, the four answer buttons are drawn
+empty (hover lights them; clicking still answers). The JPEGs are requested and served (200), the same file shows as
+the reward picture, and waiting does not help. Seen under Ruffle 0.7.1 and 0.8.0-nightly 2026-10-13. 31 board
+questions are affected (Animal Paths 12, Wilderness Adventure 9, Postcards from Africa 8, Time Traveler 2), so those
+can only be guessed in the board; the quiz player above shows them. Cause not yet found (PLAN).
+
+The quiz player above remains the way to play a question group on its own.
 
 ## Match games
 
