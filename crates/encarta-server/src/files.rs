@@ -339,10 +339,19 @@ pub async fn fallback(State(st): State<Arc<AppState>>, req: Request) -> Response
     }
     if let Some(dir) = &st.static_dir
         && path != "/"
-            && let Some(r) = serve_tree(&req, dir, &path, NO_CACHE).await {
+            && let Some(r) = serve_tree(&req, dir, &path, static_cache(&path)).await {
                 return r;
             }
     spa(&st, &req).await
+}
+
+/// Cache policy of a file of the built SPA outside `assets/`. Ruffle's wasm cores and script
+/// chunks carry a content hash in their names (`core.ruffle.<hash>.js`, `<hash>.wasm`), so they
+/// are immutable like Vite's assets; everything else (`ruffle.js`, `index.html` …) revalidates.
+pub fn static_cache(path: &str) -> &'static str {
+    let Some(name) = path.strip_prefix("/ruffle/") else { return NO_CACHE };
+    let hashed = name.split('.').any(|part| part.len() >= 16 && part.bytes().all(|b| b.is_ascii_hexdigit()));
+    if hashed && !name.contains('/') { crate::media::IMMUTABLE } else { NO_CACHE }
 }
 
 async fn spa(st: &AppState, req: &Req) -> Response {
@@ -383,6 +392,16 @@ mod tests {
         assert_eq!(parse_range("bytes=5-2", 1000), Err(()));
         assert_eq!(parse_range("bytes=0-1,5-6", 1000), Ok(None));
         assert_eq!(parse_range("items=0-1", 1000), Ok(None));
+    }
+
+    #[test]
+    fn ruffle_hashed_files_are_immutable() {
+        assert_eq!(static_cache("/ruffle/core.ruffle.16d61072ac7fdc4d5013.js"), crate::media::IMMUTABLE);
+        assert_eq!(static_cache("/ruffle/172de42e6619eac8f371.wasm"), crate::media::IMMUTABLE);
+        assert_eq!(static_cache("/ruffle/ruffle.js"), NO_CACHE);
+        assert_eq!(static_cache("/ruffle/LICENSE_MIT"), NO_CACHE);
+        assert_eq!(static_cache("/tours.html"), NO_CACHE);
+        assert_eq!(static_cache("/172de42e6619eac8f371.wasm"), NO_CACHE);
     }
 
     #[test]

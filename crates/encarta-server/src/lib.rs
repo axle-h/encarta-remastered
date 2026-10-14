@@ -176,7 +176,7 @@ impl AppState {
     }
 }
 
-/// Compress JSON, HTML, text, JS, CSS, SVG and XML; never ranges or binary media.
+/// Compress text and the binaries of [`compressible`]; never ranges, small bodies or media.
 #[derive(Clone, Copy)]
 struct TextOnly;
 
@@ -189,13 +189,30 @@ impl Predicate for TextOnly {
             return false;
         }
         let ct = res.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("");
-        ct.starts_with("application/json")
-            || ct.starts_with("text/")
-            || ct.starts_with("application/xml")
-            || ct.starts_with("image/svg")
-            || ct.starts_with("application/smil")
-            || ct.starts_with("model/gltf+json")
+        compressible(ct)
     }
+}
+
+/// Content types worth compressing on the fly: text, plus the large binaries that shrink a lot
+/// (Ruffle's 14 MB wasm cores to about a third, the disc fonts, tour glTF and PVS files to a half
+/// or less). Pictures, audio and video are already compressed and never are.
+pub fn compressible(ct: &str) -> bool {
+    let ct = ct.split(';').next().unwrap_or("").trim();
+    ct.starts_with("text/")
+        || matches!(
+            ct,
+            "application/json"
+                | "application/xml"
+                | "image/svg+xml"
+                | "application/smil"
+                | "application/smil+xml"
+                | "model/gltf+json"
+                | "application/wasm"
+                | "font/ttf"
+                | "font/otf"
+                | "model/gltf-binary"
+                | "application/octet-stream"
+        )
 }
 
 async fn access_log(req: Request, next: Next) -> Response {
@@ -256,4 +273,19 @@ pub fn router(st: Arc<AppState>) -> Router {
         .with_state(st)
         .layer(CompressionLayer::new().gzip(true).br(true).compress_when(TextOnly))
         .layer(middleware::from_fn(access_log))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compressible;
+
+    #[test]
+    fn compressible_types() {
+        for ct in ["application/json", "text/html; charset=utf-8", "text/javascript", "image/svg+xml", "application/wasm", "font/ttf", "model/gltf-binary", "application/octet-stream"] {
+            assert!(compressible(ct), "{ct}");
+        }
+        for ct in ["image/jpeg", "image/avif", "audio/ogg", "video/mp4", "font/woff2", "application/x-shockwave-flash", ""] {
+            assert!(!compressible(ct), "{ct}");
+        }
+    }
 }

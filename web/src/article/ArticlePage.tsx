@@ -8,7 +8,7 @@ import { Icon, mediaIcon } from "../components/Icons";
 import { useDocumentTitle } from "../components/useDocumentTitle";
 import type { SectionBlock } from "../content/model";
 import { useMediaViewer } from "../media/MediaViewer";
-import { fileUrl, mediaClass } from "../media/pick";
+import { fileUrl, mediaClass, uniqueByRef } from "../media/pick";
 import { ArticleBody, type BodyContext } from "./ArticleBody";
 import { FindBar } from "./FindBar";
 import { mediaFirst, sectionPathOf } from "./layout";
@@ -17,6 +17,7 @@ import { Pronunciation } from "./Pronunciation";
 import { SequenceContext } from "./sequence";
 import { AtlasPanel, LinksPanel, QuickFacts, RelatedPanel } from "./SidePanels";
 import { KidsArticleView } from "../kids/KidsArticle";
+import { FIND_EVENT } from "../app/commands";
 
 export function ArticlePage({ id, kids = false }: { id: number; kids?: boolean }) {
   const res = useApi((s) => api.article(id, kids ? "kids" : undefined, s), [id, kids]);
@@ -92,8 +93,14 @@ function ArticleView({ article: a, kids }: { article: Article; kids: boolean }) 
         setFindOpen(true);
       }
     };
+    // Edit › Find in Article (menu bar).
+    const onFind = () => setFindOpen(true);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener(FIND_EVENT, onFind);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener(FIND_EVENT, onFind);
+    };
   }, []);
 
   const firstSection = m.body.find((b): b is SectionBlock => b.t === "section");
@@ -112,6 +119,8 @@ function ArticleView({ article: a, kids }: { article: Article; kids: boolean }) 
   const maps = m.media.filter((x) => x.group === "maps");
   const further = m.media.filter((x) => x.group === "furtherread");
   const experts = m.media.filter((x) => x.group === "expert");
+  // VM: the right column's "Web Sites" module (DATA `weblink` associations).
+  const webSites = uniqueByRef(m.media.filter((x) => x.group === "weblink"));
   const hasSections = m.sections.length > 0;
 
   return (
@@ -176,6 +185,7 @@ function ArticleView({ article: a, kids }: { article: Article; kids: boolean }) 
             ))}
             {a.related && a.related.length > 0 && <RelatedPanel tree={a.related} kids={kids} />}
             {further.length > 0 && <LinksPanel title="Further Reading" items={further} kids={kids} />}
+            {webSites.length > 0 && <LinksPanel title="Web Sites" items={webSites} kids={kids} limit={8} />}
           </aside>
         </div>
       </div>

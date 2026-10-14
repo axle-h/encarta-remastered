@@ -8,6 +8,7 @@ import { Html } from "../components/Html";
 import { Icon } from "../components/Icons";
 import { useDocumentTitle } from "../components/useDocumentTitle";
 import { expandGrammarCodes } from "./dictCodes";
+import { printPage, textWithCitation } from "../app/commands";
 import { WHEEL_BEFORE, wheelRows } from "./wordWheel";
 
 type Tab = "dictionary" | "thesaurus" | "bilingual";
@@ -224,11 +225,47 @@ function EntryView({ dict, id, fallbackWord, kids }: { dict: string; id: number;
   };
   return (
     <div className="dict-entry-inner" ref={box}>
+      <EntryTools title={e.headword} box={box} />
       <h2 className="dict-hw">
         {e.headword}
         {src && <SpeakerButton src={src} label={`Pronounce ${e.headword}`} />}
       </h2>
       <Html className="dict-html" html={e.html} onItemLink={onItemLink} kids={kids} />
+    </div>
+  );
+}
+
+/**
+ * The dictionary window's Copy and Print (Encarta Dictionaries tool bar): Copy puts the whole
+ * entry (or the selection inside it) on the clipboard with its source line; Print prints the entry
+ * alone (the print style sheet leaves out the word wheel and the chrome).
+ */
+function EntryTools({ title, box }: { title: string; box: React.RefObject<HTMLDivElement> }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    const el = box.current;
+    if (!el) return;
+    const sel = window.getSelection?.();
+    const inside = sel && sel.rangeCount > 0 && !sel.isCollapsed && el.contains(sel.anchorNode) ? sel.toString() : "";
+    const body = inside || (el.querySelector(".dict-hw")?.textContent ?? "") + "\n" + (el.querySelector(".dict-html") as HTMLElement | null)?.innerText;
+    const text = textWithCitation(body, title, window.location.href);
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* no clipboard access */
+    }
+  };
+  return (
+    <div className="dict-tools">
+      <button type="button" className="art-tool" onClick={() => void copy()}>
+        {copied ? "Copied" : "Copy"}
+      </button>
+      <button type="button" className="art-tool" onClick={printPage}>
+        Print
+      </button>
     </div>
   );
 }

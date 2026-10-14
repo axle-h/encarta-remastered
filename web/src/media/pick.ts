@@ -110,6 +110,9 @@ export function mediaClass(item: { kind?: string; media_type?: string; group?: s
   if (!item) return "other";
   const k = item.kind ?? "";
   const t = item.media_type ?? "";
+  // The kind wins over the icon: 57 narrated slide shows (`narr`) and 25 Flash maps (`map`) are
+  // interactives with an `.iax`, not audio or atlas maps.
+  if (k === "interactive") return "interactive";
   if (k === "video" || t === "video") return "video";
   if (k === "audio" || k === "audio-set" || t === "audio" || t === "narr") return "audio";
   if (k === "table" || k === "facts" || t === "table" || t === "chart") return "table";

@@ -56,6 +56,18 @@ async fn content_endpoints() {
     assert_eq!(item["children"][0]["title"], "Plains Zebra Herd");
     assert_eq!(json(&app, "/api/item/999999").await.0, 404);
 
+    // The way back from items DATA gives no reverse rows: who names them (forward associations)
+    // and whose `children` list them.
+    let (_, facts) = json(&app, &format!("/api/item/{FACTS}")).await;
+    assert_eq!(facts["referenced_by"][0]["ref_id"], ZEBRA, "{facts}");
+    assert_eq!(facts["referenced_by"][0]["group"], "factsandfigures");
+    assert_eq!(facts["referenced_by"][0]["title"], "Zebra");
+    assert_eq!(facts["appears_in"].as_array().unwrap().len(), 0);
+    let (_, photo) = json(&app, &format!("/api/item/{PHOTO}")).await;
+    assert_eq!(photo["parents"][0]["ref_id"], ZEBRA, "{photo}");
+    assert_eq!(photo["parents"][0]["item_kind"], "article");
+    assert_eq!(photo["referenced_by"][0]["ref_id"], ZEBRA);
+
     let (s, a) = json(&app, &format!("/api/article/{ZEBRA}")).await;
     assert_eq!(s, 200);
     assert_eq!(a["body"][1]["title"], "STRIPES");
@@ -91,6 +103,27 @@ async fn content_endpoints() {
     assert_eq!(p["links"][0]["title"], "Zebra");
     assert_eq!(p["links"][1]["kind_label"], "flag");
     assert_eq!(p["links"][2]["kind_label"], "anthem");
+    // A target on no edition of this disc is left out; atlas photos and music are titled.
+    let links = p["links"].as_array().unwrap();
+    assert_eq!(links.len(), 5, "{p}");
+    assert!(links.iter().all(|l| l["ref_id"] != 999001));
+    assert_eq!(links[3]["title"], "Kenyan Herders");
+    assert_eq!(links[3]["item_kind"], "media");
+    assert_eq!(links[4]["item_kind"], "audio");
+    // … and open as items.
+    let (s, am) = json(&app, "/api/item/800").await;
+    assert_eq!(s, 200, "{am}");
+    assert_eq!(am["kind"], "media");
+    assert_eq!(am["credit"], "Synthetic Photo Agency");
+    assert_eq!(am["files"][0]["role"], "image");
+    assert_eq!(am["files"][0]["url"], "/media/file/zz000001.jpg");
+    assert_eq!(am["files"][1]["role"], "picon");
+    // The pushpin picture `zz000001.dtn` is not in the manifest, so it is left out.
+    assert_eq!(am["files"].as_array().unwrap().len(), 2, "{am}");
+    let (_, song) = json(&app, "/api/item/801").await;
+    assert_eq!(song["kind"], "audio");
+    assert_eq!(song["credit"], "Synthetic Records");
+    assert_eq!(song["files"].as_array().unwrap().len(), 0);
     assert_eq!(json(&app, "/api/quiz/7").await.1["quiz"]["q"], 1);
     let (_, ia) = json(&app, "/api/interactive/ZZ.IAX").await;
     assert_eq!(ia["definition"]["@id"], "zz");
@@ -168,6 +201,19 @@ async fn dictionary_timeline_mindmaze_stats() {
     let (_, t) = json(&app, "/api/timeline?region=1,2&from=-100&to=-45").await;
     assert_eq!(t["total"], 1);
     assert_eq!(json(&app, "/api/timeline?category=Nope").await.0, 400);
+    // A term's events (topic timelines, centuries, search terms), case-insensitive.
+    let (s, t) = json(&app, "/api/timeline?term=stripes").await;
+    assert_eq!(s, 200);
+    assert_eq!(t["total"], 1, "{t}");
+    assert_eq!(t["events"][0]["ref_id"], 500);
+    let (_, t) = json(&app, "/api/timeline?term=Treaties&from=-100&to=0").await;
+    assert_eq!(t["events"][0]["ref_id"], 501);
+    let (_, t) = json(&app, "/api/timeline?term=nothing").await;
+    assert_eq!(t["total"], 0);
+    // No such term: an event of that exact title.
+    let (_, t) = json(&app, "/api/timeline?term=a%20treaty").await;
+    assert_eq!(t["total"], 1, "{t}");
+    assert_eq!(t["events"][0]["ref_id"], 501);
 
     let (_, mm) = json(&app, "/api/mindmaze").await;
     assert_eq!(mm["total"], 2);

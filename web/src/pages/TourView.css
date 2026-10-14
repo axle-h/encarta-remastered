@@ -9,7 +9,7 @@
   --tv-link: #314dce;
   display: grid;
   grid-template-columns: 173px minmax(0, 1fr);
-  height: calc(100vh - 64px);
+  height: calc(100vh - var(--chrome-h));
   background: var(--tv-bg);
 }
 

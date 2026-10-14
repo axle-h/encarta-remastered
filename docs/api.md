@@ -73,10 +73,20 @@ when that folder is missing.
   "children": [ { "kind": "media", "ref_id": 1, "sequence": 1, "title": "…", "item_kind": "media" } ],
   "media":      [ AssocItem… ],   // forward associations: what this item shows
   "appears_in": [ AssocItem… ],   // reverse associations: where it appears
+  "referenced_by": [ { "ref_id", "group", "kind", "title", "title_html", "media_type" } ],  // items whose forward associations name this one
+  "parents": [ { "ref_id", "kind", "title", "item_kind" } ],   // items whose `children` list this one
   "data_table": { "kind": "facts", "json": {…}, "html": "…" } | null,
   "timeline":   TimelineEvent | null }
 ```
 `files[].role` is the DATA role (`thumb`, `picon`, `image`, `audio`, `video`, `cc`, `xml`, `ticon` …).
+`referenced_by` (up to 500, one row per item, by sort title) is the way back where DATA stores no reverse rows: an
+author's quotations, a contributor's articles, the articles that list a web link. `parents` (up to 50) leads from a
+tour node to its stop or scene and tour.
+
+An id that is not a DATA item but is in `atlas_media` (MSWORLD.ITR photos `i`/`m` and sounds `w` that P2MTBL links to,
+msworld.md §3) is answered in the same shape with `source_group: "atlas-media"`, `kind` `media` or `audio`, the
+title and credit, and the files that resolve: `image` (`B`), `picon` (`P`) and, as fallback, the 64-px pushpin
+`thumb` (`<stem>.dtn`); `meta.atlas_media` has `place_id`, `paired_ref_id`, `legacy_id`.
 
 `AssocItem`:
 ```json
@@ -126,7 +136,8 @@ nodes carry `title` and `alt` parts.
 
 `GET /api/place/{gid}` → `{ "place_id": 12, "links": [ { "ordinal", "kind", "kind_label", "ref_id", "title", "item_kind" } ] }`
 (P2MTBL place → content links from `content.sqlite`; `gid` as in `/atlas/place/{gid}` links; `404` when the place
-has no links). `kind_label` (p2mtbl.md): `article`, `flag-and-anthem`, `facts-and-figures`, `photo:<theme>`, `music`,
+has no links). Only targets on this disc are listed: DATA items and `atlas_media` rows (titled from there, `item_kind`
+`media` or `audio`); P2MTBL is shared with other editions and 2,656 of its targets are on none of this disc's. `kind_label` (p2mtbl.md): `article`, `flag-and-anthem`, `facts-and-figures`, `photo:<theme>`, `music`,
 `maptrek-stop` (13), `flag` (14), `anthem` (15), `about-map` (16). The atlas gazetteer has the place itself: `GET /api/atlas/place/{gid}` below.
 
 `GET /api/quiz/{quiz_id}[?edition=kids]` → `{ "quiz_id", "edition", "quiz_type", "lang", "quiz": {…} }`.
@@ -168,8 +179,10 @@ Homographs are separate entries with the same headword (the reader labels them "
 `GET /api/timeline/meta` → `{ "categories": [ {"bit": 1, "name": "Science and Technology"} ], "regions": […],
 "count": 16465, "min_year": -…, "max_year": … }`.
 
-`GET /api/timeline?from=1700&to=1800[&category=Political History,4][&region=Europe][&q=revolution][&min_importance=3][&order=importance][&text=1][&limit=500][&offset=0]`
-→ events overlapping `[from, to]` (years; negative = BC), ordered by start date. `category`/`region` take names
+`GET /api/timeline?from=1700&to=1800[&category=Political History,4][&region=Europe][&q=revolution][&term=Aztec Empire][&min_importance=3][&order=importance][&text=1][&limit=500][&offset=0]`
+→ events overlapping `[from, to]` (years; negative = BC; both optional), ordered by start date. `term` keeps the events
+a TIMELINE.DAT term lists (timeline.md §5; case-insensitive exact term text: topic timelines such as "Aztec Empire",
+centuries, search words); when no term has that text, an event with exactly that title. `category`/`region` take names
 or bits, comma-separated, matching any. `order=importance` sorts the most prominent first (`prominence` descending, i.e. importance 1 first; then by
 date): with `limit` it is the band of a timeline view, the window's N most important events in one request (`order=date` is
 the default; anything else is `400`). `text=1` adds each event's body text.
@@ -337,8 +350,11 @@ there (`REFSER*.TTF`, `REFSAN*.TTF`). `encarta-convert content` copies the disc'
   names); a missing asset is `404`, not the SPA. Other files of `web/dist` and `index.html` get `no-cache`.
 - Anything else (`GET`/`HEAD`) that is not a file → `web/dist/index.html` (SPA fallback). Unknown `/api/…` is a
   JSON `404`; unknown `/media/…` and `/out/…` are plain `404`s.
-- JSON, HTML, CSS, JS, SVG, XML and VTT responses are gzip/brotli-compressed when the client accepts it;
-  ranges and binary media never are.
+- JSON, HTML, CSS, JS, SVG, XML and VTT responses are gzip/brotli-compressed when the client accepts it, and so are
+  the large binaries that shrink well: `application/wasm` (Ruffle), `font/ttf`/`otf`, `model/gltf-binary` and
+  `application/octet-stream` (tour `pvs.bin`). Ranges, bodies under 512 bytes and media never are.
+- Ruffle's content-hashed files under `/ruffle/` (`core.ruffle.<hash>.js`, `<hash>.wasm`) get
+  `Cache-Control: public, max-age=31536000, immutable`; `ruffle.js` and the other SPA files `no-cache`.
 
 ## Games
 

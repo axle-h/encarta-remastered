@@ -5,10 +5,13 @@
   flex-direction: column;
 }
 
-.topbar {
+.chrome {
   position: sticky;
   top: 0;
   z-index: 50;
+}
+
+.topbar {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -92,30 +95,140 @@
   cursor: pointer;
 }
 
-.features-menu {
+/* Menus (components/Menu.tsx): the Features menu and the menu bar's menus. */
+.menu {
+  position: relative;
+}
+
+.menu-popup {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 2px);
   left: 0;
+  z-index: 60;
   min-width: 200px;
+  max-width: 420px;
+  max-height: calc(100vh - var(--chrome-h) - 16px);
+  overflow-y: auto;
   margin: 0;
-  padding: 6px 0;
+  padding: 4px 0;
   list-style: none;
   background: #fff;
   border: 1px solid #b9b8b0;
-  border-radius: 6px;
+  border-radius: 4px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  font: 13px var(--ui);
 }
 
-.features-menu a {
-  display: block;
+.features-menu {
+  top: calc(100% + 8px);
+  border-radius: 6px;
+  padding: 6px 0;
+}
+
+.menu-popup a,
+.menu-popup button {
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  width: 100%;
   padding: 6px 16px;
+  border: 0;
+  background: none;
   color: var(--text);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
 }
 
-.features-menu a:hover,
-.features-menu a:focus-visible {
+.menu-popup .menu-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-popup a:hover,
+.menu-popup a:focus,
+.menu-popup button:not(:disabled):hover,
+.menu-popup button:not(:disabled):focus {
   background: #fdf0e0;
   color: var(--orange-dark);
+  outline: none;
+}
+
+.menu-popup button:disabled {
+  color: #9a9a9a;
+  cursor: default;
+}
+
+.menu-shortcut {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.menu-sep {
+  margin: 4px 0;
+  border-top: 1px solid #e1e0da;
+}
+
+.menu-heading {
+  margin: 6px 0 2px;
+  padding: 4px 16px 0;
+  border-top: 1px solid #e1e0da;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* The menu bar above the tool bar (VM: File, Edit, Favorites, Help). */
+.menubar {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 6px;
+  background: #fff;
+  border-bottom: 1px solid #ecebe6;
+  font: 12px var(--ui);
+}
+
+.menubar-btn {
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.menubar-btn:hover,
+.menubar-btn[aria-expanded="true"] {
+  background: #fdf0e0;
+  border-color: #f1c58f;
+}
+
+.menubar-note {
+  margin-left: 16px;
+  color: var(--green-dark);
+}
+
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -40px;
+  z-index: 100;
+  padding: 6px 12px;
+  background: #fff;
+  border: 2px solid #3b7bd8;
+  border-radius: 4px;
+}
+
+.skip-link:focus {
+  top: 8px;
+}
+
+.page:focus {
+  outline: none;
 }
 
 .topbar-search {
@@ -233,7 +346,7 @@
 
 /* Home screen */
 .home {
-  min-height: calc(100vh - 64px);
+  min-height: calc(100vh - var(--chrome-h));
   background: #3c7a14 center / cover no-repeat;
   padding: 28px 16px 40px;
 }
@@ -330,7 +443,7 @@
 
 /* Category (browse) screens */
 .browse {
-  min-height: calc(100vh - 64px);
+  min-height: calc(100vh - var(--chrome-h));
   background: #335 center / cover no-repeat;
   padding: 24px 16px 40px;
 }

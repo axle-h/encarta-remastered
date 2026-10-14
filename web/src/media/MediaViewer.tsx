@@ -11,6 +11,7 @@ import { FlashInteractive } from "./FlashPlayer";
 import { GameInteractive } from "../games/GameInteractive";
 import { AudioPlayer, VideoPlayer } from "./Players";
 import { itemHref } from "../content/links";
+import { isPanoramicTour } from "../pages/panorama";
 
 interface ViewerState {
   /** Opens the viewer on `id`; `list` is the sequence prev/next walk through. */
@@ -191,6 +192,9 @@ export function MediaStage({ item, kids }: { item: Item; kids: boolean }) {
     case "tour": {
       const tid = tourIdFor(item.ref_id, tours.data?.tours);
       const pic = largeImage(item);
+      const panoramic = isPanoramicTour(item);
+      // A picture inside a panoramic tour (a hotspot's destination) is shown like any picture.
+      if (!tid && !panoramic && pic) break;
       return (
         <div className="mv-tour">
           {pic && <img src={fileUrl(pic)} alt="" />}
@@ -198,8 +202,14 @@ export function MediaStage({ item, kids }: { item: Item; kids: boolean }) {
             <Link className="enc-button" to={`/tours/${tid}`}>
               Start the 3D virtual tour
             </Link>
+          ) : panoramic ? (
+            <Link className="enc-button" to={`/item/${item.ref_id}`}>
+              Start the virtual tour
+            </Link>
           ) : (
-            <p className="enc-muted">Virtual tour stop.</p>
+            <Link className="enc-button" to={`/item/${item.ref_id}`}>
+              Open in its virtual tour
+            </Link>
           )}
         </div>
       );
@@ -226,8 +236,8 @@ export function MediaStage({ item, kids }: { item: Item; kids: boolean }) {
       return (
         <div className="mv-map">
           {pic && <img src={fileUrl(pic)} alt="" />}
-          <Link className="enc-button" to="/atlas">
-            Open the World Atlas
+          <Link className="enc-button" to={item.geocode ? `/atlas/place/${item.geocode}` : "/atlas"}>
+            Open in the World Atlas
           </Link>
         </div>
       );

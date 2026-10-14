@@ -144,3 +144,17 @@ export function categoryIndex(mask: number | undefined): number {
   for (let i = 0; i < 6; i++) if (mask & (1 << i)) return i;
   return 6;
 }
+
+/** A window that shows every event of a topic, with a margin of a tenth of its span (at least 5 years). */
+export function topicWindow(events: TimelineEvent[], min: number, max: number): [number, number] {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const ev of events) {
+    if (!ev.start) continue;
+    lo = Math.min(lo, ev.start.year);
+    hi = Math.max(hi, ev.end?.year ?? ev.start.year);
+  }
+  if (!Number.isFinite(lo)) return [1900, 2010];
+  const pad = Math.max(5, (hi - lo) / 10);
+  return [Math.max(min, Math.floor(lo - pad)), Math.min(max, Math.ceil(hi + pad))];
+}

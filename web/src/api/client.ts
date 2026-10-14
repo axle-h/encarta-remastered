@@ -110,8 +110,10 @@ export const api = {
   timelineMeta: (s?: AbortSignal) => getJson<TimelineMeta>(`/api/timeline/meta`, s),
   timeline: (
     p: {
-      from: number;
-      to: number;
+      from?: number;
+      to?: number;
+      /** Only the events of a TIMELINE.DAT term (a topic timeline). */
+      term?: string;
       category?: string;
       region?: string;
       q?: string;

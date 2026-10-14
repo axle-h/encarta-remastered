@@ -1,0 +1,107 @@
+/* Print (File › Print, Ctrl+P): the page content only, in black on white. The menus, tool bar,
+   media strip, article tools and viewers are left out; the article's right column follows the
+   text; sections that are collapsed stay collapsed, as on screen. */
+@media print {
+  @page {
+    margin: 16mm 14mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000;
+  }
+
+  .chrome,
+  .skip-link,
+  .art-strip,
+  .art-tools,
+  .art-allmedia,
+  .enc-findbar,
+  .mv-backdrop,
+  .menu-popup,
+  .dict-wheel,
+  .dict-tabs,
+  .dict-tools,
+  .dict-search,
+  .dict-pair,
+  .dict-foot,
+  .tl-controls,
+  .tl-eras,
+  .tl-filters,
+  .search-pager,
+  .tv-menu,
+  .trek-nav,
+  .favs-tools,
+  .enc-panel-more,
+  .enc-toggle,
+  .tl-loading {
+    display: none !important;
+  }
+
+  .page {
+    min-height: 0 !important;
+  }
+
+  .art-cols {
+    display: block !important;
+  }
+
+  .art-side {
+    width: auto !important;
+    margin-top: 12pt;
+    break-before: auto;
+  }
+
+  .art,
+  .art-text {
+    max-width: none !important;
+  }
+
+  .art-text {
+    font-size: 11pt;
+    line-height: 1.45;
+  }
+
+  a,
+  a:visited {
+    color: #000 !important;
+    text-decoration: none;
+  }
+
+  /* External web links print their address. */
+  .itempage-url a[href^="http"]::after {
+    content: "";
+  }
+
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+  }
+
+  img,
+  figure,
+  table,
+  .enc-panel,
+  .enc-mediabox {
+    break-inside: avoid;
+  }
+
+  .dict-body {
+    display: block !important;
+    height: auto !important;
+  }
+
+  .dict-entry,
+  .dict-entry-inner {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  .home,
+  .browse {
+    background: none !important;
+  }
+}

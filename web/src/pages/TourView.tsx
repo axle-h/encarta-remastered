@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { useApi } from "../api/useApi";
 import { Html } from "../components/Html";
 import { Icon } from "../components/Icons";
+import { MenuButton } from "../components/Menu";
 import { useDocumentTitle } from "../components/useDocumentTitle";
 import {
   SITE_MAP_WINDOW,
@@ -200,6 +201,18 @@ export function TourView({ tourId }: { tourId: string }) {
             Labels and Hot Spots
           </button>
           <TourStopsMenu stops={stops} targets={scene?.hotspotTargets ?? []} disabled={state !== "ready"} onStop={goToStop} onHotspot={openMedia} />
+          <button
+            type="button"
+            className="tv-menu-item"
+            disabled={state !== "ready" || stops.length === 0}
+            onClick={() => {
+              const first = stops.find((s) => s.id === scene?.defaultStop) ?? stops[0];
+              if (first) goToStop(first);
+            }}
+          >
+            Start Over
+          </button>
+          {meta?.contentId ? <AppearsInMenu contentId={meta.contentId} /> : null}
           {scene?.article ? (
             <Link to={`/item/${scene.article}`} className="tv-menu-item">
               Credits
@@ -414,5 +427,23 @@ function Hotspot({ id, onClose }: { id: number; onClose: () => void }) {
         </>
       )}
     </div>
+  );
+}
+
+/** Encarta's "Appears in" menu: the articles that link this tour. */
+function AppearsInMenu({ contentId }: { contentId: number }) {
+  const item = useApi((s) => api.item(contentId, s), [contentId]);
+  const list = [...(item.data?.appears_in ?? []), ...(item.data?.referenced_by ?? [])].filter(
+    (a, i, all) => (a.kind === "article" || a.kind === undefined) && all.findIndex((b) => b.ref_id === a.ref_id) === i,
+  );
+  return (
+    <MenuButton
+      label="Appears in"
+      buttonClassName="tv-menu-item"
+      menuClassName="tv-popup"
+      entries={() =>
+        list.length > 0 ? list.map((a) => ({ label: a.title ?? String(a.ref_id), to: `/item/${a.ref_id}`, key: String(a.ref_id) })) : [{ label: "No articles link this tour", disabled: true }]
+      }
+    />
   );
 }

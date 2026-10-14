@@ -1,9 +1,11 @@
-import { lazy, Suspense, useEffect, useRef, useState, type ComponentType } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Navigate, Outlet, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArticleMediaPage, MediaBrowserPage } from "../pages/MediaBrowserPage";
 import { AtlasPlaceholder } from "../pages/AtlasPlaceholder";
 import { BrowsePage } from "../pages/BrowsePage";
 import { DictionaryPage } from "../pages/DictionaryPage";
+import { FavoritesPage } from "../pages/FavoritesPage";
+import { HelpPage } from "../pages/HelpPage";
 import { HomePage } from "../pages/HomePage";
 import { ItemPage } from "../pages/ItemPage";
 import { NotFound } from "../pages/NotFound";
@@ -15,30 +17,7 @@ import { KidsHome } from "../kids/KidsHome";
 import { MediaViewerProvider } from "../media/MediaViewer";
 import { Shell } from "./Shell";
 
-// The atlas (plan Step 5) lives in src/atlas/ and is owned separately; load it when present.
-interface AtlasView {
-  lat: number;
-  lon: number;
-  altitudeKm: number;
-  style?: string;
-  projection?: string;
-}
-interface AtlasModuleProps {
-  initialPlace?: { entity?: number; lat?: number; lon?: number; altitudeKm?: number } | string;
-  initialStyle?: string;
-  initialProjection?: "globe" | "flat";
-  onOpenArticle?: (refId: number) => void;
-  onViewChange?: (v: AtlasView) => void;
-  className?: string;
-}
-const atlasModules = import.meta.glob("../atlas/index.tsx");
-const atlasLoader = atlasModules["../atlas/index.tsx"];
-const AtlasLazy = atlasLoader
-  ? lazy(async () => {
-      const m = (await atlasLoader()) as { Atlas?: ComponentType<AtlasModuleProps> };
-      return { default: m.Atlas ?? (AtlasPlaceholder as ComponentType<AtlasModuleProps>) };
-    })
-  : null;
+import { AtlasLazy, type AtlasModuleProps, type AtlasView } from "./atlasModule";
 
 /** The atlas's starting view from the route: `/atlas/place/{gid}`, `?url=msencarta://…`, `?lat&lon&alt`. */
 export function atlasInitialPlace(splat: string, search: URLSearchParams): AtlasModuleProps["initialPlace"] {
@@ -156,6 +135,8 @@ export function App() {
         <Route path="tours" element={<ToursPage />} />
         <Route path="tours/:tourId" element={<TourRoute />} />
         <Route path="atlas/*" element={<AtlasRoute />} />
+        <Route path="favorites" element={<FavoritesPage />} />
+        <Route path="help" element={<HelpPage />} />
         <Route path="games/*" element={<Suspense fallback={<div className="enc-loading"><div className="enc-spinner" /></div>}><GamesLazy /></Suspense>} />
         <Route path="*" element={<NotFound />} />
       </Route>

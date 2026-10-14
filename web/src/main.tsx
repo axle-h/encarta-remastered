@@ -8,6 +8,7 @@ import "./styles/shell.css";
 import "./styles/article.css";
 import "./styles/pages.css";
 import "./styles/kids.css";
+import "./styles/print.css";
 
 void loadDiscFonts();
 

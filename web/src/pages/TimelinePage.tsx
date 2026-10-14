@@ -7,7 +7,7 @@ import { Html } from "../components/Html";
 import { Icon } from "../components/Icons";
 import { useDocumentTitle } from "../components/useDocumentTitle";
 import { eventDateText, yearLabel } from "./timelineDates";
-import { categoryIndex, displayOf, ERAS, pan, placeEvents, prominenceOf, ticks, titleSize, zoom, type Placed } from "./timelineLayout";
+import { categoryIndex, displayOf, ERAS, pan, placeEvents, prominenceOf, ticks, titleSize, topicWindow, zoom, type Placed } from "./timelineLayout";
 
 const LANE_H = 30;
 const BAND_LIMIT = 400;
@@ -37,6 +37,23 @@ export function TimelinePage() {
   const [region, setRegion] = useState(params.get("region") ?? "");
   const [text, setText] = useState(params.get("q") ?? "");
   const [q, setQ] = useState(text);
+  // A topic timeline (`?term=`, timeline.md §5): only that term's events, the window fitted to them.
+  const [term, setTerm] = useState(params.get("term") ?? "");
+  const topic = useApi(term ? (s) => api.timeline({ term, limit: 5000 }, s) : null, [term]);
+  const fitted = useRef("");
+  // Whether the address named a window when the page opened (the effect below writes one at once).
+  const explicitWindow = useRef(params.has("from") && params.has("to"));
+  useEffect(() => {
+    const evs = topic.data?.events ?? [];
+    if (!term || fitted.current === term || evs.length === 0) return;
+    fitted.current = term;
+    if (explicitWindow.current) {
+      explicitWindow.current = false;
+      return;
+    }
+    setWin(topicWindow(evs, min, max));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topic.data, term]);
   const [selected, setSelected] = useState<TimelineEvent | null>(null);
   const bandRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(900);
@@ -62,18 +79,19 @@ export function TimelinePage() {
     if (category) p.set("category", category);
     if (region) p.set("region", region);
     if (q) p.set("q", q);
+    if (term) p.set("term", term);
     setParams(p, { replace: true });
-  }, [from, to, category, region, q, setParams]);
+  }, [from, to, category, region, q, term, setParams]);
 
-  const filters = { from, to, category: category || undefined, region: region || undefined, q: q || undefined };
+  const filters = { from, to, category: category || undefined, region: region || undefined, q: q || undefined, term: term || undefined };
   // The band shows the window's most important events (one request, `order=importance`).
-  const band = useApi((s) => api.timeline({ ...filters, order: "importance", limit: BAND_LIMIT, text: true }, s), [from, to, category, region, q]);
+  const band = useApi((s) => api.timeline({ ...filters, order: "importance", limit: BAND_LIMIT, text: true }, s), [from, to, category, region, q, term]);
   // The list below pages through every event of the window in date order.
   const [listOffset, setListOffset] = useState(0);
   useEffect(() => {
     setListOffset(0);
-  }, [from, to, category, region, q]);
-  const list = useApi((s) => api.timeline({ ...filters, limit: LIST_PAGE, offset: listOffset, text: true }, s), [from, to, category, region, q, listOffset]);
+  }, [from, to, category, region, q, term]);
+  const list = useApi((s) => api.timeline({ ...filters, limit: LIST_PAGE, offset: listOffset, text: true }, s), [from, to, category, region, q, term, listOffset]);
   const res = list;
   const events = list.data?.events ?? [];
   const lanes = 12;
@@ -91,6 +109,14 @@ export function TimelinePage() {
     <div className="tl">
       <div className="tl-head">
         <h1 className="page-title">Encarta Timeline</h1>
+        {term && (
+          <p className="tl-topic">
+            Topic: <strong>{term}</strong> ({topic.data ? `${topic.data.total} events` : "…"}){" "}
+            <button type="button" className="enc-panel-link" onClick={() => setTerm("")}>
+              Show all events
+            </button>
+          </p>
+        )}
         <div className="tl-eras" role="tablist" aria-label="Eras">
           {ERAS.map((e) => {
             const on = from >= e.from && to <= e.to;

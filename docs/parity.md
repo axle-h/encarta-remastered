@@ -1,0 +1,399 @@
+# Parity audit (plan Step 8)
+
+Feature-by-feature checklist of Encarta Premium 2009 against this project, and the "no content lost"
+check of every data family in [formats/inventory.md](formats/inventory.md). Audit of 2026-10-14 against the
+converted disc (`out/`, content schema 2) served by `encarta-server`, with the production build of `web/`.
+
+**Sources of the feature list.** The VM home screen (`fixtures/vm/home.png`: menu bar File / Edit / Favorites / Help;
+tool bar Back, Forward, Home, Features ▾, search box; nine home links); the 27 feature records (`group="feat"`:
+Dictionary, Thesaurus, Translate a Word ×8, Translations, Timeline ×2, College Prep Online, Geography Quiz, Encarta
+Kids, Quick Search ×6, Encarta on the Web ×2); [vm-findings.md](vm-findings.md); the article, tour, atlas, geoquiz and
+timeline captures (indexes in `fixtures/*/INDEX.md`, private); the specs ([web-client.md](web-client.md),
+[atlas-client.md](atlas-client.md), [games.md](games.md), [tour-runtime.md](tour-runtime.md), [api.md](api.md),
+[content-schema.md](content-schema.md)). The Features menu itself and the dialogs (Options, Help) were never
+captured, so features known only from the data are marked as such.
+
+**Status.** **done**: present and behaves as the VM or the data shows. **partial**: present, with a gap written next
+to it. **missing**: not present. **n/a**: not applicable to Encarta 2009 (not reachable in 2009, or an online service
+that closed in 2009). *(ours)* marks behaviour chosen here where the original is unknown.
+
+## Summary
+
+| | done | partial | missing | n/a |
+|---|---|---|---|---|
+| Features (134 rows below) | 96 | 23 | 8 | 7 |
+
+Fixed in this audit: 25 items (see [Fixes made](#fixes-made-in-this-audit)). The largest remaining gaps, in
+priority order, are in [Remaining gaps](#remaining-gaps-priority-order).
+
+---
+
+## Home, menus and tool bar
+
+| Feature | Status | Evidence | Gap |
+|---|---|---|---|
+| Home screen: logo, butterfly, background, nine links in three columns | done | `/`, data item 701712539; compared with `fixtures/vm/home.png` | — |
+| Home links → category screens (History … Sports & Recreation, Games & Fun Stuff) | done | `/browse/{id}`; 7,888 `home-page` items, 50/50 sampled render links | — |
+| Home links Dictionary, Encarta Kids | done | `/dictionary`, `/kids` | — |
+| Menu bar File / Edit / Favorites / Help | done | `MenuBar` in `app/Shell.tsx` (this audit) | menu contents beyond the ones below were not captured |
+| File › Print | done | `window.print()` + `styles/print.css` (this audit) | — |
+| Edit › Copy (with a source line) | partial | `app/commands.ts` (this audit) | the source-line wording is *(ours)*; plain Ctrl+C copies without it |
+| Edit › Find in Article | done | menu entry → find bar (this audit); Ctrl+F | — |
+| Help (Encarta's own help files) | partial | `/help`: about + keyboard shortcuts (this audit) | the disc's three CHM files (Windows UI help) are omitted by design (media.md §4) |
+| Back / Forward orbs with history state | done | `NavButtons` | — |
+| Home orb | done | | — |
+| Features ▾ menu | done | `FEATURES`, keyboard menu (this audit) | entry order is *(ours)*: the 2009 menu was not captured |
+| Search box with autocomplete in the tool bar | done | `SearchBox`, `/api/suggest` | — |
+| The ▾ tab under the search box (VM home) | missing | visible in `home.png` | its function was never captured; needs a VM look (S) |
+| Window title / document title per page | done | `useDocumentTitle` | — |
+
+## Features menu (feature records)
+
+| Feature | Status | Evidence | Gap |
+|---|---|---|---|
+| Dictionary (701712323, 701767247) | done | `/item/{id}` → `/dictionary` (this audit routes all 27 records) | — |
+| Thesaurus (701712324, 701767248) | done | → `/thesaurus` | — |
+| Translate a Word ×8 (`BA2E` … `BI2A`) | done | → `/translate?pair=ENG_SPA` etc. (this audit) | — |
+| Translations (701767016) | done | → `/translate` | — |
+| Timeline (701712334, 701779281) | done | → `/timeline` | — |
+| Geography Quiz (701712336) | done | → `/games/geoquiz` | — |
+| Encarta Kids (701712340) | done | → `/kids` | — |
+| Quick Search: Articles / Maps / Photos & More / Quotations / Dictionary / Thesaurus | partial | → `/search?kind=article`, `?kind=map`, `/media`, `?kind=quotation`, `/dictionary`, `/thesaurus` (this audit) | the 2009 Quick Search dialog was not captured; these open the scoped search pages |
+| World Atlas, Media Gallery, 3D Virtual Tours, Games & Quizzes | done | Features menu entries | not feature records in 2009 (built into the UI); placement in the menu *(ours)* |
+| College Prep Online (701712335) | n/a | online service | page says so (`OnlineFeatureView`) |
+| Encarta on the Web (701835573, 701882633) | n/a | online service | page says so |
+| Extras: MindMaze, City Climate, Population Chart | n/a | not reachable in 2009 (vm-findings.md); rebuilt as extras | — |
+
+## Article reader
+
+| Feature | Status | Evidence | Gap |
+|---|---|---|---|
+| Encyclopedia layout: title, sections with numbers, (−)/(+) toggles | done | `ArticlePage`; 50/50 sampled articles render | — |
+| Show Outline / Show Full Article | done | VM `761575094-outline`, `761563737-outline` | — |
+| Find in Article | done | CSS Highlight API | — |
+| Media strip, Show All Media | done | | — |
+| Inline media placement (text column, margin, clusters) | partial | schema 2; 95.7 % paragraph match against 60 captures | country introductions, overflow into the next section (content-schema §11) |
+| Quick Facts / Facts and Figures panel | done | | — |
+| World Atlas panel → map at the place | done | | — |
+| Related Articles tree | done | | — |
+| Further Reading | done | | — |
+| Web Sites panel (right column, VM `761568934`) | done | `LinksPanel` with 8 shown + "Show all" (this audit); 31,976 links on 17,612 items | — |
+| Contributors ("Contributed By") | done | | — |
+| Sidebar teasers and sidebar layout | done | VM `631522251` | categories `SBA`/`SBP` unconfirmed |
+| Inline tables (`tableinline`) | partial | | blue box border of the VM missing (web-client.md) |
+| "X or Y" alternative titles | done | VM `461510929` | — |
+| Specialty and private-use glyphs | done | content-schema §7 | — |
+| Pronunciation speaker | done | | — |
+| Quick-verify links (blue #314dce) | done | | — |
+| Short articles inside longer ones (open the containing article) | partial | VM: Al-Karaji → Mathematics | not verified in the client (S) |
+| Quotations (29,705) | done | 50/50 render | — |
+| Quotation authors (6,196) | done | `AuthorView`: dates, nationality, designation, their quotations (this audit; was "Nothing to display") | — |
+| Contributors as items (2,034) | done | `ContributorView` (this audit; was empty) | 9 % have no articles in this edition |
+| Yearbook (archive) articles (18,707) and Homework Starter intros | done | 50/50 render | how 2009 browsed them was not captured |
+| Citation guides (`quickstart`, 2) | done | render as articles | — |
+| Essay bars' picture on the timeline | missing | web-client.md known gap | (S) |
+
+## Media
+
+| Feature | Status | Evidence | Gap |
+|---|---|---|---|
+| Images (media 30,122, composites 425) | done | 50/50 each; AVIF/WebP by `Accept` | — |
+| Audio (Opus/AAC), audio sets with picture | done | 50/50 audio sets | — |
+| Captions under audio (SAMI → WebVTT) | done | | — |
+| Video with captions (414) | done | 50/50; VM `461546454` | — |
+| MIDI music (236) | partial | own SMF synth | General MIDI soundfont missing (M) |
+| Interactives (860, Flash IAF player under Ruffle) | partial | 50/50 open a player; 82 narrated/map interactives were opened as audio or atlas maps before this audit | Ruffle issues: Vasco da Gama fills, Great Wall panorama blank, script limits (web-client.md) |
+| Match games natively | done | games.md | — |
+| Panoramas (151, `surround`) | partial | open their Flash viewer item (this audit; they carried only an icon) | the viewer is Flash `vrslide`, blank under Ruffle (M: native panorama player, reuse `PanoramaTour`) |
+| Maps as pictures (99,707) → "Open in the World Atlas" at the place | done | links to `/atlas/place/{geocode}` (this audit; was `/atlas`) | — |
+| Charts, tables (2,508 + 266 facts) | done | 50/50 | — |
+| Media viewer: prev/next, strip, Esc, appears-in | done | | no focus trap |
+| Media Gallery by type | done | `/media` | — |
+
+## Dictionary, thesaurus and translation window
+
+| Feature | Status | Evidence | Gap |
+|---|---|---|---|
+| English dictionary, word wheel, homograph numbers | done | VM `dict-paris`, `dict-encyclopedia` | — |
+| Thesaurus | done | VM `dict-thes-happy` | — |
+| Eight bilingual dictionaries, reverse links | done | VM `dict-trans-house` | — |
+| Pronunciation audio | done | | — |
+| Copy | done | `EntryTools` (this audit): entry or selection with source line | wording *(ours)* |
+| Print | done | prints the entry alone (print style sheet) (this audit) | — |
+| Parental Controls (hide offensive words) | missing | 1,424 entries carry `offensive`/`taboo` labels | (S: a setting that filters those entries and wheel rows) |
+| Separate window (EDICT.EXE, 765×480) | n/a | a page here | — |
+
+## Search
+
+| Feature | Status | Evidence | Gap |
+|---|---|---|---|
+| Full-text search with category tabs | done | tantivy, 586,702 items | — |
+| Autocomplete (word wheel, aliases) | done | | — |
+| Did you mean / spelling from the disc lexicons | done | | — |
+| Deep link to the best paragraph | done | | — |
+| Kids search | done | | — |
+| Encarta's own ranking | partial | ours (BM25 + priors) | not comparable without VM result lists (S to capture) |
+
+## Timeline
+
+| Feature | Status | Evidence | Gap |
+|---|---|---|---|
+| Band with points, periods, essays; sizes by importance | done | VM `fixtures/timeline/*` | — |
+| Eras, zoom, pan, category and region filters | done | | — |
+| Event pop-up with date line "4? BC - AD 29?" | done | VM `jesus-popup.png` | — |
+| Topic timelines (28 named + 13,033 search targets) | done | `/timeline?term=` over TIMELINE.DAT terms (this audit; `timeline_term` was converted but unused, topics opened a thumbnail) | 1 in 50 sampled targets has neither a term nor a matching event title |
+| Timeline items open in the timeline (`msencarta://id=`) | partial | events open their article page with "Show on the Timeline" | the VM opens the Timeline view at the event (S) |
+| Event pop-ups with media (Flash in 2009) | partial | event text and articles | media in pop-ups not shown (2009 needed Flash; S) |
+
+## World Atlas
+
+| Feature | Status | Evidence | Gap |
+|---|---|---|---|
+| Globe, Miller flat view, measured P/m | done | atlas-client.md, VM V1/V2/V12 | flat view re-tiles on the main thread |
+| 20 menu styles + statistical, moon | done | VM V4 | 4, 18, 21–23, 26 have no MapStyle |
+| Labels, symbols, road shields | partial | | road-shield source, alternate label style w6 |
+| Click menu with Map / Read Article | done | VM V11 | time zones listed although V11 shows none |
+| Place links (P2MTBL) | done | 206/206 sampled links open (this audit: 2,656 off-disc targets are left out instead of "Item not found"; 1,229 MSWORLD.ITR photos and sounds now open) | 1,121 of those photos show only their 64-px pushpin picture; 152 sounds have no audio on the disc (msworld.md §3) |
+| Place search | done | gazetteer FTS | — |
+| Map Legend, Map Customizer | done | | legend captions are class names |
+| Statistics: Choose Statistic, table, details, hover | done | VM V14 | binning unknown |
+| Locator globe | done | | — |
+| Map Trek (171 treks, 680 stops, from the Geography pages) | done | `MapTrekView` (this audit; treks showed a thumbnail, stops their text only): stop list, stop text, atlas at the stop's lat/long/alt/style | look and controls of the 2009 Map Trek never captured *(ours)* |
+| "About this map" notes (1,516) | done | render as articles | — |
+| Live weather / news links (147 `livemedia`) | n/a | MSN services | shown as link pages with the 2008 address |
+
+## 3D virtual tours
+
+| Feature | Status | Evidence | Gap |
+|---|---|---|---|
+| 7 tours: walking, collision, snap, lights, statues, captions | done | 47 views match the VM read-back (tour-runtime.md) | pitch-limit arithmetic |
+| Tour page layout, site map, Tour Stops menu | done | VM `701504257/stops` | rotated maps unverified |
+| Labels and Hot Spots toggle | done | | — |
+| Hotspot → media page, Back restores pose | done | VM | — |
+| Start Over | done | default stop (this audit) | — |
+| Appears in | done | menu of the articles linking the tour (this audit) | — |
+| Music | missing | menu entry in the VM | music source not identified in the data (S–M, needs the VM) |
+| Credits | done | | — |
+| Tour nodes as items (search hits on stops, hotspots, labels) | done | open the tour at the stop (this audit; showed "Virtual tour stop.") | — |
+
+## Panoramic virtual tours (2D)
+
+| Feature | Status | Evidence | Gap |
+|---|---|---|---|
+| 16 tours (Westminster Abbey, Alcatraz, USS Missouri …): 65 scenes, labels, hotspots, site maps, scene pictures | partial | `PanoramaTour` (this audit; before it no page showed them): wrapping panorama strip, labels at their `x`,`y`, hotspots (`shed`) to scenes or pictures, site map with scene points, scene text | built from the data, not compared with the VM; no cylinder perspective correction, no auto-pan, the `quadrant` marker shapes are unused (M for VM parity) |
+
+## Games and quizzes
+
+| Feature | Status | Evidence | Gap |
+|---|---|---|---|
+| Geography Quiz: 4 levels, 20 questions, 5 buttons, points | done | VM `fixtures/geoquiz` | — |
+| Geography Quiz locator globe, zoom slider, hand tool; after-answer and end screens | missing | games.md | never captured (M) |
+| Quizzes (1,811 SWQUIZ) | partial | native quiz player per question group | the board-game engine (`BGAControl`) is not rebuilt (L) |
+| Match games (64) | done | native | — |
+| MindMaze, City Climate, Population Chart | n/a | extras (not in 2009) | — |
+
+## Encarta Kids
+
+| Feature | Status | Evidence | Gap |
+|---|---|---|---|
+| Kids home with ten panels, mouse-over pictures | done | | — |
+| Kids category screens | done | | — |
+| Kids articles (orange title, tile grid, no numbers) | done | VM `kids-*` | — |
+| Kids search, Kids dictionary | done | | — |
+| Kids interactives and games (264, Flash) | partial | Ruffle; match games native | Kids copies (`edition=kids`) only spot-checked |
+| Kids' own menu bar, Favorites, Help | missing | the Kids shell has none of the adult chrome | not captured in the VM (S) |
+
+## Interactives
+
+| Feature | Status | Evidence | Gap |
+|---|---|---|---|
+| Slide shows, narrated slide shows (57), Flash maps (25) | partial | IAF player under Ruffle; dispatch fixed in this audit | Ruffle rendering gaps |
+| Drag-and-drop, cross-fade, ZFL, BGA controls | partial | load in Ruffle | not tried (web-client.md) |
+
+## Favorites, print, copy, export
+
+| Feature | Status | Evidence | Gap |
+|---|---|---|---|
+| Add to Favorites (any page, with its deep link) | done | `app/favorites.ts`, localStorage (this audit) | per browser *(ours)*: 2009 kept them per Windows user |
+| Favorites list in the menu (20) and Organize Favorites (rename, reorder, remove) | done | `/favorites` (this audit) | Encarta's folder structure was not captured |
+| Print with a print style sheet | done | `styles/print.css` (this audit): no chrome, strip, tools or viewers; right column after the text | — |
+| Copy with source line | partial | see Edit › Copy | wording *(ours)* |
+| Export / Save As, Send to Word (Works task launcher) | n/a | `EE/WORKS` omitted (media.md §4) | — |
+
+## Settings and parental controls
+
+| Feature | Status | Evidence | Gap |
+|---|---|---|---|
+| Options dialog (text size, search options …) | missing | not captured | needs a VM look (S); browser zoom covers text size |
+| Parental controls (encyclopedia, web links) | missing | not captured; dictionary labels exist | (S–M after a VM look) |
+| Kids / Premium switch | done | `/kids` | — |
+
+## Accessibility
+
+| Feature | Status | Evidence | Gap |
+|---|---|---|---|
+| Keyboard menus (Features, menu bar, tour Appears in): arrows, Home/End, Esc, ←/→ across the bar | done | `components/Menu.tsx`, tests (this audit); the Features menu could not be used from the keyboard before | — |
+| Skip to content link, `main` landmark focus target | done | (this audit) | — |
+| Focus outline (`:focus-visible`) | done | `base.css` | — |
+| ARIA: menus, dialog, tabs, live status for menu actions, labelled hotspots | partial | | media viewer has no focus trap; timeline band events lack a list alternative label; Ruffle content is opaque to screen readers |
+| Alt text on pictures | partial | titles where known | many decorative images have empty alt (correct); thumbnails in strips use titles |
+| Panorama and Map Trek keyboard use | done | ←/→ in the panorama, buttons for stops (this audit) | — |
+
+## Content not lost
+
+See the next section for the per-family table; summary rows:
+
+| Check | Status | Evidence | Gap |
+|---|---|---|---|
+| Every catalog id converted or explained | done | content-schema §10: 634,247 ids, 0 unexplained | — |
+| Every item kind opens a non-empty page | partial | 50 per kind through `/api/item` (table below) | index terms, 1,100 empty audio stubs |
+| Every converted table reachable | partial | | `index_tree` unreachable; `atlas_media` and `timeline_term` made reachable in this audit |
+
+---
+
+## No content lost: data families
+
+Each family of the inventory, whether it is converted, and the UI path that reaches it.
+
+| Family (inventory.md) | Converted | Reached from the UI by | Status |
+|---|---|---|---|
+| Media containers (80 EITs, CATALOG.DLX) | yes (437,049 files, 127,255 unique media) | article media, viewer, gallery, search | done |
+| Images, audio, video, Flash, MIDI | yes | media viewer, item pages | done |
+| Article bodies (CONT*.AKC) | yes (102,223 articles) | search, links, browse pages, related trees | done |
+| Article metadata, related articles (DATA, REL) | yes | article panels, item pages | done |
+| Index terms (DATAF, 180,545 items, 212,631 trees) | yes | **nothing** | **converted, unreachable** |
+| Sidebars (MD*.EIT) | yes (2,696) | teasers, search | done |
+| Dictionary, thesaurus, translation (EDICT) | yes (292,642 entries) | dictionary pages, search | done |
+| Interactives (`.iax` + SWF) | yes (721 + 860 items) | media viewer (Ruffle / native) | partial (Ruffle) |
+| Catalog | yes | (internal) | done |
+| Titles, aliases, section heads (FINDDLX) | yes | search, autocomplete | done |
+| Search exports (`search_entry` 3,084,729, `search_word` 1,175,993) | yes | not used: search is rebuilt (inventory.md "Not needed") | n/a by design |
+| Timeline (TIMELINE.DAT + EIT) | yes (16,465 events, 22,749 terms) | Timeline; terms through topic timelines (this audit) | done |
+| Atlas rasters, vectors, places | yes | World Atlas | done |
+| World statistics, flags (MSWORLD.SDB, ITR) | yes | statistical style; ITR photos and sounds through place links (this audit) | partial (ITR files missing on disc) |
+| 3D tours | yes (7) | `/tours`, articles, hotspots | done |
+| Panoramic tours (`virttour` 2DVT, `.svj`) | yes (16 tours, 65 panoramas) | `/item/{tour}` from articles, browse pages and search (this audit) | partial |
+| Director/Shockwave | yes (2 datasets) | Extras | done (n/a in 2009) |
+| Games (MindMaze, Geo Quiz D*.TXT) | yes | `/games` | done |
+| Place → media links (P2MTBL) | yes (16,122) | atlas click menu | done (2,656 targets are on no edition of this disc) |
+| Spelling lexicons (LEX) | yes (783,245 words) | did-you-mean, `/api/spell` | done |
+| Quizzes (SWQUIZ) | yes (3,622) | `/games/quizzes` | partial (no board engine) |
+| Contributors (`list/expert.xml`) | yes (2,034) | article "Contributed By", contributor pages (this audit) | done |
+| Disc fonts | yes (8) | every page | done |
+| CHM help, Works integration, executables | omitted by design (media.md §4, CLEAN_ROOM rule 6) | — | n/a |
+
+### Spot check: 50 random ids of each item kind through `/api/item`
+
+Script: `target/agent-parity/scratch/spot.py` (local, not committed): samples 50 ids per `item.kind` with a fixed seed, fetches
+`/api/item/{id}`, applies the client's view rules (`ItemPage` → redirect, kind view, article, media class) and checks that
+the page has content (article body, playable variant, picture answering 200, data table, links, scenes …).
+
+| kind | items | before this audit | after |
+|---|---|---|---|
+| article, yearbook-article, quotation, sidebar, further-reading, timeline-event, map-about, about, quickstart, yearbook-intro | 141,236 | 50/50 each | 50/50 each |
+| map, media, composite-media, video, table, facts, audio-set, home-page | 141,623 | 50/50 each | 50/50 each |
+| weblink | 29,095 | 0/50 ("Nothing to display") | 50/50 |
+| live-link | 147 | 0/50 | 50/50 (address + "service closed") |
+| timeline-topic | 13,061 | thumbnail only | 49/50 open a topic timeline |
+| quotation-author | 6,196 | 0/50 | 50/50 |
+| contributor | 2,034 | 0/50 | 50/50 render; 47/50 list articles |
+| virtual-tour-node | 1,685 | 9/50 (a picture) | 41/50 (tour, scene or picture); 9 are orphan site hotspots ("TBD", no `destmedia`) |
+| virtual-tour (site maps) | 79 | picture only | 44/50 open their panoramic tour |
+| panorama | 151 | 0/50 (icon only) | 50/50 open their Flash viewer |
+| interactive | 860 | 48/50 (2 opened as audio) | 50/50 |
+| maptrek-tour, maptrek-stop | 851 | thumbnail / text | 50/50 Map Trek view |
+| feature | 27 | 1 routed | 27/27 (25 pages, 2 online-only notes) |
+| audio | 3,542 | 35/50 | 33–35/50: the rest are the 1,100 empty stubs below |
+| unclassified (`TBD`) | 617 | 0/50 | 0/50: placeholders whose content is inline in the article body (below) |
+| home-theme, home-background | 157 | — | decoration of home and browse screens (drawn there) |
+| index-term | 180,545 | 0/50 | 0/50 (below) |
+
+### Converted but unreachable (or empty)
+
+| What | Count | Why | Proposal |
+|---|---|---|---|
+| Index terms (DATAF) and `index_tree` | 180,545 items, 212,631 trees | where a term occurs (article and paragraph); nothing in the client or search uses them | an A–Z index browser and search boost from terms (M); first confirm in the VM whether 2009 showed an index at all |
+| Empty `audio` records | 1,100 (1,083 untitled) | generic icon files only, no audio, no children, no association anywhere | nothing to show; list in the completeness report as empty stubs |
+| `unclassified` (`group="TBD"`) | 617 | inline equation pictures' records (e.g. "phys2" in Common Physics Equations); the picture is drawn inline from the body's `img` | none needed (content is shown); give them a "see article" page if search ever indexes them |
+| Orphan tour nodes | 151 | site-map hotspots with empty `destmedia` and no parent | none (no content) |
+| MSWORLD.ITR sounds | 152 linked (330 total) | file names not on the disc (msworld.md §3) | find the sounds by content (S) |
+| MSWORLD.ITR photos without a main file | 969 linked | not in `baggage.ecs`; only the 64-px pushpin exists | look for the pictures under other names (S) |
+| P2MTBL targets on no edition of this disc | 2,656 | the table is shared with other editions | none (left out of the menu) |
+
+---
+
+## Fixes made in this audit
+
+Server (`crates/encarta-server`, tests on the synthetic fixture):
+1. `/api/item` adds `referenced_by` (forward associations that name the item) and `parents` (`item_child`).
+2. `/api/item` serves the 2,354 MSWORLD.ITR media without a DATA record (`atlas_media`), with the pushpin picture as
+   fallback; files that do not resolve are left out.
+3. `/api/place/{gid}` titles atlas photos and sounds and leaves out 2,656 links to ids on no edition of this disc
+   (they opened "Item not found").
+4. `/api/timeline?term=`: a TIMELINE.DAT term's events (topic timelines), falling back to an event of that exact title.
+5. Compression for `application/wasm`, `font/ttf`/`otf`, `model/gltf-binary`, `application/octet-stream`.
+6. Ruffle's hashed files (`core.ruffle.<hash>.js`, `<hash>.wasm`) are `immutable`.
+
+Client (`web/`, tests in `src/parity.test.ts{,x}`):
+7. Menu bar File / Edit / Favorites / Help; File › Print, Edit › Copy (with source), Edit › Find in Article.
+8. Favorites in localStorage: add, menu list, Organize Favorites page (rename, reorder, remove); works without storage.
+9. Help page with keyboard shortcuts.
+10. Accessible menu button (`components/Menu.tsx`) for the Features menu, the menu bar and the tour's Appears in.
+11. Skip-to-content link; `main` as focus target.
+12. Print style sheet.
+13. Web Sites panel in the article's right column.
+14. Pages for web links and live links (address, Internet Archive copy, "listed in").
+15. Pages for quotation authors and contributors.
+16. All 27 feature records route to their pages (translation pairs, quick searches, online-only notice).
+17. Topic timelines open the timeline on their term, fitted to its events.
+18. Panoramas open their viewer interactive; map items open the atlas at their place.
+19. `mediaClass`: the 82 narrated and map interactives get the interactive player.
+20. Map Trek view.
+21. Panoramic virtual tours (`PanoramaTour`): 16 tours that no page showed.
+22. 3D and 2D tour nodes open their tour at the stop or scene; tour pictures show as pictures.
+23. Tour menu: Start Over, Appears in.
+24. Dictionary Copy and Print.
+25. Item pages list `referenced_by` when DATA gives no "appears in".
+
+## Remaining gaps (priority order)
+
+Estimates on the plan's scale (S ≈ days, M ≈ 1–2 weeks, L ≈ 2–4 weeks).
+
+| # | Gap | Why it matters | Estimate |
+|---|---|---|---|
+| 1 | VM pass over the UI that was never captured: Features menu, Options, Help, Quick Search, Favorites organiser, the ▾ tab, Map Trek, panoramic tours, timeline item view, Kids chrome | many rows above are *(ours)* until seen | S (capture) + S (adjust) |
+| 2 | Panoramic tours to VM parity: cylinder projection, auto-pan, hotspot markers (`quadrant`), compare with captures; then a native panorama player for the 151 `surround` panoramas whose Flash viewer is blank under Ruffle | 16 tours and 151 panoramas | M |
+| 3 | Ruffle gaps in the IAF player (fills, panorama, script limits) and a test pass over Kids copies and DragDrop/CrossFade/ZFL/BGA controls | 860 interactives | M |
+| 4 | Board-game engine for the 10 `BGAControl` games | quizzes play without their boards | L |
+| 5 | Index terms: decide from the VM whether 2009 exposed them; if yes an index browser, else use them as search aliases | 180,545 converted items unused | M |
+| 6 | Parental controls (dictionary labels; anything else the VM shows) and Options | missing feature | S–M |
+| 7 | Tour Music menu (find the music data) and the tours' remaining [VM] items | missing menu entry | S–M |
+| 8 | Geography Quiz locator globe, zoom slider, hand tool, after-answer and end screens | captured screens only | M |
+| 9 | MSWORLD.ITR: find the 330 sounds and 1,496 pictures by content | 1,121 photos show a pushpin only, 152 sounds silent | S |
+| 10 | MIDI soundfont | 236 music files sound synthetic | M |
+| 11 | Timeline: open items in the Timeline view at the event; event pop-up media; essay pictures | VM behaviour | S |
+| 12 | Accessibility: media viewer focus trap, timeline list alternative, axe pass | | S |
+| 13 | Inline-table box border, country introductions placement (content-schema §11) | visual parity | S |
+
+## Performance (production build served by `encarta-server`)
+
+| Check | Result |
+|---|---|
+| Initial load | `index.html` (0.8 kB) + entry JS 291 kB (93 kB gzip) + CSS 47 kB (11 kB gzip); no other chunk on first paint |
+| Lazy chunks | atlas (MapLibre 1.07 MB / 292 kB gzip, its CSS 70 kB), tour runtime with three.js (634 kB / 170 kB gzip), games (5–21 kB each), Ruffle only when an interactive opens |
+| Cache headers | `/assets/*` and `/media/*` `immutable` for a year; `index.html`, `/ruffle/ruffle.js` `no-cache` with ETag; atlas, tours, fonts `max-age=3600` + ETag; Ruffle's hashed wasm and chunks now `immutable` (were revalidated on every open) |
+| Compression | JSON, HTML, JS, CSS brotli/gzip; **new**: Ruffle wasm 14.3 MB → 4.7 MB (br), tour `scene.glb` 15.6 MB → 7.3 MB, `pvs.bin` 2.4 MB → 0.6 MB, disc fonts 251 kB → ~159 kB; ranges and media never |
+| Images by `Accept` | `/media/file/*` answers AVIF or WebP only when smaller than the original and the same width (`Vary: Accept`); e.g. 38 kB JPEG → 25 kB AVIF; WebP that would be larger is not sent |
+| Not done | API responses carry no `Cache-Control` (the client caches in memory); fonts are TTF, WOFF2 would save ~40 % more (needs a converter step, S) |
+
+## Verification
+
+- `cargo test -p encarta-server`, `vitest` (244 tests), `tsc --noEmit`, `npm run build`: clean.
+- Chrome against the production build on port 8097 (and Vite on 5197): menu bar and Favorites (stored, listed,
+  status line), Features menu by keyboard (↓ to Thesaurus, Enter), Canada's Web Sites panel (8 of 24, "Show all"), a web
+  link page, author and contributor pages, feature routes (Quick Search: Maps → `/search?kind=map`, Encarta on the Web
+  notice), the Westminster Abbey panoramic tour (site map, scene switch by hotspot, picture hotspot → viewer "Choir"),
+  Map Trek "Arctic and Antarctic Deserts" (stop 2 at 14,195 km in Precipitation (Annual)), the Aztec Empire topic timeline
+  (23 events, window 484 BC – 1724), a 3D tour hotspot node → `/tours/04257?stop=…`, a 2D label → its scene, the
+  Acropolis tour with Start Over and Appears in (loaded with the compressed glb and PVS, ticked by hand because the
+  automation tab is hidden), Ruffle initialising from the brotli wasm (Vasco da Gama), the print style sheet present.

@@ -106,7 +106,7 @@ command replies, captions and hotspot → media page (Back restores the pose) fo
 tours` reads `out/content.sqlite` (stops, hotspot destinations), so `content` runs first. Texture surfaces are bottom-up,
 so the converter flips V (tours-3d.md §5.6); cloud orientation confirmed; the tour page has Encarta's layout, a Tour
 Stops menu and a site map (marker, wedge, floors, clickable locations). Open: the pitch-limit float arithmetic (needs
-a VM log), rotated site maps and the highlighted-location look in the VM, Music / Start Over / Appears in, and the
+a VM log), rotated site maps and the highlighted-location look in the VM, Music (data not yet found), and the
 remaining [VM] items in tours-3d.md §10.
 
 ## Step 7 — Games and remaining extras
@@ -119,6 +119,11 @@ MindMaze, quizzes (`SWQUIZ`), Geography Quiz, City Climate and Population Chart 
 
 ## Step 8 — Parity audit
 A feature-by-feature checklist against the VM; fix gaps; performance and accessibility pass.
+**In progress** ([parity.md](parity.md)): 134 rows, 96 done / 23 partial / 8 missing / 7 n/a. The audit made
+~40k unreachable items reachable (web links, authors, contributors, topic timelines, Map Trek, 16 panoramic 2D tours,
+MSWORLD.ITR atlas media), added the menu bar, Favorites, print styles and keyboard menus. Open list: parity.md
+"Remaining gaps", led by a VM pass over never-captured UI, panoramic-tour parity, Ruffle gaps, the board-game engine
+and the unused index terms.
 
 ---
 

@@ -32,6 +32,8 @@ CREATE TABLE dict_form (form TEXT, dictionary TEXT, ref_id INTEGER, kind TEXT);
 CREATE TABLE dict_audio (dictionary TEXT, ref_id INTEGER, file_name TEXT, audio_ref_id INTEGER);
 CREATE TABLE timeline_category (bit INTEGER PRIMARY KEY, name TEXT);
 CREATE TABLE timeline_region (bit INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE atlas_media (ref_id INTEGER PRIMARY KEY, kind TEXT, title TEXT, title_html TEXT, place_id INTEGER, file TEXT, thumbnail TEXT, paired_ref_id INTEGER, legacy_id INTEGER, credit TEXT, other TEXT);
+CREATE TABLE timeline_term (term_id INTEGER PRIMARY KEY, text TEXT, text_html TEXT, ref_ids TEXT);
 CREATE TABLE timeline_event (seq INTEGER PRIMARY KEY, ref_id INTEGER, source_table TEXT, kind INTEGER, title TEXT, title_html TEXT, start_year INTEGER, start_month INTEGER, start_day INTEGER, start_circa INTEGER, end_year INTEGER, end_month INTEGER, end_day INTEGER, end_circa INTEGER, span INTEGER, importance INTEGER, category_mask INTEGER, region_mask INTEGER, categories TEXT, regions TEXT, raw_flags INTEGER, display TEXT, label TEXT, date_text TEXT, start_text TEXT, end_text TEXT, prominence INTEGER);
 CREATE TABLE mindmaze_question (id INTEGER PRIMARY KEY, category INTEGER, category_label TEXT, level INTEGER, clue TEXT, clue_html TEXT, location INTEGER);
 CREATE TABLE mindmaze_answer (question_id INTEGER, ordinal INTEGER, correct INTEGER, text TEXT, text_html TEXT, article_ref_id INTEGER, article_exists INTEGER);
@@ -159,6 +161,7 @@ fn content(path: &Path) {
                                                'point', NULL, 'May 1, 1890', 'May 1, 1890', NULL, 3),
                                            (2, 501, 'event', 1, 'A Treaty', 'A Treaty', -50, NULL, NULL, 1, -40, NULL, NULL, 0, 10, 5, 2, 1, 'Political History', 'Europe', 3,
                                                'period', 'A TREATY', '50? BC - 40 BC', '50? BC', '40 BC', 1);
+         INSERT INTO timeline_term VALUES (0, 'Stripes', 'Stripes', '[500]'), (1, 'Treaties', 'Treaties', '[501]');
          INSERT INTO mindmaze_question VALUES (1, 0, 'Life science', 1, 'Striped horse of Africa.', 'Striped horse of Africa.', 1),
                                               (2, 0, 'Life science', 2, 'Animal ridden by knights.', 'Animal ridden by knights.', 1);
          INSERT INTO mindmaze_answer VALUES (1, 0, 1, 'Zebra', 'Zebra', 100, 1), (1, 1, 0, 'Horse', 'Horse', 101, 1),
@@ -168,7 +171,10 @@ fn content(path: &Path) {
          INSERT INTO stat_unit VALUES (7, 'head', NULL, 0, 0);
          INSERT INTO stat_indicator VALUES (1, 'Zebra population', 1, 'Basic Indicators', 7, NULL, 'Synthetic survey');
          INSERT INTO stat_value VALUES (1, 2, 1, 900.0, '900', 0, 0, 2000, 0, NULL, 2000, '2000'), (1, 1, 2, 800.0, '800', 0, 0, 1990, 15, NULL, 2005, '1990-2005');
-         INSERT INTO place_link VALUES (42, 0, 1, 'article', 100), (42, 1, 14, 'flag', 200), (42, 2, 15, 'anthem', 200);
+         INSERT INTO place_link VALUES (42, 0, 1, 'article', 100), (42, 1, 14, 'flag', 200), (42, 2, 15, 'anthem', 200),
+                                       (42, 3, 1, 'article', 999001), (42, 4, 5, 'photo:people', 800), (42, 5, 9, 'music', 801);
+         INSERT INTO atlas_media VALUES (800, 'i', 'Kenyan Herders', 'Kenyan Herders', 42, 'ZZ000001.JPG', 'zz000001.jtn', NULL, 7, 'Synthetic Photo Agency', NULL),
+                                        (801, 'w', 'Kenya: Herding Song', 'Kenya: Herding Song', 42, 'zz000801.wav', NULL, NULL, NULL, 'Synthetic Records', NULL);
          INSERT INTO lexicon VALUES ('EESPLA01', 'x', '0x0409', 3, 'speller'), ('DICTA', 'y', '0x0409', 3, 'dict');
          INSERT INTO lexicon_word VALUES ('EESPLA01', 'Kenya'), ('DICTA', 'zebra'), ('DICTA', 'zebu'), ('DICTA', 'stripes'), ('DICTA', 'horse');
          INSERT INTO quiz VALUES (7, 'deluxe', 'mc', 'en', '{\"q\":1}');

@@ -517,7 +517,7 @@
 
 /* Dictionary */
 .dict {
-  min-height: calc(100vh - 64px);
+  min-height: calc(100vh - var(--chrome-h));
   padding: 24px 16px;
   background: #1b1b1b;
 }
@@ -1296,7 +1296,7 @@
 .tourpage {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 64px);
+  height: calc(100vh - var(--chrome-h));
 }
 
 .tourpage-bar {
@@ -1357,7 +1357,7 @@
 /* Atlas route (the map component comes from src/atlas/) */
 .atlas-route {
   position: relative;
-  height: calc(100vh - 64px);
+  height: calc(100vh - var(--chrome-h));
 }
 
 .atlas-route-map {
@@ -1382,4 +1382,350 @@
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* Item pages of the non-media kinds (pages/ItemKinds.tsx) */
+.itempage-text {
+  max-width: 760px;
+}
+
+.itempage-kicker {
+  margin: 0 0 4px;
+  color: var(--orange-dark);
+  font: 12px var(--ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.itempage-cred {
+  font-weight: normal;
+  font-size: 0.7em;
+  color: var(--text-soft);
+}
+
+.itempage-url {
+  margin: 14px 0;
+  font: 13px var(--ui);
+  overflow-wrap: anywhere;
+}
+
+.itempage-archive {
+  font-size: 12px;
+}
+
+/* Map Trek */
+.trek {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) 1fr;
+  grid-template-rows: minmax(0, 1fr);
+  height: calc(100vh - var(--chrome-h));
+}
+
+.trek-side {
+  overflow-y: auto;
+  padding: 14px 14px 32px;
+  border-right: 1px solid var(--line);
+  background: #fafaf8;
+}
+
+.trek-title {
+  margin: 0 0 10px;
+  color: var(--heading);
+  font: bold 20px var(--sans);
+}
+
+.trek-stops {
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.trek-stops button {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--link);
+  font: 13px var(--ui);
+  text-align: left;
+  cursor: pointer;
+}
+
+.trek-stops button.current {
+  background: #fdf0e0;
+  color: var(--orange-dark);
+  font-weight: bold;
+}
+
+.trek-num {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--orange);
+  color: #fff;
+  font-size: 11px;
+  line-height: 20px;
+  text-align: center;
+}
+
+.trek-nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.trek-text .art-inline-title {
+  margin-top: 0;
+}
+
+.trek-map {
+  position: relative;
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .trek {
+    grid-template-columns: 1fr;
+    grid-template-rows: 55vh auto;
+    height: auto;
+  }
+  .trek-map {
+    grid-row: 1;
+    height: 55vh;
+  }
+}
+
+/* Favorites and Help */
+.favs,
+.help {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 18px 16px 48px;
+}
+
+.favs-list {
+  padding-left: 22px;
+}
+
+.favs-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.favs-title {
+  flex: 1;
+  min-width: 200px;
+}
+
+.favs-tools {
+  display: flex;
+  gap: 4px;
+}
+
+.favs-tools button {
+  padding: 2px 8px;
+  border: 1px solid #c9c8c2;
+  border-radius: 3px;
+  background: #fff;
+  font: 12px var(--ui);
+  cursor: pointer;
+}
+
+.favs-edit {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+}
+
+.favs-edit input {
+  flex: 1;
+  padding: 3px 6px;
+  font: 13px var(--ui);
+}
+
+.help-keys {
+  border-collapse: collapse;
+  font: 13px var(--ui);
+}
+
+.help-keys th,
+.help-keys td {
+  padding: 6px 12px 6px 0;
+  border-bottom: 1px solid var(--line-soft);
+  text-align: left;
+  vertical-align: top;
+}
+
+.help-keys th {
+  white-space: nowrap;
+}
+
+/* Dictionary entry tools, timeline topic line, tour menus built on components/Menu */
+.dict-tools {
+  display: flex;
+  gap: 6px;
+  float: right;
+}
+
+.tl-topic {
+  margin: 4px 0;
+  font: 13px var(--ui);
+}
+
+.tv-menu .menu-popup {
+  left: auto;
+  right: 0;
+  font: inherit;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Panoramic virtual tours (pages/PanoramaTour.tsx) */
+.pano {
+  display: grid;
+  grid-template-columns: minmax(260px, 400px) 1fr;
+  min-height: calc(100vh - var(--chrome-h));
+  background: #31455f;
+}
+
+.pano-side {
+  overflow-y: auto;
+  max-height: calc(100vh - var(--chrome-h));
+  padding: 14px 14px 32px;
+  background: #fafaf8;
+}
+
+.pano-main {
+  min-width: 0;
+  padding: 16px;
+  color: #fff;
+}
+
+.pano-title {
+  margin: 0 0 8px;
+  font: bold 18px var(--sans);
+}
+
+.pano-strip {
+  overflow-x: scroll;
+  overflow-y: hidden;
+  border: 1px solid #000;
+  background: #000;
+  cursor: grab;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+}
+
+.pano-strip:active {
+  cursor: grabbing;
+}
+
+.pano-track {
+  position: relative;
+}
+
+.pano-copy {
+  position: absolute;
+  top: 0;
+}
+
+.pano-copy img {
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.pano-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 1px 6px;
+  border: 1px solid #c0d1e3;
+  background: rgba(0, 0, 0, 0.75);
+  color: #c0d1e3;
+  font: 12px var(--ui);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.pano-hot {
+  position: absolute;
+  padding: 0;
+  border: 2px solid rgba(255, 210, 80, 0.85);
+  border-radius: 3px;
+  background: rgba(255, 210, 80, 0.12);
+  cursor: pointer;
+}
+
+.pano-hot:hover,
+.pano-hot:focus-visible {
+  background: rgba(255, 210, 80, 0.35);
+  border-color: #fff;
+}
+
+.pano-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pano-bar .enc-muted {
+  color: #d6dde8;
+}
+
+.pano-site {
+  position: relative;
+  max-width: 100%;
+  margin-bottom: 10px;
+  border: 1px solid #999;
+}
+
+.pano-site img {
+  display: block;
+}
+
+@media (max-width: 760px) {
+  .pano {
+    grid-template-columns: 1fr;
+  }
+  .pano-side {
+    max-height: none;
+  }
+}
+
+.pano-site {
+  overflow: hidden;
+}
+
+.pano-site-pt {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--orange);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+
+.pano-site-pt.current {
+  background: #d00;
+  transform: scale(1.3);
 }

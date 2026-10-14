@@ -44,18 +44,21 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
 | `/tours`, `/tours/{tourId}` | 3D Virtual Tours list and a tour (`mountTour`) |
 | `/atlas`, `/atlas/place/{gid}`, `/atlas?url=msencarta://…`, `/atlas?lat=&lon=&alt=[&style=][&view=flat]` | World Atlas (`src/atlas/`), or a placeholder listing the place's links when that module is missing. The map writes its view back into the URL (`onViewChange`, debounced, replace); only URL changes it did not write remount it |
 | `/kids`, `/kids/browse/{id}`, `/kids/item/{id}`, `/kids/search`, `/kids/dictionary` | Encarta Kids |
+| `/favorites` | Organize Favorites (rename, reorder, remove; kept in localStorage) |
+| `/help` | About and keyboard shortcuts |
 | any route `?media={id}` | the media viewer overlay on top of that page (Back closes it) |
 
 ## Layout
 
 | path | role |
 |---|---|
-| `src/main.tsx`, `src/app/` | router, chrome (`Shell`: Back/Forward/Home orbs, Features menu, search), history button state, disc fonts (`fonts.ts`) |
+| `src/main.tsx`, `src/app/` | router, chrome (`Shell`: menu bar File/Edit/Favorites/Help, Back/Forward/Home orbs, Features menu, search, skip link), history button state, disc fonts (`fonts.ts`), Favorites store (`favorites.ts`), menu commands (`commands.ts`), lazy atlas (`atlasModule.tsx`) |
 | `src/api/` | typed client for api.md (`client.ts`, in-memory cache, AbortSignal), `useApi` hook, response types |
 | `src/content/` | the content model of content-schema §8 (`model.ts`), React inline renderer (`Inlines.tsx`), link mapping |
 | `src/article/` | article reader: body renderer, layout rules (`layout.ts`), media column boxes, side panels, find bar, pronunciation |
 | `src/media/` | media viewer overlay, players (audio with captions, audio sets, video with WebVTT, MIDI), variant selection (`pick.ts`), MIDI reader and synth, Ruffle loader (`ruffle.ts`) and Flash interactives (`FlashPlayer.tsx`) |
-| `src/pages/` | home, browse, item dispatcher, search, media gallery, dictionary (+ `wordWheel.ts`), timeline (+ pure layout/date helpers), tours, atlas placeholder |
+| `src/pages/` | home, browse, item dispatcher (+ `itemRoute.ts`: feature records, topic timelines, panoramas, Map Trek stops), views of the other item kinds (`ItemKinds.tsx`: web links, contributors, quotation authors, tour nodes, Map Trek, online features), panoramic tours (`PanoramaTour.tsx`, `panorama.ts`), search, media gallery, dictionary (+ `wordWheel.ts`), timeline (+ pure layout/date helpers), tours, favorites, help, atlas placeholder |
+| `src/components/Menu.tsx` | the accessible menu button (arrows, Home/End, Esc, ←/→ along a `menubar`) used by every menu |
 | `src/kids/` | Kids shell, home screen and article view |
 | `src/styles/` | CSS by area; tokens in `base.css` |
 | `src/tours/` | the tour runtime (Step 6), unchanged |
@@ -180,7 +183,8 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
   Kids copies (`edition=kids`), DragDrop/CrossFade/ZFL/BGA controls, quizzes (SWQUIZ) and timeline pop-ups were not
   tried. The players ask for "Trebuchet MS" and other device fonts that Ruffle does not have (it substitutes).
 - MIDI uses simple synthesized voices, not a General MIDI soundfont.
-- Copy, Print and Parental Controls of the dictionary window, and Favorites, are not implemented.
+- Parental Controls of the dictionary window and Encarta's Options are not implemented (not captured in the VM).
+- Item kinds, menus, Favorites, print and the panoramic tours added by the parity audit: see [parity.md](parity.md).
 - Games live under `/games/*` (`web/src/games/`, see [games.md](games.md)); the Geography Quiz feature item
   701712336 redirects to `/games/geoquiz`. `MatchGame` interactives play natively in the media viewer.
 - Light theme only, like the original.

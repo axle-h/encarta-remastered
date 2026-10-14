@@ -175,11 +175,24 @@ function RelatedNode({ n, kids }: { n: TreeNode; kids: boolean }) {
   );
 }
 
-export function LinksPanel({ title, items, kids }: { title: string; items: AssocItem[]; kids: boolean }) {
+/** A list of links to items; with `limit`, the rest behind a "Show all" button. */
+export function LinksPanel({ title, items, kids, limit }: { title: string; items: AssocItem[]; kids: boolean; limit?: number }) {
+  const [all, setAll] = useState(false);
+  const shown = limit && !all ? items.slice(0, limit) : items;
   return (
-    <Panel title={title} tone="gray">
+    <Panel
+      title={title}
+      tone="gray"
+      more={
+        limit && items.length > limit ? (
+          <button type="button" className="enc-panel-link" aria-expanded={all} onClick={() => setAll((v) => !v)}>
+            {all ? "Show fewer" : `Show all ${items.length}`}
+          </button>
+        ) : undefined
+      }
+    >
       <ul className="enc-related">
-        {items.map((m) => (
+        {shown.map((m) => (
           <li key={m.ref_id}>
             <Link to={itemHref(m.ref_id, null, kids)}>{m.title ?? `Item ${m.ref_id}`}</Link>
           </li>

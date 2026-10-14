@@ -139,8 +139,28 @@ export interface Item {
   children?: ItemChild[];
   media?: AssocItem[];
   appears_in?: AssocItem[];
+  /** Items whose forward associations name this one (an author's quotations, a contributor's articles). */
+  referenced_by?: ItemRef[];
+  /** Items that list this one among their `children` (a tour node's stop or tour). */
+  parents?: ItemParent[];
   data_table?: DataTable | null;
   timeline?: TimelineEvent | null;
+}
+
+export interface ItemRef {
+  ref_id: number;
+  group?: string;
+  kind?: string;
+  title?: string;
+  title_html?: string;
+  media_type?: string;
+}
+
+export interface ItemParent {
+  ref_id: number;
+  kind?: string;
+  title?: string;
+  item_kind?: string;
 }
 
 export interface SectionInfo {

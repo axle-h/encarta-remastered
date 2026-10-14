@@ -173,6 +173,10 @@ pub async fn item(State(st): St, Path(id): Path<i64>, Query(q): Query<EditionQue
     let v = content(&st)?
         .call(move |c| {
             let Some(mut o) = c.prepare_cached("SELECT * FROM item WHERE ref_id = ?1")?.query_row([id], row_object).optional()? else {
+                // The atlas's own photos and music (MSWORLD.ITR) that have no DATA record.
+                if let Some(v) = atlas_media_item(c, has_m, id, &edition)? {
+                    return Ok(v);
+                }
                 return Err(ApiError::not_found(format!("no item {id}")).into());
             };
             let d = o.get("in_deluxe").and_then(|v| v.as_i64()).unwrap_or(0) != 0;
@@ -199,6 +203,31 @@ pub async fn item(State(st): St, Path(id): Path<i64>, Query(q): Query<EditionQue
             );
             o.insert("media".into(), json!(assoc_items(c, id, "forward", 1000)?));
             o.insert("appears_in".into(), json!(assoc_items(c, id, "reverse", 500)?));
+            // Items whose own forward associations name this one: the quotations of an author, the
+            // articles of a contributor, the articles that list a web link. DATA stores no reverse
+            // rows for these, so `appears_in` alone would leave such items with no way back.
+            o.insert(
+                "referenced_by".into(),
+                json!(query_objects(
+                    c,
+                    "SELECT a.ref_id, a.grp AS \"group\", i.kind, i.title, i.title_html, i.media_type
+                     FROM assoc a LEFT JOIN item i ON i.ref_id = a.ref_id
+                     WHERE a.target_ref_id = ?1 AND a.direction = 'forward' AND a.ref_id != ?1
+                     GROUP BY a.ref_id ORDER BY i.sort_title, a.ref_id LIMIT 500",
+                    [id]
+                )?),
+            );
+            // Items that list this one among their `children` (a tour stop's tour, a hotspot's stop).
+            o.insert(
+                "parents".into(),
+                json!(query_objects(
+                    c,
+                    "SELECT ch.ref_id, ch.kind, i.title, i.kind AS item_kind
+                     FROM item_child ch LEFT JOIN item i ON i.ref_id = ch.ref_id WHERE ch.child_ref_id = ?1
+                     GROUP BY ch.ref_id ORDER BY ch.ref_id LIMIT 50",
+                    [id]
+                )?),
+            );
             let table = c
                 .prepare_cached("SELECT kind, json, html FROM data_table WHERE ref_id = ?1")?
                 .query_row([id], |r| Ok(json!({ "kind": r.get::<_, Option<String>>(0)?,
@@ -212,6 +241,46 @@ pub async fn item(State(st): St, Path(id): Path<i64>, Query(q): Query<EditionQue
         })
         .await?;
     Ok(Json(v))
+}
+
+fn has_table(c: &Connection, name: &str) -> rusqlite::Result<bool> {
+    c.prepare_cached("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)")?.query_row([name], |r| r.get(0))
+}
+
+/// An `atlas_media` row (MSWORLD.ITR: the atlas's photos `i`/`m` and music `w`) in the `/api/item`
+/// shape, for the 2,354 that have no DATA record of their own (P2MTBL links to 1,229 of them).
+fn atlas_media_item(c: &Connection, has_m: bool, id: i64, edition: &str) -> anyhow::Result<Option<Value>> {
+    if !has_table(c, "atlas_media")? {
+        return Ok(None);
+    }
+    let Some(row) = c.prepare_cached("SELECT * FROM atlas_media WHERE ref_id = ?1")?.query_row([id], row_object).optional()? else {
+        return Ok(None);
+    };
+    let s = |k: &str| row.get(k).and_then(|v| v.as_str()).map(str::to_string);
+    let audio = s("kind").as_deref() == Some("w");
+    let mut files = Vec::new();
+    // The atlas's 64×64 pushpin picture (`MSWORLD.EIT/dtn/<stem>.dtn`) stands in where the main
+    // file is not on the disc under its catalog name (msworld.md §3: 1,496 pictures, every sound).
+    let stem = s("thumbnail").or_else(|| s("file")).and_then(|f| f.rsplit_once('.').map(|(a, _)| a.to_string()));
+    let pin = if audio { None } else { stem.map(|st| format!("{st}.dtn")) };
+    let roles: Vec<(&str, Option<String>)> =
+        if audio { vec![("audio", s("file"))] } else { vec![("image", s("file")), ("picon", s("thumbnail")), ("thumb", pin)] };
+    for (role, name) in roles {
+        let Some(name) = name.as_deref().map(str::to_ascii_lowercase) else { continue };
+        let media = info_for_name(c, has_m, &name, edition)?;
+        // Only files that resolve: a broken picture is worse than none.
+        if has_m && media.is_none() {
+            continue;
+        }
+        files.push(json!({ "role": role, "file_name": name, "url": format!("/media/file/{name}"), "media": media }));
+    }
+    Ok(Some(json!({
+        "ref_id": id, "kind": if audio { "audio" } else { "media" }, "source_group": "atlas-media",
+        "media_type": if audio { "audio" } else { "image" }, "title": s("title"), "title_html": s("title_html"),
+        "credit": s("credit"), "editions": ["deluxe"], "has_article": false, "files": files,
+        "meta": { "atlas_media": { "place_id": row.get("place_id"), "paired_ref_id": row.get("paired_ref_id"), "legacy_id": row.get("legacy_id") } },
+        "children": [], "media": [], "appears_in": [], "referenced_by": [], "parents": [], "data_table": null, "timeline": null,
+    })))
 }
 
 #[derive(Serialize)]
@@ -303,10 +372,23 @@ pub async fn article(State(st): St, Path(id): Path<i64>, Query(q): Query<Edition
 pub async fn place(State(st): St, Path(gid): Path<i64>) -> ApiResult<Json<Value>> {
     let links = content(&st)?
         .call(move |c| {
+            // P2MTBL is shared with other editions: 2,656 of its targets are on no edition of this
+            // disc and are left out. Atlas photos and music without a DATA record come from
+            // `atlas_media` (MSWORLD.ITR), which `/api/item` serves too.
+            if has_table(c, "atlas_media")? {
+                return Ok(query_objects(
+                    c,
+                    "SELECT p.ordinal, p.kind, p.kind_label, p.content_ref_id AS ref_id, COALESCE(i.title, am.title) AS title,
+                            COALESCE(i.kind, CASE am.kind WHEN 'w' THEN 'audio' ELSE 'media' END) AS item_kind
+                     FROM place_link p LEFT JOIN item i ON i.ref_id = p.content_ref_id LEFT JOIN atlas_media am ON am.ref_id = p.content_ref_id
+                     WHERE p.place_id = ?1 AND (i.ref_id IS NOT NULL OR am.ref_id IS NOT NULL) ORDER BY p.ordinal",
+                    [gid],
+                )?);
+            }
             Ok(query_objects(
                 c,
                 "SELECT p.ordinal, p.kind, p.kind_label, p.content_ref_id AS ref_id, i.title, i.kind AS item_kind
-                 FROM place_link p LEFT JOIN item i ON i.ref_id = p.content_ref_id WHERE p.place_id = ?1 ORDER BY p.ordinal",
+                 FROM place_link p JOIN item i ON i.ref_id = p.content_ref_id WHERE p.place_id = ?1 ORDER BY p.ordinal",
                 [gid],
             )?)
         })
@@ -621,6 +703,8 @@ pub struct TimelineQuery {
     pub order: Option<String>,
     /// Include each event's body text.
     pub text: Option<String>,
+    /// Only the events a timeline term lists (case-insensitive exact term text).
+    pub term: Option<String>,
 }
 
 fn mask_of(c: &Connection, table: &str, spec: &Option<String>) -> ApiResult<i64> {
@@ -653,17 +737,34 @@ pub async fn timeline(State(st): St, Query(q): Query<TimelineQuery>) -> ApiResul
             let cat = mask_of(c, "timeline_category", &q.category)?;
             let reg = mask_of(c, "timeline_region", &q.region)?;
             let like = q.q.as_deref().filter(|s| !s.is_empty()).map(|s| format!("%{s}%"));
-            let filter = "WHERE (?1 IS NULL OR COALESCE(end_year, start_year) >= ?1) AND (?2 IS NULL OR start_year <= ?2)
+            // `term`: the events a TIMELINE.DAT term lists (timeline.md §5): a topic timeline
+            // ("Aztec Empire"), a century, a search term. Older databases have no term table.
+            let term = q.term.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
+            let has_terms: bool =
+                c.prepare_cached("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'timeline_term')")?.query_row([], |r| r.get(0))?;
+            if term.is_some() && !has_terms {
+                return Ok(json!({ "total": 0, "offset": 0, "events": [] }));
+            }
+            let term_filter = if has_terms {
+                // A topic item that is an event title with no term of its own finds that event.
+                "AND (?8 IS NULL OR t.ref_id IN (SELECT j.value FROM json_each((SELECT ref_ids FROM timeline_term WHERE text = ?8 COLLATE NOCASE LIMIT 1)) j)
+                      OR (NOT EXISTS (SELECT 1 FROM timeline_term WHERE text = ?8 COLLATE NOCASE) AND t.title = ?8 COLLATE NOCASE AND t.source_table != 'item'))"
+            } else {
+                "AND ?8 IS NULL"
+            };
+            let filter = format!(
+                "WHERE (?1 IS NULL OR COALESCE(end_year, start_year) >= ?1) AND (?2 IS NULL OR start_year <= ?2)
                 AND (?3 = 0 OR category_mask & ?3 != 0) AND (?4 = 0 OR region_mask & ?4 != 0) AND (?5 IS NULL OR title LIKE ?5)
-                AND (?6 IS NULL OR importance >= ?6) AND (?7 IS NULL OR importance <= ?7)";
-            let p = params![q.from, q.to, cat, reg, like, q.min_importance, q.max_importance];
-            let total: i64 = c.prepare_cached(&format!("SELECT COUNT(*) FROM timeline_event {filter}"))?.query_row(p, |r| r.get(0))?;
+                AND (?6 IS NULL OR importance >= ?6) AND (?7 IS NULL OR importance <= ?7) {term_filter}"
+            );
+            let p = params![q.from, q.to, cat, reg, like, q.min_importance, q.max_importance, term];
+            let total: i64 = c.prepare_cached(&format!("SELECT COUNT(*) FROM timeline_event t {filter}"))?.query_row(p, |r| r.get(0))?;
             let limit = q.limit.unwrap_or(500).clamp(1, 20_000);
             let offset = q.offset.unwrap_or(0).max(0);
             let mut st = c.prepare_cached(&format!(
-                "SELECT {TIMELINE_COLS} FROM timeline_event t {filter} ORDER BY {order} LIMIT ?8 OFFSET ?9"
+                "SELECT {TIMELINE_COLS} FROM timeline_event t {filter} ORDER BY {order} LIMIT ?9 OFFSET ?10"
             ))?;
-            let rows = st.query_map(params![q.from, q.to, cat, reg, like, q.min_importance, q.max_importance, limit, offset], row_object)?;
+            let rows = st.query_map(params![q.from, q.to, cat, reg, like, q.min_importance, q.max_importance, term, limit, offset], row_object)?;
             let mut rows: Vec<Map<String, Value>> = rows.collect::<rusqlite::Result<_>>()?;
             if with_text {
                 for o in &mut rows {

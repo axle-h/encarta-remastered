@@ -25,6 +25,8 @@
   --page: #ffffff;
   --chrome-top: #ffffff;
   --chrome-bottom: #e4e3dd;
+  /* Height of the sticky chrome: menu bar (22 px) and tool bar (64 px). */
+  --chrome-h: 86px;
 
   --cat-0: #2f7fc4;
   --cat-1: #c0392b;

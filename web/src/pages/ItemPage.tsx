@@ -10,6 +10,10 @@ import { MediaStage } from "../media/MediaViewer";
 import { mediaClass, tourIdFor, uniqueByRef } from "../media/pick";
 import { BrowseContent } from "./BrowsePage";
 import { eventDateText } from "./timelineDates";
+import { AuthorView, ContributorView, MapTrekView, OnlineFeatureView, ReferencedBy, TourNodeView, WebLinkView } from "./ItemKinds";
+import { itemRedirect } from "./itemRoute";
+import { isPanoramicTour } from "./panorama";
+import { PanoramaTour } from "./PanoramaTour";
 
 const GEOQUIZ_FEATURE_ID = 701712336;
 
@@ -34,6 +38,31 @@ export function ItemPage({ kids = false }: { kids?: boolean }) {
   const eds = item.editions ?? [];
   if (!kids && eds.length === 1 && eds[0] === "kids") return <Navigate to={`/kids/item/${id}`} replace />;
   if (item.kind === "home-page") return <BrowseContent item={item} kids={kids} />;
+  const to = itemRedirect(item);
+  if (to) return <Navigate to={to} replace />;
+  switch (item.kind) {
+    case "feature":
+      return <OnlineFeatureView item={item} />;
+    case "weblink":
+    case "live-link":
+      return <WebLinkView item={item} kids={kids} />;
+    case "contributor":
+      return <ContributorView item={item} kids={kids} />;
+    case "quotation-author":
+      return <AuthorView item={item} kids={kids} />;
+    case "virtual-tour-node":
+    case "virtual-tour": {
+      if (isPanoramicTour(item)) return <PanoramaTour tour={item} />;
+      // The 7 3D tours redirect in ItemView; pictures that hotspots open show as pictures.
+      const isScene = (item.files ?? []).some((f) => f.role === "surround");
+      const isPicture = !isScene && (item.files ?? []).some((f) => f.role === "image" || f.role === "picon");
+      if (item.kind === "virtual-tour-node" && isPicture) break;
+      if (item.kind === "virtual-tour" && !isScene && (item.children?.length ?? 0) === 0) break;
+      return <TourNodeView item={item} />;
+    }
+    case "maptrek-tour":
+      return <MapTrekView item={item} kids={kids} />;
+  }
   if (item.has_article) {
     // The article picks its page layout (encyclopedia, Kids, sidebar) from `article.layout`.
     return <ArticlePage id={id} kids={kids} />;
@@ -65,6 +94,7 @@ function ItemView({ item, kids }: { item: Item; kids: boolean }) {
       {item.preview_html && !item.caption_html && <Html className="itempage-caption" html={item.preview_html} kids={kids} />}
       {item.credit && <p className="mv-credit">{item.credit}</p>}
       {item.data_table && cls !== "table" && <Html className={`mv-table enc-dt-${item.data_table.kind}`} html={item.data_table.html} kids={kids} />}
+      {(item.appears_in?.length ?? 0) === 0 && <ReferencedBy items={item.referenced_by} title="Appears in" kids={kids} />}
       {(item.appears_in?.length ?? 0) > 0 && (
         <div className="itempage-appears">
           <h2>Appears in</h2>
