@@ -9,6 +9,7 @@ mod entities;
 mod extras;
 mod inline;
 mod model;
+mod pe_wave;
 mod render;
 mod report;
 mod searchx;
@@ -189,6 +190,11 @@ pub fn run(paths: &Paths) -> Result<()> {
     step(&mut cx, "fonts", |cx| {
         let n = copy_fonts(cx.extracted, &paths.out.join("fonts"))?;
         cx.rep.counts.insert("fonts.copied".into(), n as u64);
+        Ok(())
+    })?;
+    step(&mut cx, "ui sounds", |cx| {
+        let n = write_ui_sounds(cx.extracted, &paths.out.join("sounds"))?;
+        cx.rep.counts.insert("sounds.written".into(), n as u64);
         Ok(())
     })?;
     step(&mut cx, "items without data", |cx| {
@@ -1107,6 +1113,47 @@ mod font_tests {
     }
 }
 
+// ---- UI sounds -------------------------------------------------------------------------------
+
+/// The interface sounds written to `out/sounds/{name}.wav` from the `WAVE` resources of the
+/// application's DLLs (docs/media.md §9): `(file, DLL, resource)`. `startup` is the splash
+/// sound; `click` is the button click (the Kids home plays it when a category is clicked); `kids-N`
+/// plays when the pointer enters the N-th Kids home category.
+fn ui_sound_sources() -> Vec<(String, &'static str, pe_wave::ResName)> {
+    use pe_wave::ResName::{Id, Name};
+    let mut v = vec![
+        ("startup".to_string(), "EE/ENCARTA/ENCSPLSH.DLL", Name("INTROSOUND".into())),
+        ("click".to_string(), "EE/ENCARTA/ENCARTAR.DLL", Id(31973)),
+    ];
+    for n in 1..=10u32 {
+        v.push((format!("kids-{n}"), "EE/ENCARTA/ENCARTAR.DLL", Id(31978 + n)));
+    }
+    v
+}
+
+/// Writes the sounds of [`ui_sound_sources`] to `dir` (temporary name, then rename); returns how
+/// many. A missing DLL or resource is skipped.
+fn write_ui_sounds(extracted: &Path, dir: &Path) -> Result<usize> {
+    let mut waves: HashMap<&str, Vec<(pe_wave::ResName, Vec<u8>)>> = HashMap::new();
+    let mut n = 0;
+    for (file, dll, res) in ui_sound_sources() {
+        if !waves.contains_key(dll) {
+            let found = match std::fs::read(extracted.join("iso").join(dll)) {
+                Ok(d) => pe_wave::wave_resources(&d).with_context(|| format!("resources of {dll}"))?,
+                Err(_) => Vec::new(),
+            };
+            waves.insert(dll, found);
+        }
+        let Some((_, bytes)) = waves[dll].iter().find(|(r, _)| *r == res) else { continue };
+        std::fs::create_dir_all(dir)?;
+        let tmp = dir.join(format!("{file}.wav.partial"));
+        std::fs::write(&tmp, bytes)?;
+        std::fs::rename(&tmp, dir.join(format!("{file}.wav")))?;
+        n += 1;
+    }
+    Ok(n)
+}
+
 // ---- small formats ---------------------------------------------------------------------------
 
 fn small_formats(cx: &mut Ctx, articles: &HashSet<u32>) -> Result<()> {
@@ -1204,6 +1251,19 @@ mod disc_tests {
     fn extracted() -> Option<PathBuf> {
         let p = std::env::var_os("ENCARTA_EXTRACTED").map_or(root().join("extracted"), PathBuf::from);
         p.join("iso/EE/ENCARTA/CONTSTD.AKC").exists().then_some(p)
+    }
+
+    #[test]
+    fn ui_sounds_extract() {
+        let Some(x) = extracted() else { return };
+        let dir = root().join("target/test-ui-sounds");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(write_ui_sounds(&x, &dir).unwrap(), 12);
+        let startup = std::fs::read(dir.join("startup.wav")).unwrap();
+        assert_eq!(&startup[..4], b"RIFF");
+        assert_eq!(startup.len(), 445_980);
+        assert_eq!(std::fs::read(dir.join("click.wav")).unwrap().len(), 1128);
+        assert_eq!(std::fs::read(dir.join("kids-1.wav")).unwrap().len(), 125_480);
     }
 
     fn convert(lib: &Library, id: u32) -> (data::DataItem, article::Article, String) {

@@ -288,6 +288,7 @@ pub fn router(st: Arc<AppState>) -> Router {
         // Flash `loadMovie` with variables POSTs: answered like a GET.
         .route("/media/disc/{edition}/{*path}", get(media::disc).post(media::disc))
         .route("/fonts/{name}", get(files::font))
+        .route("/sounds/{name}", get(files::sound))
         .route("/atlas/{*path}", get(files::atlas))
         .route("/out/atlas/{*path}", get(files::out_atlas))
         .route("/out/tours/{*path}", get(files::out_tours))

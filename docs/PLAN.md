@@ -27,9 +27,14 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 
 ## Next (priority order)
 
-1. **Sounds**: startup and menu sounds (the Options setting is stored only). S
-2. **Atlas size**: `earth.pmtiles` grew 26 % (316 → 399 MB) with the fill masks' water/land split; drop water parts
+1. **Atlas size**: `earth.pmtiles` grew 26 % (316 → 399 MB) with the fill masks' water/land split; drop water parts
    of classes no style draws or hit-tests there. S
+
+Done 2026-10-14 (sounds): the startup sound (`INTROSOUND` of ENCSPLSH.DLL), a click for buttons, menu items and tabs, and
+the Kids home category hover/click sounds, extracted from the DLLs' `WAVE` resources to `out/sounds/` by
+`encarta-convert content` and served at `/sounds/{name}.wav`; both Options check boxes now act (media.md §9, api.md).
+Re-run `encarta-convert content` to get `out/sounds/`. Which original sound belongs to which menu or button is not
+known (31906-31978, in Needs the VM).
 
 Done 2026-10-14 (performance): `Cache-Control: public, max-age=3600` on API answers (randomised games and unseeded
 Mind Maze draws, errors: `no-cache`); WOFF2 copies of the eight MS Reference faces written by `encarta-convert content`
@@ -41,6 +46,7 @@ sprites), area-pen draw-over masks, flat-view tiles in Web Workers, time zones o
 134), symbol layers stacked by priority (mad-styling.md §7.3, §8.1, §5.2, §16; atlas-output.md; atlas-client.md).
 
 ### Needs the VM
+- Sounds: which of the 49 ENCARTAR.DLL sounds (ids 31906-31978) the original plays for which menu or button.
 - Atlas: V15 (Mumbai's "Bombay" line, Bolzano/Bozen), V16 (click on the Time Zones map), label placement cost
   (mad-styling.md §7.4, §8.1).
 - Panoramas: single panoramas' `initangle`, panorama zoom.

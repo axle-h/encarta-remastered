@@ -354,6 +354,12 @@ Every successful `GET /api/…` answer without its own header gets `Cache-Contro
 never changes under a running server). Errors, unknown routes, `/api/games/…` (random draws) and unseeded
 `/api/mindmaze/questions` get `no-cache`.
 
+## Interface sounds
+
+`GET /sounds/{name}.wav` — one of `out/sounds/` (`startup`, `click`, `kids-1` … `kids-10`; lower-case letters, digits and
+`-` only, else 404); `Cache-Control: public, max-age=3600`. `encarta-convert content` extracts them from the disc's DLL
+resources (media.md §9).
+
 ## Fonts
 
 `GET /fonts/{file}` — a font of `out/fonts/` (`.ttf`, `.otf`, `.woff`, `.woff2`, name case-insensitive), listed in

@@ -104,7 +104,7 @@ function ruffle(): Plugin {
 }
 
 const proxied: Record<string, ProxyOptions> = {};
-for (const path of ["/api", "/media", "/fonts", "/healthz", ...(serveOutLocally ? [] : ["/out"])]) {
+for (const path of ["/api", "/media", "/fonts", "/sounds", "/healthz", ...(serveOutLocally ? [] : ["/out"])]) {
   proxied[path] = { target: server, changeOrigin: false };
 }
 

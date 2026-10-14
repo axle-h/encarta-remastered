@@ -409,3 +409,20 @@ The SF2's own modulators are not exported (Fluid R3's 747 instrument modulators 
 velocity-to-cutoff one); the synth applies the specification's default modulators itself. A re-run keeps the
 FLAC files unless the source soundfont changed (`source` in `index.json`). The server serves the directory at
 `/out/soundfont/` (api.md); `out/` is synced to the cluster with the rest of the data.
+
+## 9. Interface sounds (`encarta-convert content`, step "ui sounds")
+
+The application's own sounds are `WAVE` resources inside two DLLs (a PE resource directory walk, `content/pe_wave.rs`):
+`EE/ENCARTA/ENCSPLSH.DLL` holds `INTROSOUND` (5.1 s, 22,050 Hz stereo PCM, 446 KB); `EE/ENCARTA/ENCARTAR.DLL`
+holds 49 numbered sounds (mono 22,050 Hz PCM unless noted). `ENCARTAR.DLL` ids: 257-262 (stereo, 0.3-0.6 s) are drawn at
+random while the splash animation steps (`ENCARTA.EXE` picks one that differs from the last); 31979-31988 (stereo
+44,100 Hz, 0.4-0.7 s) are the ten Kids home category hover sounds and 31973 (1,128 bytes, 0.02 s) the Kids click, all
+named in `mainhome_kids.xsl` (`window.external.PlaySoundAsync(id)`). The other 31906-31978 are short clicks and blips
+whose triggers we have not found (the host seems to play them from menu code; not traced).
+
+Written to `out/sounds/` as the unchanged RIFF files: `startup.wav`, `click.wav` (31973), `kids-1..10.wav` (31979-31988
+in order; the XSL's `GetSoundRes(position)` is `31978 + position`). The server serves them at `/sounds/{name}.wav`
+(api.md). **Ours:** the web client plays `click` for every button, menu item and tab (the original's menu and button
+sound mapping is not captured); the startup sound plays once per page load. Open: which of 31906-31978 the original
+plays for which menu or button (VM).
+

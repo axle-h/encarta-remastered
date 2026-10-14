@@ -5,6 +5,8 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { configureUiSounds, isClickable, playMenuSound, playStartupSound } from "./uiSounds";
+
 export type TextSize = "small" | "medium" | "large";
 export type LatLongFormat = "dm" | "dms" | "decimal";
 export type Units = "metric" | "us";
@@ -97,6 +99,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
   useEffect(() => applyTextSize(settings.textSize), [settings.textSize]);
+  useEffect(() => configureUiSounds(settings.startupSound, settings.menuSounds), [settings.startupSound, settings.menuSounds]);
+  useEffect(() => {
+    playStartupSound();
+    const click = (e: MouseEvent) => {
+      if (isClickable(e.target)) playMenuSound();
+    };
+    document.addEventListener("click", click);
+    return () => document.removeEventListener("click", click);
+  }, []);
   const value = useMemo(() => ({ settings, update }), [settings, update]);
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }

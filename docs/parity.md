@@ -224,7 +224,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| Options dialog (5 pages: General, Encarta Updates, Closed Captioning, World Atlas, Quality) | done | `app/OptionsDialog.tsx`, `settings/settings.tsx` (VM 2026-10-14): text size, captions (audio and video), atlas crosshairs, lat/long format, units, linear stats are wired | startup and menu sounds are stored only (no sounds yet) |
+| Options dialog (5 pages: General, Encarta Updates, Closed Captioning, World Atlas, Quality) | done | `app/OptionsDialog.tsx`, `settings/settings.tsx` (VM 2026-10-14): text size, captions (audio and video), atlas crosshairs, lat/long format, units, linear stats are wired | startup sound, menu and button clicks and the Kids home sounds play (`settings/uiSounds.ts`; media.md §9); the click for each control is ours (the original's mapping is not captured) |
 | Kids / Premium switch | done | `/kids` | — |
 
 ## Accessibility
