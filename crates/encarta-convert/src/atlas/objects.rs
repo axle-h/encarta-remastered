@@ -133,8 +133,7 @@ pub struct ClassUse {
     /// the class's polygons are split into parts over water and land.
     pub masked_fill: u32,
     /// Area rules whose fill may draw over water in their style's raster (its water pixel class
-    /// is in the pen's mask). Without any, and without hit-testing, the water parts of a split
-    /// class are dropped.
+    /// is in the pen's mask). Without any, the water parts of a split class are dropped.
     pub fill_water: u32,
 }
 
@@ -146,9 +145,10 @@ impl ClassUse {
     pub fn needs_geometry(&self) -> bool {
         self.geometry() || self.interactive > 0
     }
-    /// Water parts of a split area class are drawn or hit-tested.
+    /// Water parts of a split area class are drawn by some style (never hit-tested: the click
+    /// menu lists no land class over the sea, atlas-output.md "Draw-over masks").
     pub fn needs_water_parts(&self) -> bool {
-        self.fill_water > 0 || self.interactive > 0
+        self.fill_water > 0
     }
     pub fn anything(&self) -> bool {
         self.needs_geometry() || self.label > 0
@@ -224,6 +224,20 @@ impl Classes {
     /// Lunar features (MOON raster) live in the same cell system as the Earth's.
     pub fn is_moon(&self, row: usize) -> bool {
         self.classes[row].name.starts_with("MOON")
+    }
+
+    /// Area classes that the click menu lists over the sea too: water bodies (water pen groups
+    /// 31/42/43 or draw group 120), the World polygon (pen group 36), tectonic plates (136) and
+    /// reefs. The VM lists Bay of Biscay but not France, Brittany or Morbihan off the Breton coast.
+    fn hit_over_sea(&self, row: usize) -> bool {
+        let c = &self.classes[row];
+        matches!(c.pen_group, 31 | 36 | 42 | 43 | 136) || c.group == 120 || c.name == "Reef"
+    }
+
+    /// Interactive Earth area classes hit-tested only over land: their polygons are split into
+    /// water and land parts even when no fill is masked, so that hit layers can skip the water parts.
+    pub fn land_hits(&self, row: usize) -> bool {
+        self.kinds[row] == GeometryKind::Area && self.uses[row].interactive > 0 && !self.is_moon(row) && !self.hit_over_sea(row)
     }
 }
 

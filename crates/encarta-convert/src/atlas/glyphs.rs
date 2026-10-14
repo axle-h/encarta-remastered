@@ -150,7 +150,28 @@ struct Glyph {
     advance: u32,
 }
 
-fn render_glyph(font: &FontVec, ch: char) -> Option<Glyph> {
+/// A horizontal bar built into every glyph of a face (the rule between a name and its alternative,
+/// mad-styling.md §7.3): rows `top…top + height` of the glyph frame (24 px per em, 0 at the line top,
+/// which the PBF's `top` metric counts from the ascender), from `overhang` px before the pen position
+/// to `overhang` px past the advance.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Rule {
+    top: f32,
+    height: f32,
+    overhang: f32,
+}
+
+/// Splits a rule face name `"<face> Rule <top> <height> <overhang>"` (style.rs `rule_faces`).
+fn rule_face(name: &str) -> Option<(&str, Rule)> {
+    let (face, spec) = name.rsplit_once(" Rule ")?;
+    let v: Vec<f32> = spec.split(' ').map(|x| x.parse().ok()).collect::<Option<_>>()?;
+    match v[..] {
+        [top, height, overhang] => Some((face, Rule { top, height, overhang })),
+        _ => None,
+    }
+}
+
+fn render_glyph(font: &FontVec, ch: char, rule: Option<Rule>) -> Option<Glyph> {
     let gid = font.glyph_id(ch);
     if gid.0 == 0 && ch != '\0' {
         return None;
@@ -161,20 +182,39 @@ fn render_glyph(font: &FontVec, ch: char) -> Option<Glyph> {
     let ascender = sf.ascent().round() as i32;
     let advance = sf.h_advance(gid).round().max(0.0) as u32;
     let glyph = gid.with_scale_and_position(scale, ab_glyph::point(0.0, 0.0));
-    let Some(outline) = font.outline_glyph(glyph) else {
+    let outline = font.outline_glyph(glyph);
+    // Boxes in pixels from the pen position on the baseline, y down: the outline and the rule.
+    let ink = outline.as_ref().map(|o| o.px_bounds()).map(|b| [b.min.x, b.min.y, b.max.x, b.max.y]);
+    let bar = rule.map(|r| [-r.overhang, r.top - ascender as f32, advance as f32 + r.overhang, r.top + r.height - ascender as f32]);
+    let Some(b) = [ink, bar].into_iter().flatten().reduce(|a, b| [a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])]) else {
         return Some(Glyph { id: ch as u32, bitmap: Vec::new(), width: 0, height: 0, left: 0, top: -ascender, advance });
     };
-    let b = outline.px_bounds();
-    let (gw, gh) = (b.width() as usize, b.height() as usize);
+    let (x0, y0) = (b[0].floor(), b[1].floor());
+    let (gw, gh) = ((b[2].ceil() - x0) as usize, (b[3].ceil() - y0) as usize);
     let (w, h) = (gw + 2 * BUFFER, gh + 2 * BUFFER);
     let mut cov = vec![0f32; w * h];
-    outline.draw(|x, y, c| {
-        let (x, y) = (x as usize + BUFFER, y as usize + BUFFER);
-        if x < w && y < h {
-            cov[y * w + x] = c.min(1.0);
+    if let (Some(o), Some(i)) = (&outline, ink) {
+        let (dx, dy) = ((i[0] - x0) as usize + BUFFER, (i[1] - y0) as usize + BUFFER);
+        o.draw(|x, y, c| {
+            let (x, y) = (x as usize + dx, y as usize + dy);
+            if x < w && y < h {
+                cov[y * w + x] = c.min(1.0);
+            }
+        });
+    }
+    if let Some(r) = bar {
+        // Exact area coverage of the bar per pixel.
+        let overlap = |p: f32, lo: f32, hi: f32| (hi.min(p + 1.0) - lo.max(p)).max(0.0);
+        for y in 0..gh {
+            let fy = overlap(y0 + y as f32, r[1], r[3]);
+            for x in 0..gw {
+                let c = fy * overlap(x0 + x as f32, r[0], r[2]);
+                let k = (y + BUFFER) * w + x + BUFFER;
+                cov[k] = cov[k].max(c);
+            }
         }
-    });
-    Some(Glyph { id: ch as u32, bitmap: sdf(&cov, w, h), width: gw as u32, height: gh as u32, left: b.min.x.round() as i32, top: (-b.min.y).round() as i32 - ascender, advance })
+    }
+    Some(Glyph { id: ch as u32, bitmap: sdf(&cov, w, h), width: gw as u32, height: gh as u32, left: x0 as i32, top: -(y0 as i32) - ascender, advance })
 }
 
 fn varint(out: &mut Vec<u8>, mut v: u64) {
@@ -257,7 +297,8 @@ fn pick<'f>(fonts: &'f [DiscFont], face: &str) -> Option<(&'f DiscFont, String)>
     fonts.iter().find(|f| f.family == base && f.style == style).or_else(|| fonts.iter().find(|f| f.family == base)).map(|f| (f, format!("{} {} (family not on disc)", f.family, f.style)))
 }
 
-pub fn run(extracted: &Path, faces: &BTreeSet<String>, chars: &BTreeSet<char>, out: &Path, log: &dyn Fn(String)) -> Result<GlyphReport> {
+/// `rule_chars`: the characters of names with an alternative, the only ones the rule faces get.
+pub fn run(extracted: &Path, faces: &BTreeSet<String>, chars: &BTreeSet<char>, rule_chars: &BTreeSet<char>, out: &Path, log: &dyn Fn(String)) -> Result<GlyphReport> {
     let dir = extracted.join("iso/AREF/FONTS");
     let fonts = disc_fonts(&dir);
     let mut rep = GlyphReport { fonts_dir: dir.display().to_string(), ..Default::default() };
@@ -265,8 +306,10 @@ pub fn run(extracted: &Path, faces: &BTreeSet<String>, chars: &BTreeSet<char>, o
         log(format!("  no TrueType fonts in {}; glyphs not generated", dir.display()));
         return Ok(rep);
     }
-    let mut ranges: BTreeSet<u32> = chars.iter().map(|&c| (c as u32) / 256 * 256).filter(|&s| s < 0x10000).collect();
+    let ranges_of = |chars: &BTreeSet<char>| -> BTreeSet<u32> { chars.iter().map(|&c| (c as u32) / 256 * 256).filter(|&s| s < 0x10000).collect() };
+    let mut ranges = ranges_of(chars);
     ranges.insert(0);
+    let rule_ranges = ranges_of(rule_chars);
     rep.ranges = ranges.len();
     // Fallback order for characters a face lacks: the large Reference faces, then the rest.
     let fallback: Vec<&DiscFont> = {
@@ -282,7 +325,12 @@ pub fn run(extracted: &Path, faces: &BTreeSet<String>, chars: &BTreeSet<char>, o
         }
     }
     for face in &faces {
-        let Some((font, how)) = pick(&fonts, face) else { continue };
+        let (base, rule) = match rule_face(face) {
+            Some((b, r)) => (b, Some(r)),
+            None => (face.as_str(), None),
+        };
+        let Some((font, how)) = pick(&fonts, base) else { continue };
+        let (chars, ranges) = if rule.is_some() { (rule_chars, &rule_ranges) } else { (chars, &ranges) };
         rep.faces.insert(face.clone(), format!("{} ← {}", how, font.file.file_name().unwrap().to_string_lossy()));
         let face_dir = out.join("glyphs").join(face);
         std::fs::create_dir_all(&face_dir)?;
@@ -293,8 +341,11 @@ pub fn run(extracted: &Path, faces: &BTreeSet<String>, chars: &BTreeSet<char>, o
                 let mut missing = 0;
                 for cp in start..start + 256 {
                     let Some(ch) = char::from_u32(cp) else { continue };
-                    let needed = chars.contains(&ch) || cp < 256;
-                    let g = render_glyph(&font.font, ch).or_else(|| if needed { fallback.iter().find_map(|f| render_glyph(&f.font, ch)) } else { None });
+                    let needed = chars.contains(&ch) || (cp < 256 && rule.is_none());
+                    if rule.is_some() && !needed {
+                        continue;
+                    }
+                    let g = render_glyph(&font.font, ch, rule).or_else(|| if needed { fallback.iter().find_map(|f| render_glyph(&f.font, ch, rule)) } else { None });
                     match g {
                         Some(g) => glyphs.push(g),
                         None if chars.contains(&ch) => missing += 1,
@@ -322,6 +373,33 @@ pub fn run(extracted: &Path, faces: &BTreeSet<String>, chars: &BTreeSet<char>, o
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rule_face_names() {
+        assert_eq!(rule_face("Arial Bold Rule 24.00 2.00 1.50"), Some(("Arial Bold", Rule { top: 24.0, height: 2.0, overhang: 1.5 })));
+        assert_eq!(rule_face("Arial Bold Rule -5.60 2.33 0.00").map(|r| r.1.top), Some(-5.6));
+        assert_eq!(rule_face("Arial Bold"), None);
+        assert_eq!(rule_face("Arial Rule x"), None);
+    }
+
+    /// With the disc's fonts (skipped without `extracted/`): a ruled space is all bar, and a ruled
+    /// letter keeps its ink and spans its advance plus the overhangs.
+    #[test]
+    fn ruled_glyphs_from_disc() {
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extracted/iso/AREF/FONTS");
+        let fonts = disc_fonts(&dir);
+        let Some(f) = fonts.iter().find(|f| f.family == "Arial" && f.style == "Regular") else {
+            eprintln!("skipped: no disc fonts at {}", dir.display());
+            return;
+        };
+        let rule = Rule { top: 24.0, height: 2.0, overhang: 1.0 };
+        let space = render_glyph(&f.font, ' ', Some(rule)).unwrap();
+        assert_eq!((space.left, space.width as i32, space.height), (-1, space.advance as i32 + 2, 2));
+        let plain = render_glyph(&f.font, 'M', None).unwrap();
+        let m = render_glyph(&f.font, 'M', Some(rule)).unwrap();
+        assert_eq!((m.top, m.advance), (plain.top, plain.advance));
+        assert!(m.height > plain.height && m.left <= plain.left.min(-1));
+    }
 
     #[test]
     fn sdf_of_a_square() {

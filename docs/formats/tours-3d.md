@@ -454,13 +454,23 @@ Given the camera position `(x, z)` and yaw `θ` (degrees, from `camera.pos?`):
 - Check against the data: for every stop that has a box, the marker of steps 1–2 at the stop's `coord3d` position
   lands within 13 px of the box centre (within 5 px for most), including the −90 frames of Persepolis and Azuchi
   (within 9 px), which supports the rotation rule of step 1. At the Temple of Athena Nike stop the capture's marker
-  is drawn in a lighter blue (0x6371B5) with a dotted box: probably the highlighted-location look of step 5,
-  which is not specified further.
+  is drawn in a lighter blue (0x6371B5) with a dotted box: that is one phase of the marker's blink (below).
 
 **(VM)** Confirmed for an unrotated map: at the six Acropolis stops the marker sits exactly where step 2 puts it
 (site-map window origin at screen (1,129)), +Z points up the map, and the wedge (about 80° wide) points up the map
 for yaw 3.4° and 19°, down for 197° and 204°, down-right for 155°. **[VM]** The rotated maps (Persepolis, Azuchi,
-`SM_ROTATEFRAME=-90`) were not checked.
+`SM_ROTATEFRAME=-90`) were checked later, see below.
+
+**(VM)** Rotated maps confirmed (Persepolis `fixtures/tours/701505917/sitemap/`, Azuchi `fixtures/tours/701505920/sitemap/`,
+window coordinates = screen − (1,129)). Persepolis Apadana Stairs: marker exactly at the predicted (96,118), wedge
+headings 102.2/177.5/71.2/194.5° against 102/180/72/196°. Azuchi (rect 46,108,139,185), marker centre measured / predicted
+by `siteMapMarker`: Grounds (start and via Tour Stops) (139,157)/(139,157) (x clamped to the rect right edge; unclamped
+141), Donjon (100,153)/(100,153), Living Quarters (102,139)/(102,139), Octagonal Chamber (88,153)/(89,153) (1 px). Wedge
+centre (middle of the two edges) 183.5/177.5/122.5/171.5° against 185/179/124/172°. The floor follows the stop's site:
+"Level 1" for Grounds and Donjon, "Level 3" Living Quarters, "Level 6" Octagonal Chamber, with the matching elevation
+highlight (as the client does with `stop.site`). Colour: the marker **blinks** between dark blue 0x103463 and light
+blue 0x6371B5, each phase about 0.715 s, on a box or off it (VM, sampled every 6 ms); single screenshots catch either
+phase.
 
 ### 4.3 Hotspots and tour content
 
@@ -2212,8 +2222,7 @@ Still open:
 - [ ] **Point-cloud statues.** Update steps, freeze beyond about 18 units (§7.3). Orientation is resolved (§7.3.3).
 - [ ] **Sprite billboards.** Yaw-only rotation and its sign. Flame filmstrip fps (about 14 expected) and random phase (§7.4).
 - [ ] **Captions.** Pixel widths (System-font measuring bug), `_L` outline look, icon orientation, the ≈45.7° cone, edge clipping, the "Show Labels and Hot Spots" toggle (§8.4, §8.5, §8.6).
-- [ ] **Site map** with the rotated frames of Persepolis and Azuchi (§4.2). The data supports the −90 rule (each stop's
-  marker lands on its location box in the map art, within 9 px), but it was not seen in the VM.
+- [x] **Site map** with the rotated frames of Persepolis and Azuchi (§4.2): marker within 1 px and wedge within 2° at all 8 stops, floor images per stop confirmed. The marker blinks dark/light blue every 0.715 s (§4.2).
 - [ ] **Pitch limit arithmetic.** How the look-vector value tested against 45° is computed: from 21.000036 the fourth
   6° step was accepted at 44.998962, an error of −0.001074° that float32 look-vector arithmetic does not produce (§6.9).
 - [ ] **LOD.** The pop at 13 XZ units (Acropolis `newcolumn*`) (§7.6).

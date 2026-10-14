@@ -249,14 +249,16 @@ without one).
 `para` (deep link to the best-matching paragraph) is omitted when the title itself matches the query, or starts
 with it when the last word is a prefix.
 Facets ignore the `kind`/`edition` filters so they can label tabs.
+Without `edition` Kids-only items are left out of `hits`/`total` (Encarta Premium's search has none; the Kids UI always sends
+`edition=kids`); `edition=all` returns everything. Verified against the VM, vm-findings.md "Search ranking".
 
 How the index works (`crates/encarta-search`): one tantivy index with an *item* document per searchable item
 (articles, media, maps, quotations, timeline events, sidebars, web links, index terms, every
 dictionary/thesaurus/bilingual entry; not home-screen pages) and a *paragraph* document per article paragraph. Items are ranked
 by BM25 over title (×4), PFX aliases (×2.5), section headings (×1.5) and text, plus a constant bonus when the
-whole query equals a title or whole-title alias (30), a smaller one (20) when a title starts with the query whose last
+whole query equals a title or whole-title alias (30; a title minus a trailing parenthetical counts, so "rome" is an exact match for "Rome (Italy)" and "Rome (Georgia)"), a smaller one (20) when a title starts with the query whose last
 word is a prefix, phrase bonuses (a phrase-prefix one on titles), and a static prior (category weight × inbound
-cross-references; Kids-only items ×0.6 so Premium wins unless `edition=kids`). The best paragraph per hit is a
+cross-references; Kids-only items ×0.6). The best paragraph per hit is a
 second query restricted to the hits, earlier paragraphs winning ties. Text is lower-cased, accent-folded and
 English-stemmed ("Zebras" finds "zebra"). A partly typed last word also matches the 24 most frequent indexed terms
 of each field that start with it (unstemmed, folded), each scored by BM25 with the field's boost.
@@ -356,7 +358,7 @@ never changes under a running server). Errors, unknown routes, `/api/games/…` 
 
 ## Interface sounds
 
-`GET /sounds/{name}.wav` — one of `out/sounds/` (`startup`, `click`, `kids-1` … `kids-10`; lower-case letters, digits and
+`GET /sounds/{name}.wav` — one of `out/sounds/` (`startup`, `click`, `tick`, `kids-hover`, `timeline`, `kids-1` … `kids-10`; lower-case letters, digits and
 `-` only, else 404); `Cache-Control: public, max-age=3600`. `encarta-convert content` extracts them from the disc's DLL
 resources (media.md §9).
 

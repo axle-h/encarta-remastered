@@ -35,7 +35,7 @@ export function AudioPlayer({ item, autoPlay = false, compact = false }: { item:
   if (audio && isMidi(audio)) {
     return (
       <div className={`enc-audio${compact ? " compact" : ""}`}>
-        <MidiPlayer src={originalUrl(audio)} captions={compact ? undefined : tracks[0]?.src} />
+        <MidiPlayer src={originalUrl(audio)} captions={compact ? undefined : tracks[0]?.src} autoPlay={autoPlay} />
       </div>
     );
   }

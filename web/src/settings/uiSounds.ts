@@ -1,12 +1,20 @@
 /**
- * Interface sounds (Tools > Options > Sounds): the startup sound, a click for buttons and menu
- * items, and the Kids home category sounds. The converter writes them from the disc's DLL
+ * Interface sounds (Tools > Options > Sounds). The converter writes them from the disc's DLL
  * resources to `out/sounds/`; the server serves `/sounds/{name}.wav`. Browsers refuse sound before
  * the first user gesture, so a startup sound that is refused plays on the first click or key.
+ *
+ * Which control plays what was measured in the XP reference VM (docs/media.md section 9):
+ * `tick` is the rollover of toolbar buttons, atlas text buttons and menu highlights; `click` the
+ * press of buttons (round toolbar buttons: on press and again on release); `kidsHover` the
+ * rollover of the Kids round buttons; `timeline` the timeline controls. Plain links and tabs are
+ * silent. One document-level delegate ({@link installUiSoundDelegates}) maps controls to sounds;
+ * `data-snd="timeline"` (or `"none"`) on an element or ancestor overrides the built-in rules.
  */
-export type UiSound = "startup" | "click" | `kids-${number}`;
+export type UiSound = "startup" | "click" | "tick" | "kidsHover" | "timeline" | `kids-${number}`;
 
-const flags = { startup: true, menu: true };
+const FILES: Record<string, string> = { kidsHover: "kids-hover" };
+
+const flags = { startup: true, menu: false };
 const players = new Map<string, HTMLAudioElement>();
 let startupDone = false;
 
@@ -16,18 +24,12 @@ export function configureUiSounds(startup: boolean, menu: boolean) {
   flags.menu = menu;
 }
 
-/** The control a click sound belongs to: a button, menu item or tab that is not disabled. */
-export function isClickable(target: EventTarget | null): boolean {
-  const el = (target as Element | null)?.closest?.('button, [role="menuitem"], [role="tab"], [role="option"]');
-  return !!el && !el.hasAttribute("disabled") && el.getAttribute("aria-disabled") !== "true";
-}
-
 function play(name: UiSound, volume: number): Promise<void> {
   if (typeof Audio === "undefined") return Promise.resolve();
   try {
     let a = players.get(name);
     if (!a) {
-      a = new Audio(`/sounds/${name}.wav`);
+      a = new Audio(`/sounds/${FILES[name] ?? name}.wav`);
       a.preload = "auto";
       players.set(name, a);
     }
@@ -40,8 +42,90 @@ function play(name: UiSound, volume: number): Promise<void> {
 }
 
 /** A menu or button sound (the "Play menu and button sounds" option); silent when it is off. */
-export function playMenuSound(name: UiSound = "click") {
+export function playUiSound(name: UiSound) {
   if (flags.menu) void play(name, name === "click" ? 0.7 : 0.8).catch(() => {});
+}
+
+/** Alias of {@link playUiSound} (default: the click). */
+export function playMenuSound(name: UiSound = "click") {
+  playUiSound(name);
+}
+
+interface Spec {
+  over?: UiSound;
+  down?: UiSound;
+  up?: UiSound;
+  click?: UiSound;
+}
+
+const ROUND: Spec = { down: "click", up: "click" };
+const RULES: [string, Spec][] = [
+  [".kids-shell .orb, .kids-shell .searchbox-go", { over: "kidsHover", ...ROUND }],
+  [".orb", { over: "tick", ...ROUND }],
+  [".searchbox-go", { over: "tick", click: "click" }],
+  [".menu.features > button, .enc-atlas-btn", { over: "tick", click: "click" }],
+  ['[role="menuitem"]', { over: "tick" }],
+  [".menu > button, .dlg-backdrop button, .enc-atlas button, input[type=checkbox], input[type=radio]", { click: "click" }],
+];
+
+function disabled(el: Element): boolean {
+  return el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true";
+}
+
+/** The sounds of the control under `target`, with the element they belong to; null for none. */
+function specOf(target: EventTarget | null): { el: Element; spec: Spec } | null {
+  const t = target as Element | null;
+  if (!t?.closest) return null;
+  const forced = t.closest("[data-snd]");
+  if (forced) {
+    const v = forced.getAttribute("data-snd");
+    const b = t.closest("button");
+    return v === "timeline" && b && !disabled(b) ? { el: b, spec: { click: "timeline" } } : null;
+  }
+  for (const [sel, spec] of RULES) {
+    const el = t.closest(sel);
+    if (el && !disabled(el)) return { el, spec };
+  }
+  return null;
+}
+
+/** Installs the delegate that plays the interface sounds; returns its remover. */
+export function installUiSoundDelegates(): () => void {
+  let keyboard = false;
+  const on = <K extends keyof DocumentEventMap>(type: K, fn: (e: DocumentEventMap[K]) => void) => {
+    document.addEventListener(type, fn as EventListener, true);
+    return () => document.removeEventListener(type, fn as EventListener, true);
+  };
+  const offs = [
+    on("pointerover", (e) => {
+      if (e.pointerType === "touch") return;
+      const hit = specOf(e.target);
+      if (!hit?.spec.over || hit.el.contains(e.relatedTarget as Node | null)) return;
+      playUiSound(hit.spec.over);
+    }),
+    on("pointerdown", (e) => {
+      keyboard = false;
+      const s = specOf(e.target)?.spec.down;
+      if (s) playUiSound(s);
+    }),
+    on("pointerup", (e) => {
+      const s = specOf(e.target)?.spec.up;
+      if (s) playUiSound(s);
+    }),
+    on("click", (e) => {
+      const s = specOf(e.target)?.spec.click;
+      if (s) playUiSound(s);
+    }),
+    on("keydown", (e) => {
+      keyboard = true;
+      if (e.key === "Escape" && (e.target as Element | null)?.closest?.('[role="menu"]')) playUiSound("tick");
+    }),
+    // Arrow keys move focus between menu items: that is the menu's highlight changing.
+    on("focusin", (e) => {
+      if (keyboard && (e.target as Element | null)?.closest?.('[role="menuitem"]')) playUiSound("tick");
+    }),
+  ];
+  return () => offs.forEach((f) => f());
 }
 
 /** The startup sound, once per page load, when the option is on. */

@@ -27,20 +27,33 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 
 ## Next (priority order)
 
-Nothing queued. Possible follow-up, Atlas size: `earth.pmtiles` is still 399 MB; the water/land split stays for the
-classes that are hit-tested (the large ones) or drawn over water by a climate
-style (atlas-output.md "Draw-over masks"). Needs the VM first: does Encarta's click menu list an area under the sea?
+Nothing queued. Re-run `encarta-convert content` (timeline `date_text`, three new UI sounds), `encarta-convert search`
+(ranking fixes) and `ENCARTA_ATLAS_ONLY=vector encarta-convert atlas` (sea-click split, rule glyph faces) to bring
+`out/` up to date.
+
+Done 2026-10-14 (VM pass, "Needs the VM"): sound in the guest (USB audio hot-plug recorded to a WAV, vm.md); interface
+sounds mapped by matching the recording against the DLL sounds (rollover tick 31971, press/release click 31973, Kids
+rollover 31975, timeline 575; menu sounds off by default; media.md §9); tour Music heard (on at start, ambient record,
+restarts, loops); the site-map marker blinks dark/light blue every 0.715 s (tours-3d.md §4.2), Azuchi's rotated site
+map matches; atlas V15 (alternative-name line with a rule between the lines) and V16 (no time zone on its own map)
+confirmed, and no land area is listed over the sea, so area classes are split at the coast and only land parts are
+hit-tested (earth.pmtiles 398.79 → 400.28 MB: splitting the unmasked interactive classes costs more than dropping the
+water parts saves); timeline pop-up dates ("120,000 years ago", "4.60 billion years ago"); sidebars `SBA`/`SBP` look
+like every other sidebar; the docked search panel, ▾ tab, Quick Search dialog and the Kids menu bar with its submenus
+built from the captures; MIDI items autoplay; GS Wavetable reference renders saved (`fixtures/music/`); search ranking
+compared on 8 queries, with two fixes (no Kids-only items in the default search; a title minus its parenthetical is an
+exact title; vm-findings.md).
 
 Done 2026-10-14 (atlas size): the water parts of split polygon classes are dropped when no style draws the fill over
 that style's water pixel class and the class is not interactive (`ClassUse::fill_water`, `needs_water_parts`). Saving
 only 0.3 MB (399.05 → 398.79 MB; 108 classes, none large), so the plan's expectation of a real cut did not hold.
-Re-run `ENCARTA_ATLAS_ONLY=vector encarta-convert atlas` to get it.
+Re-run `ENCARTA_ATLAS_ONLY=vector encarta-convert atlas` to get it. (Superseded by the VM pass above: the interactive
+condition is gone.)
 
 Done 2026-10-14 (sounds): the startup sound (`INTROSOUND` of ENCSPLSH.DLL), a click for buttons, menu items and tabs, and
 the Kids home category hover/click sounds, extracted from the DLLs' `WAVE` resources to `out/sounds/` by
 `encarta-convert content` and served at `/sounds/{name}.wav`; both Options check boxes now act (media.md §9, api.md).
-Re-run `encarta-convert content` to get `out/sounds/`. Which original sound belongs to which menu or button is not
-known (31906-31978, in Needs the VM).
+Re-run `encarta-convert content` to get `out/sounds/`. The per-control mapping was measured in the VM pass above.
 
 Done 2026-10-14 (performance): `Cache-Control: public, max-age=3600` on API answers (randomised games and unseeded
 Mind Maze draws, errors: `no-cache`); WOFF2 copies of the eight MS Reference faces written by `encarta-convert content`
@@ -52,20 +65,18 @@ sprites), area-pen draw-over masks, flat-view tiles in Web Workers, time zones o
 134), symbol layers stacked by priority (mad-styling.md §7.3, §8.1, §5.2, §16; atlas-output.md; atlas-client.md).
 
 ### Needs the VM
-- Atlas: whether an area is listed in the click menu where it lies over the sea (decides if the water parts of
-  interactive classes can go, size not measured).
-- Sounds: which of the 49 ENCARTAR.DLL sounds (ids 31906-31978) the original plays for which menu or button.
-- Atlas: V15 (Mumbai's "Bombay" line, Bolzano/Bozen), V16 (click on the Time Zones map), label placement cost
-  (mad-styling.md §7.4, §8.1).
-- Panoramas: single panoramas' `initangle`, panorama zoom.
-- Tours: whether the Music toggle starts on or off and what it plays (no sound device in the guest; we loop the tour's ambient record), the exact on-box test for the light-blue marker, the Azuchi site map, the look-vector value behind
-  the 45° pitch test, the remaining **[VM]** items in [tours-3d.md](formats/tours-3d.md) §10.
-- UI never captured: the ▾ tab under the search box, the Quick Search dialog, the Kids menu bar, Encarta's own
-  ranking; rows marked *(ours)* in [parity.md](parity.md).
-- Data: content-schema §11 questions (placement: primary-item spacing in four captured sections); a few field
-  meanings in the small formats (1.5).
+- Atlas: label placement cost (mad-styling.md §7.4, §8.1); whether water bodies, World, tectonic plates and reefs are
+  listed over the sea (assumed yes).
+- Sounds: where the unheard ENCARTAR.DLL sounds play (578, 579, 682/31972/31978, 702/31909, 31906-31908, 31910/31911,
+  31912, 31913): not in home, browse, search panel, article, atlas, timeline or Kids home; perhaps the dictionary
+  window, media players, Visual Browser or games.
+- Panoramas: single panoramas' `initangle` (their viewer is Flash).
+- Tours: the look-vector value behind the 45° pitch test (needs the debugger), the remaining **[VM]** items in
+  [tours-3d.md](formats/tours-3d.md) §10.
+- UI: rows marked *(ours)* in [parity.md](parity.md).
+- Data: content-schema §11 (primary-item spacing residue, DATAF `pn`, right-column modules); a few field meanings in
+  the small formats (1.5).
 - Interactives: Flash is not installed in the guest, so nothing to compare the Ruffle rendering with (fonts: the
   disc lacks Trebuchet MS; Vasco da Gama's ocean fill went missing once and was not reproduced).
-- Music: how the original's Microsoft GS Wavetable Synth renders the MIDI music (ours plays the Fluid R3 GM
-  soundfont, checked against FluidSynth only; media.md §8).
-- VM tooling: sound in the guest, a debugger workflow.
+- Music: a side-by-side comparison of our soundfont synth with the GS Wavetable renders in `fixtures/music/` (media.md §8).
+- VM tooling: a debugger workflow.

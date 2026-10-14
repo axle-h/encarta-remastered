@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { configureUiSounds, isClickable, playMenuSound, playStartupSound } from "./uiSounds";
+import { configureUiSounds, installUiSoundDelegates, playMenuSound, playUiSound, playStartupSound } from "./uiSounds";
 
 const played: string[] = [];
 let refuse = false;
@@ -53,12 +53,33 @@ describe("interface sounds", () => {
     expect(played).toHaveLength(1);
   });
 
-  it("finds enabled buttons, menu items and tabs", () => {
-    document.body.innerHTML = `<button id=a><i id=i></i></button><button id=b disabled></button><div role=menuitem id=m></div><p id=p></p>`;
-    const el = (id: string) => document.getElementById(id);
-    expect(isClickable(el("i"))).toBe(true);
-    expect(isClickable(el("b"))).toBe(false);
-    expect(isClickable(el("m"))).toBe(true);
-    expect(isClickable(el("p"))).toBe(false);
+  it("maps controls to the measured sounds", () => {
+    configureUiSounds(true, true);
+    const off = installUiSoundDelegates();
+    document.body.innerHTML = `<button id=orb class=orb></button><button id=dis class=orb disabled></button>
+      <div class=kids-shell><button id=kid class=orb></button></div>
+      <div role=menu><div role=menuitem id=mi></div></div><a id=link href="#x"></a><div role=tablist><button role=tab id=tab></button></div>
+      <div data-snd=timeline><button id=tl></button></div><div class=menu><button id=title></button></div>`;
+    const fire = (id: string, type: string) => document.getElementById(id)!.dispatchEvent(new Event(type, { bubbles: true }));
+    const take = () => played.splice(0).map((s) => s.replace("/sounds/", "").replace(".wav", ""));
+    fire("orb", "pointerover");
+    fire("orb", "pointerdown");
+    fire("orb", "pointerup");
+    fire("orb", "click");
+    expect(take()).toEqual(["tick", "click", "click"]);
+    for (const t of ["pointerover", "pointerdown", "pointerup", "click"]) fire("dis", t);
+    fire("kid", "pointerover");
+    fire("mi", "pointerover");
+    fire("link", "pointerover");
+    fire("link", "click");
+    fire("tab", "click");
+    expect(take()).toEqual(["kids-hover", "tick"]);
+    fire("tl", "click");
+    fire("title", "click");
+    expect(take()).toEqual(["timeline", "click"]);
+    off();
+    configureUiSounds(true, false);
+    playUiSound("tick");
+    expect(take()).toEqual([]);
   });
 });

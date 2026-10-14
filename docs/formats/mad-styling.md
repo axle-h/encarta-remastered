@@ -408,7 +408,16 @@ style plus the alternative as an extra last line in the `w6` style, only when `w
 alternative; (1) the main name alone on 1–4 lines; (2) the abbreviation alone, only when there is one. The
 alternative is put in brackets only when the main name starts with kana or a CJK ideograph. How it chooses among
 the layouts that fit (overlap cost) is not fully read. Example (style 0, 3000 km): Mumbai (class 2) in GeoLabel
-106 (14 px bold), "Bombay" under it in GeoLabel 36 (12 px regular); not yet seen in the VM (V15).
+106 (14 px bold), "Bombay" under it in GeoLabel 36 (12 px regular).
+
+**Confirmed in the VM (V15, 2026-10-14):** a name with an alternative is drawn on two lines, "Mumbai" over
+"Bombay" (main larger and bold, alternative smaller and regular), "Merano"/"Meran", "Bolzano"/"Bozen". A
+**1-px horizontal rule** in the text colour separates the lines. It is as wide as the wider line: under all of
+"San Pancrazio" over "St. Pankraz", over all of "Tscherms" under "Cermes". It sits about 3 px under the main
+baseline and 2 px above the alternative's capitals. Both lines follow the label's alignment: right-aligned when
+the label is left of its symbol (Mumbai, San Pancrazio), left-aligned when it is right of it. A long main name
+still wraps ("Caldaro sulla strada del vino" over "Kaltern an der Weinstrasse" takes two lines for the main
+name). The converter draws the rule with glyph faces that carry a bar (atlas-output.md "Glyphs").
 
 How "does not fit" is decided is not specified. The converter uses the abbreviation for an **area** label when
 the name, at 0.6 em per character, is wider than the area at the current zoom (**hypothesis**). Over Europe at
@@ -773,7 +782,7 @@ opened with the URL form of §2.3. If `alt` turns out not to be km, adjust the n
 | V12 | `lat=0.00/long=0.00/alt=20000.00/style=0`, then switch Encarta to its flat-map view (if it has one) | Miller map extent, flat-map scale (§2.1, §12) |
 | V13 | `lat=12.50/long=-69.95/alt=5.00/style=0` (Aruba is not in MinRect) and `lat=45.44/long=12.33/alt=5.00/style=0` (Venice is in MinRect) | the MinRect zoom limit |
 | V14 | a map with `style=12` (Statistical) and a statistic chosen | how statistical classes `Z - (STAT) …` are coloured |
-| V15 | `lat=19.00/long=72.80/alt=3000.00/style=0` (Mumbai), `lat=46.50/long=11.35/alt=150.00/style=0` (Bolzano) | the alternative name (U+0004) on a second line in the `w6` style ("Bombay", "Bozen"), §7.3 |
+| V15 | `lat=19.00/long=72.80/alt=3000.00/style=0` (Mumbai), `lat=46.50/long=11.35/alt=150.00/style=0` (Bolzano) | the alternative name (U+0004) on a second line in the `w6` style ("Bombay", "Bozen"), §7.3. **Confirmed** (2026-10-14), with a 1-px rule between the lines |
 | V16 | `style=13` (Time Zones), left click on land | the click menu leaves out time zones on their own map too (§16 V11 result); the page title |
 
 **Results** (shots taken; details in docs/vm-findings.md, fixtures in `fixtures/atlas/`):
@@ -804,6 +813,12 @@ opened with the URL form of §2.3. If `alt` turns out not to be km, adjust the n
 - V12: the flat view is Miller (§12.3). V13: zoom is limited over open ocean and Aruba, Venice zooms to street
   level (MinRect, §13.2). V14: statistical classes pale peach to dark red-brown, water pale grey-blue, no data
   light grey.
+- V15 (2026-10-14): the alternative name on a second line with a 1-px rule as wide as the wider line (§7.3).
+- Sea click (2026-10-14, Comprehensive, 300 km, Brittany coast): 1–3 km offshore the menu lists only "Bay of
+  Biscay" (plus a city within its hit radius), although the polygons of France, Brittany and Morbihan cover the
+  point; on land "Saint-Aubin, Morbihan, Brittany, France". On Lake Geneva (land in the HYPSO raster) it lists
+  Vaud and Switzerland. So no land area class is hit where the raster is water. The converter splits interactive
+  area classes along the HYPSO water mask and the client skips the water parts (atlas-output.md "Draw-over masks").
 
 ## 17. Open points and provenance
 
@@ -811,8 +826,8 @@ Open, in priority order:
 1. ~~`P` and `m` (§2.1)~~: measured, `P/m ≈ 6.05 × pane height` (V1, V2).
 2. GeoLabel bytes 5–10, 11 (low nibble; what the two other line-label routines of the high nibble do), 16 (other
    than shield outline), 25. Then PDCAltitude `b2` high nibble and `b4` high nibble (MOBB copies `b4` high into
-   each hit-list entry; its use there is not read). ~~When `w6` is used~~: alternative-name line (§4.1, §7.3);
-   VM V15 to confirm.
+   each hit-list entry; its use there is not read). ~~When `w6` is used~~: alternative-name line (§4.1, §7.3),
+   confirmed in the VM (V15, 2026-10-14), with a rule between the lines.
 3. ~~The road shield source~~: shields are labels of road lines whose `w5` GeoLabel has a shape in byte 12 (§8.1),
    checked against V8. Open: how the overlap cost weighs against the centre cost (exact choice among candidates).
 3a. ~~Why V11's click menu leaves out time zones~~: ENCARTA.EXE drops pen group 134 (§16 V11 result); V16 to

@@ -44,7 +44,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Home orb | done | | — |
 | Features ▾ menu | done | `FEATURES`, keyboard menu (this audit) | entry order is *(ours)*: the 2009 menu was not captured |
 | Search box with autocomplete in the tool bar | done | `SearchBox`, `/api/suggest` | — |
-| The ▾ tab under the search box (VM home) | missing | visible in `home.png` | its function was never captured; needs a VM look (S) |
+| The ▾ tab under the search box, docked results panel (VM home) | done | `app/SearchPanel.tsx`, `Shell.tsx` (2026-10-14, vm-findings › Search box): Enter opens the right-docked panel with Best Matches / Articles / Photos & More / Web Links / Dictionaries / Maps / Quotations bars, one open at a time (the last one stays open for the next search), counts, "Search all" links, the two check boxes; the tab toggles it; a page click hides it unless "keep open"; opening a hit leaves it open | panel colours and geometry *(ours)*; Quotations always listed *(ours)* |
 | Window title / document title per page | done | `useDocumentTitle` | — |
 
 ## Features menu (feature records)
@@ -58,7 +58,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Timeline (701712334, 701779281) | done | → `/timeline` | — |
 | Geography Quiz (701712336) | done | → `/games/geoquiz` | — |
 | Encarta Kids (701712340) | done | → `/kids` | — |
-| Quick Search: Articles / Maps / Photos & More / Quotations / Dictionary / Thesaurus | partial | → `/search?kind=article`, `?kind=map`, `/media`, `?kind=quotation`, `/dictionary`, `/thesaurus` (this audit) | the 2009 Quick Search dialog was not captured; these open the scoped search pages |
+| Quick Search: Articles / Maps / Photos & More / Quotations / Dictionary / Thesaurus | partial | → `/search?kind=article`, `?kind=map`, `/media`, `?kind=quotation`, `/dictionary`, `/thesaurus` (this audit) | Maps and Photos & More open the VM's small modal "Quick Search" dialog (one box with the word wheel; Enter opens the panel with only that category, `app/QuickSearchDialog.tsx`); the other entries still open the scoped search pages |
 | World Atlas, Media Gallery, 3D Virtual Tours, Games & Quizzes | done | the Features menu now follows the VM's groups and content ids; Games & Quizzes and the extras are under File › Go to and `/games` *(ours)* | — |
 | College Prep Online (701712335) | n/a | online service | page says so (`OnlineFeatureView`) |
 | Encarta on the Web (701835573, 701882633) | n/a | online service | page says so |
@@ -132,7 +132,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Did you mean / spelling from the disc lexicons | done | | — |
 | Deep link to the best paragraph | done | | — |
 | Kids search | done | | — |
-| Encarta's own ranking | partial | ours (BM25 + priors) | not comparable without VM result lists (S to capture) |
+| Encarta's own ranking | partial | ours (BM25 + priors); compared on 8 VM queries (vm-findings › Search ranking): top-1 7/8, top-6 overlap 20/48 after two fixes (no Kids-only items without `edition`, "Rome (Georgia)" counts as an exact "rome") | Encarta lists index-term aliases ("Ass, related to zebra") and matches whole words only; re-run `encarta-convert search` for the fixes |
 
 ## Timeline
 
@@ -140,7 +140,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 |---|---|---|---|
 | Band with points, periods, essays; sizes by importance | done | VM `fixtures/timeline/*` | — |
 | Eras, zoom, pan, category and region filters | done | | — |
-| Event pop-up with date line "4? BC - AD 29?" | done | VM `jesus-popup.png` | — |
+| Event pop-up with date line "4? BC - AD 29?" | done | VM `jesus-popup.png`; full dates and the "years ago" wording before 8000 BC ("120,000 years ago", "2.50 million years ago", "4.60 billion years ago") from 23 VM pop-ups (timeline.md §3.2, 2026-10-14) | re-run `encarta-convert content` for the new `date_text`; the exact cut between 9000 and 8000 BC is not observable |
 | Topic timelines (28 named + 13,033 search targets) | done | `/timeline?term=` over TIMELINE.DAT terms (this audit; `timeline_term` was converted but unused, topics opened a thumbnail) | 1 in 50 sampled targets has neither a term nor a matching event title |
 | Timeline items open in the timeline (`msencarta://id=`) | done | an event item redirects to `/timeline?event=` (window fitted, pop-up open) | — |
 | Event pop-ups with media (Flash in 2009) | done | pop-up shows the first media child's picture (links to its page) and lists related links (VM `jesus-popup.png`) | the 2009 Flash pop-up chrome is not reproduced |
@@ -151,8 +151,8 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 |---|---|---|---|
 | Globe, Miller flat view, measured P/m | done | atlas-client.md, VM V1/V2/V12; flat-view tiles made in Web Workers | — |
 | 20 menu styles + statistical, moon | done | VM V4 | 4, 18, 21–23, 26 have no MapStyle |
-| Labels, symbols, road shields | done | road shields are the labels of shield road classes, numbered by name (mad-styling.md §8.1, matches VM V8); alternative names (U+0004) on a `w6` line (§7.3); pen draw-over masks on lines and fills (§5.2) | label placement cost and the shields' one-per-sixth-of-pane rule approximated; "Bombay" line not yet seen in the VM (V15) |
-| Click menu with Map / Read Article | done | VM V11; pen group 134 (time zones) left out, as ENCARTA.EXE does (mad-styling.md §16) | V16 (Time Zones map click) not shot |
+| Labels, symbols, road shields | done | road shields are the labels of shield road classes, numbered by name (mad-styling.md §8.1, matches VM V8); alternative names (U+0004) on a `w6` line (§7.3); pen draw-over masks on lines and fills (§5.2) | the alternative line is confirmed by V15 (Mumbai/Bombay, Bolzano/Bozen) with a rule between the lines, drawn by "rule" glyph faces (atlas-client.md; about 2 px lower than the VM, names with an alternative do not wrap); label placement cost and the shields' one-per-sixth-of-pane rule approximated |
+| Click menu with Map / Read Article | done | VM V11; pen group 134 (time zones) left out, as ENCARTA.EXE does (mad-styling.md §16), confirmed on the Time Zones map itself (V16: Western Europe, West Central Europe, France, Europe); no land area is listed over the sea (VM: only "Bay of Biscay" 1-3 km off Brittany; lakes still list their country): area classes are split at the coast and only land parts are hit-tested (atlas-output.md) | water bodies, World, tectonic plates and reefs stay hittable over the sea by assumption |
 | Place links (P2MTBL) | done | 206/206 sampled links open (this audit: 2,656 off-disc targets are left out instead of "Item not found"; 1,229 MSWORLD.ITR photos and sounds now open) | 910 of those photos show only their 64-px pushpin picture; 152 sounds have no audio on the disc (msworld.md §3) |
 | Place search | done | gazetteer FTS | — |
 | Map Legend, Map Customizer | done | | legend captions are class names |
@@ -172,7 +172,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Hotspot → media page, Back restores pose | done | VM | — |
 | Start Over | done | default stop (this audit) | — |
 | Appears in | done | menu of the articles linking the tour (this audit) | — |
-| Music | partial | menu entry in the VM | loops the "Ambient Audio" record; default state and what the VM plays unverified (needs the VM) |
+| Music | done | heard in the VM (2026-10-14): on at start once the world loads, plays and loops the tour's "Ambient Audio" record, off stops, on restarts from the beginning (`TourView.tsx` `MusicToggle`) | — |
 | Credits | done | | — |
 | Tour nodes as items (search hits on stops, hotspots, labels) | done | open the tour at the stop (this audit; showed "Virtual tour stop.") | — |
 
@@ -180,7 +180,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| 16 tours (Westminster Abbey, Alcatraz, USS Missouri …): 65 scenes, labels, hotspots, site maps, scene pictures | done | `PanoramaTour` (this audit; before it no page showed them): wrapping panorama strip, labels at their `x`,`y`, hotspots (`shed`) to scenes or pictures, site map with scene points, scene text | single panoramas' `initangle` and zoom were never measured (PLAN.md › Needs the VM) |
+| 16 tours (Westminster Abbey, Alcatraz, USS Missouri …): 65 scenes, labels, hotspots, site maps, scene pictures | done | `PanoramaTour` (this audit; before it no page showed them): wrapping panorama strip, labels at their `x`,`y`, hotspots (`shed`) to scenes or pictures, site map with scene points, scene text | the tour viewer has no zoom and no keyboard control in the VM (wheel, +/−, arrows, Page Up/Down tried, 2026-10-14); ours keeps them as extras *(ours)*; single panoramas' `initangle` not measurable (Flash viewer) |
 
 ## Games and quizzes
 
@@ -201,7 +201,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Kids articles (orange title, tile grid, no numbers) | done | VM `kids-*` | — |
 | Kids search, Kids dictionary | done | | — |
 | Kids interactives and games (264, Flash) | done | Ruffle (18 Kids copies in the test pass); match games native | — |
-| Kids' own menu bar, Favorites, Help | missing | the Kids shell has none of the adult chrome | not captured in the VM (S) |
+| Kids' own menu bar, Favorites, Help | done | `kids/KidsShell.tsx` (2026-10-14): lime bar with Home/Back/Forward/Copy/Print orbs and File / Edit / View / Favorites / Tools / Help with the VM's submenus (Go to, Closed Captioning, Read Aloud, Menu and Button Sounds, Startup Sound, Troubleshooting; `fixtures/ui/kids/sub-*.png`) | Read Aloud uses the browser's speech synthesis *(ours)*; the yellow arrow tooltips are plain titles |
 
 ## Interactives
 
@@ -224,7 +224,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| Options dialog (5 pages: General, Encarta Updates, Closed Captioning, World Atlas, Quality) | done | `app/OptionsDialog.tsx`, `settings/settings.tsx` (VM 2026-10-14): text size, captions (audio and video), atlas crosshairs, lat/long format, units, linear stats are wired | startup sound, menu and button clicks and the Kids home sounds play (`settings/uiSounds.ts`; media.md §9); the click for each control is ours (the original's mapping is not captured) |
+| Options dialog (5 pages: General, Encarta Updates, Closed Captioning, World Atlas, Quality) | done | `app/OptionsDialog.tsx`, `settings/settings.tsx` (VM 2026-10-14): text size, captions (audio and video), atlas crosshairs, lat/long format, units, linear stats are wired | startup sound, rollover tick, press/release click, Kids rollover and timeline sounds play as measured in the VM (`settings/uiSounds.ts`; media.md §9); menu and button sounds default to off, as the original's Default button sets; 578, 579, 682, 702, 31906-31913 were not heard in the views tried |
 | Kids / Premium switch | done | `/kids` | — |
 
 ## Accessibility

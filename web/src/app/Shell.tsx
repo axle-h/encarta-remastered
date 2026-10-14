@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "../components/Icons";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -11,6 +11,11 @@ import { SearchBox } from "../components/SearchBox";
 import { COPY_EVENT, OPTIONS_EVENT, PRINT_EVENT, copyScope, copySelection, openFind, printPage, printWith, selectedText, type ArticleScope } from "./commands";
 import { favorites, pageTitle } from "./favorites";
 import { useHistoryButtons } from "./history";
+import { SearchPanel, type PanelQuery } from "./SearchPanel";
+import { QuickSearchDialog } from "./QuickSearchDialog";
+import { QUICK_SEARCH_EVENT } from "./searchPanel";
+import { useSettings } from "../settings/settings";
+import type { QuickKind } from "./featuresData";
 
 /** How many favorites the menu lists (Organize Favorites shows them all). */
 export const FAVORITES_IN_MENU = 20;
@@ -129,6 +134,56 @@ export function NavButtons({ homeTo = "/" }: { homeTo?: string }) {
   );
 }
 
+/**
+ * The search box with the ▾ tab under it, the results panel at the right and the Quick Search
+ * dialog. Enter opens the panel; the tab toggles it; with "keep open" off a click on the page hides it.
+ */
+export function SearchArea() {
+  const { settings } = useSettings();
+  const [query, setQuery] = useState<PanelQuery | null>(null);
+  const [open, setOpen] = useState(false);
+  const [quick, setQuick] = useState<QuickKind | null>(null);
+  const panelId = useId();
+  const [top, setTop] = useState<number>();
+  useEffect(() => {
+    if (open) setTop(document.querySelector(".chrome")?.getBoundingClientRect().bottom || undefined);
+  }, [open]);
+  const location = useLocation();
+  useEffect(() => {
+    const on = (e: Event) => setQuick((e as CustomEvent<QuickKind>).detail);
+    window.addEventListener(QUICK_SEARCH_EVENT, on);
+    return () => window.removeEventListener(QUICK_SEARCH_EVENT, on);
+  }, []);
+  useEffect(() => setQuick(null), [location.pathname, location.search]);
+  useEffect(() => {
+    if (!open || settings.keepSearchOpen) return;
+    const down = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (t?.closest?.(".search-panel, .search-tab, .topbar-search, .dlg-backdrop")) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", down);
+    return () => document.removeEventListener("mousedown", down);
+  }, [open, settings.keepSearchOpen]);
+  const search = (q: string, only?: QuickKind) => {
+    setQuick(null);
+    setQuery({ q, only });
+    setOpen(true);
+  };
+  return (
+    <>
+      <div className="topbar-search" role="search">
+        <SearchBox onSearch={(q) => search(q)} />
+      </div>
+      <button type="button" className="search-tab" aria-expanded={open} aria-controls={panelId} aria-label="Search results" title="Search results" onClick={() => setOpen(!open)}>
+        <span aria-hidden="true">{open ? "▴" : "▾"}</span>
+      </button>
+      {open && <SearchPanel id={panelId} top={top} query={query} onClose={() => setOpen(false)} />}
+      {quick && <QuickSearchDialog kind={quick} onSearch={(q) => search(q, quick)} onCancel={() => setQuick(null)} />}
+    </>
+  );
+}
+
 export function Shell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const home = location.pathname === "/";
@@ -143,9 +198,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <header className="topbar">
           <NavButtons />
           <FeaturesMenu />
-          <div className="topbar-search" role="search">
-            <SearchBox />
-          </div>
+          <SearchArea />
         </header>
       </div>
       <main className="page" id="content" tabIndex={-1}>

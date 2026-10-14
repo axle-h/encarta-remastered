@@ -137,11 +137,15 @@ export function hitClassesAt(ranges: ReadonlyMap<number, Ranges>, zoom: number):
 
 const NAMED: FilterSpecification = ["all", ["has", "name"], ["!=", ["get", "name"], ""], ["!", ["to-boolean", ["coalesce", ["get", "anonymous"], false]]]];
 
+/** Not the water part of a split polygon: the click menu lists no land area over the sea (VM, Brittany coast). */
+const LAND_PART: FilterSpecification = ["!", ["to-boolean", ["coalesce", ["get", "water"], false]]];
+
 /**
  * Invisible layers for hit-testing the `areas` layer, so a click can list everything under the
  * cursor as Encarta's pop-up menu does (V11), including label-only areas that no layer draws
  * (regions, basins). One layer per zoom range with the classes in the hit list there; lines and
  * points are hit-tested on their drawn layers. MapLibre queries layers by geometry, not opacity.
+ * Water parts of split polygons (`water: true`) are left out.
  */
 export function hitLayers(style: StyleSpecification, ranges: ReadonlyMap<number, Ranges>): LayerSpecification[] {
   const byRange = new Map<string, number[]>();
@@ -166,7 +170,7 @@ export function hitLayers(style: StyleSpecification, ranges: ReadonlyMap<number,
         "source-layer": "areas",
         minzoom: a,
         maxzoom: b,
-        filter: ["all", NAMED, ["in", ["get", "class"], ["literal", classes]]] as FilterSpecification,
+        filter: ["all", NAMED, LAND_PART, ["in", ["get", "class"], ["literal", classes]]] as FilterSpecification,
         paint: { "fill-opacity": 0, "fill-color": "#000" },
       });
     });

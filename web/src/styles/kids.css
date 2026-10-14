@@ -15,7 +15,7 @@
   gap: 18px;
   min-height: 78px;
   padding: 6px 16px 6px 10px;
-  background: linear-gradient(#fdfff4, #f3fbd8 60%, #e3f4a8);
+  background: linear-gradient(#9ce721, #b5f331);
   border-bottom: 4px solid var(--kids-lime);
 }
 
@@ -43,12 +43,61 @@
 
 .kids-menu {
   display: flex;
-  gap: 14px;
+  gap: 4px;
   font-size: 13px;
+  color: #006500;
 }
 
-.kids-menu a {
-  color: #2d4b0b;
+.kids-menu .menubar-btn {
+  color: #006500;
+  background: none;
+}
+
+.kids-menu .menubar-note {
+  color: #006500;
+}
+
+.kids-popup,
+.kids-popup a,
+.kids-popup button {
+  background: #b5f331;
+  color: #006500;
+}
+
+.kids-popup {
+  overflow: visible;
+}
+
+.kids-popup .menu-parent {
+  position: relative;
+}
+
+.kids-popup .menu-sub {
+  top: -4px;
+  left: 100%;
+  margin-left: 2px;
+}
+
+.kids-popup .menu-arrow {
+  font-size: 11px;
+}
+
+.kids-popup button:disabled {
+  color: #6f9a4a;
+}
+
+.kids-popup .menu-heading {
+  color: #006500;
+  font-weight: bold;
+}
+
+.kids-bar .kids-tool {
+  width: 38px;
+  height: 38px;
+  border: 3px solid #fff;
+  background: radial-gradient(circle at 50% 30%, #c5f06b, #7fc21c 60%, #4f8d07);
+  color: #006500;
+  cursor: pointer;
 }
 
 .kids-search {

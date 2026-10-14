@@ -577,10 +577,11 @@ Measured on Westminster Abbey (461545486), Mont-Saint-Michel (461549315) and Alc
   Opening an index-term id directly gives "Page or keyword not found".
 
 ### Tour Music (3D tours, `fixtures/tours/701504257/encarta-music-*.png`)
-- The Music entry has a speaker icon and toggles between a pressed look (lighter blue box) and normal; nothing else
-  changes visually. No sound device exists in the VM, so what plays was not heard. The data has one
-  "<tour> 3DVT: Ambient Audio" record per tour (701504966–701504972, a 88–105 s WMA each), which no tour record links;
-  they are the likely source. **Done in the client:** Music loops the tour's ambient record (off at start, which is a guess).
+- The Music entry has a speaker icon and toggles between a pressed look (lighter blue box) and normal.
+- **Heard (2026-10-14, USB audio in the guest, matched by envelope correlation):** it is **on** when a tour opens (pressed
+  look) and starts when the world has loaded. It plays the tour's "<tour> 3DVT: Ambient Audio" record (701504966-701504972,
+  88-105 s WMA; Acropolis correlation 0.81-0.98, Azuchi 0.98), which no tour record links. Off stops it; on again restarts
+  it **from the beginning**; at the end it loops. Done in the client.
 
 ### Geography Quiz, full Navigator game (`fixtures/geoquiz/1*.png`, `nav-*`)
 - Start dialog "Geography Quiz": name box, four difficulty radios, OK/Cancel. Map (style 19) with a locator globe, a
@@ -602,11 +603,88 @@ Measured on Westminster Abbey (461545486), Mont-Saint-Michel (461549315) and Alc
   Apadana Stairs the marker centre is exactly at the predicted (96,118) in window coordinates, and at the other three
   stops it sits on its location box. The wedge (≈ 80° wide) points at the predicted heading at all four stops
   (expected 102/180/72/196°, measured 102.2/177.5/71.2/194.5°).
-- **Highlighted-location look:** when the marker is on a location box (Terrace Stairs, Gate of Xerxes, Apadana Interior)
-  the four-way marker is drawn in light blue **0x6371B5** instead of dark blue 0x103463; at Apadana Stairs (no box) it is
-  dark blue.
+- **Marker colour: it blinks.** Sampled every 6 ms (Azuchi, on the Grounds box and after walking off it), the four-way
+  marker alternates between dark blue 0x103463 and light blue **0x6371B5**, each phase about 0.715 s (0.706-0.724). The
+  earlier single screenshots (light on three Persepolis boxes, dark at Apadana Stairs; mixed at Azuchi) just caught one
+  phase, so there is no "on a location box" look. Done in the client (`MARKER_BLINK_MS`; steady with reduced motion).
+
+- **Azuchi site map (`SM_ROTATEFRAME=-90`, `fixtures/tours/701505920/sitemap/`).** Marker centres in window coordinates,
+  measured/predicted: Grounds (139,157)/(139,157) (clamped), Donjon (100,153)/(100,153), Living Quarters (102,139)/(102,139),
+  Octagonal Chamber (88,153)/(89,153). Wedge centres 183.5/177.5/122.5/171.5 against 185/179/124/172 degrees. Captions and
+  elevation per stop: Level 1, Level 1, Level 3, Level 6, matching each stop's site. No client change needed.
+
+### Search ranking (8 queries, `fixtures/search/<q>-best.png`, `-articles.png`)
+
+Docked results panel, top 6 visible (titles are index-term/alias display titles; the parenthesis names the article it
+opens). Best Matches is always 25 (a cap). Counts are Articles / Photos & More / Web Links / Dictionaries / Maps.
+
+| Query | Counts | Encarta Articles top 6 | Ours `kind=article` (n), top 6 |
+|---|---|---|---|
+| zebra | 95 / 16 / 3 / 19 / 0 | Zebra; Ass, related to zebra; Horse, related to zebra; Quagga, extinct type of zebra; Zebra Quick Facts (table); Zebra Fish | 94: Zebra; Zebras (Kids); Zebra Fish; Zebra Mussel; Zebras and Gnus; Quagga |
+| einstein | 101 / 16 / 9 / 0 / 0 | Einstein (Albert Einstein); E=mc², applied to nuclear weapons; E=mc², applied to the Sun; E=mc², mass-energy equation; Gravitation theories developed by Einstein; Theory of Relativity formulated by Einstein | 238: Albert Einstein; Einsteinium; Bose-Einstein Condensate; Albert Einstein (Kids); Gravitational Lens; Brownian Motion |
+| world war | 44 / 11 / 1 / 3 / 0 | World War II; World War I; World War (index term); World War I Timeline Event; World War II Timeline Event; Adolf Hitler, Nazi dictator of Germany during World War II | 12026: World War II; World War I; Cold War; Korean War; Vietnam War; Warsaw |
+| jazz | 45 / 16 / 21 / 19 / 0 | Jazz; African American Music; Jazz Dance; Latin Jazz; Ragtime, influence on jazz; Blues, relationship to jazz | 579: Jazz; Free Jazz; Latin Jazz; Jazz Standard; Jazz Dance; The Jazz Singer |
+| volcano | 74 / 9 / 9 / 7 / 12 | Volcano; Cinder Cone; Cotopaxi; Lava; Magma; Mount Etna | 624: Volcano; Shield Volcano; Mayon Volcano; Volcano Island (Philippines); Volcano Islands (Japan); Volcanoes |
+| shakespeare | 56 / 10 / 3 / 0 / 0 | Shakespeare (William Shakespeare); Shakespeare's Sonnets (audio); Drama in Shakespeare's era; English Literature during the Renaissance; Shakespeare's Poetry; Hamlet's Soliloquy | 641: William Shakespeare; Shakespeare's Sonnets; Shakespeare in Love; Royal Shakespeare Company; Stratford-upon-Avon; Much Ado About Nothing |
+| dna | 80 / 4 / 19 / 21 / 0 | DNA (Deoxyribonucleic Acid); DNA Fingerprinting; Genetic Engineering; Genetics; Human Genome Project; Molecular biology, research using DNA | 332: DNA Fingerprinting; Deoxyribonucleic Acid; Genetics; Polymerase Chain Reaction; Nucleic Acids; Arthur Kornberg |
+| rome | 99 / 4 / 2 / 1 / 6 | Rome (Italy); Rome (Georgia); Rome (New York); Ancient Rome; Forums, ancient places of assembly in Rome; Roman Art and Architecture | 2637: Rome (Italy); Ancient Rome; Rome (Georgia); University of Rome; Rome (Kids); Rome (New York) |
+
+Best Matches is the Articles order with other kinds interleaved (tables, pictures, timeline events, dictionary entries;
+world war: World War II, World War I, World War, "world war" dictionary entry, two timeline events; zebra: Zebra, Ass,
+Horse, Quagga, Zebra Quick Facts table, Burchell's Zebra picture). Our all-kinds top 6 overlaps it about as much as the
+article list does.
+
+Agreement (by target article, run on `out/search` with the release server): top-1 7/8 (miss: dna, ours puts DNA
+Fingerprinting above Deoxyribonucleic Acid); top-6 overlap 19/48 (zebra 3, einstein 1, world war 2, jazz 3, volcano 1,
+shakespeare 2, dna 3, rome 4); best-matches equivalent about 17/48. Where both list an article its rank differs by at most
+2 (Rome (New York) 3 vs 6 is the largest). Total counts differ by design: Encarta's 44-101 look title/index-term based
+(zebra 95 vs our 94 is a coincidence), ours are full-text (238-12026; "world war" prefix-matches Warsaw and War).
+
+Fixed afterwards (verified by re-measuring with a rebuilt index in `target/agent-rank/out/search`; `out/search` was not
+rebuilt, run `encarta-convert search` to pick the fixes up):
+- Kids-only articles (Zebras, Rome, Albert Einstein) no longer appear in the default search (no `edition`); `edition=kids`
+  (what the Kids UI sends) still finds them, `edition=all` returns both.
+- A title minus its trailing parenthetical is an exact title ("rome" matches "Rome (Georgia)"): Rome (Italy), Ancient Rome,
+  Rome (Georgia), Rome (New York) now come first (Encarta: Italy, Georgia, New York, Ancient Rome).
+After: top-1 still 7/8, top-6 overlap 20/48 (einstein 2 as Relativity moved into the top 6; the rest unchanged); zebra count
+87 (Encarta 95).
+
+Still different, not changed:
+- Encarta ranks index-term aliases ("Ass, related to zebra", "E=mc², applied to the Sun") that open another article; we
+  show only the target, titled by the article (Albert Einstein, not "Einstein").
+- Encarta matches whole words in titles/aliases; we also rank prefix and stem neighbours (Einsteinium, Zebra Mussel,
+  Volcano Island, Warsaw).
+
+### Sound and follow-up pass (2026-10-14; sound via USB audio, vm.md)
+- **Interface sounds** (Options › "Play menu and button sounds" ticked; the recording matched against the ENCARTAR.DLL
+  WAVE resources played through the same chain; ids with identical audio grouped): rollover **31971** (= 31914/31915/31935)
+  when the pointer enters an enabled toolbar button (Back, Forward, Home, Features, search Go, the Back ▾) or an atlas text
+  button (Map Legend, About this Map), and on each highlight change in a menu-bar menu (pointer, arrows, Esc); click
+  **31973** (= 31916/31917/31936/31974/31976/31977) on mouse-down **and** mouse-up of the round toolbar buttons (adult and
+  Kids), once for menu titles, check boxes, dialog buttons, atlas tools, zoom, style arrows and Kids home panels; Kids
+  round buttons roll over with **31975**; timeline controls (zoom, era links, View as List, next 25, Main Timeline,
+  Compare) play **575**. Page links play nothing of Encarta's, only Windows' "Start Navigation" click (Windows XP
+  Start.wav). Options › Default sets startup sound on, menu and button sounds **off**. Not heard anywhere tried: 578, 579,
+  682/31972/31978, 702/31909, 31906-31908, 31910/31911, 31912, 31913.
+- **Search panel:** opening a hit leaves the panel open; a new search opens the category that was open last.
+- **Atlas V15** (`fixtures/atlas/v15/`): "Mumbai" over "Bombay", "Merano" over "Meran", with a 1 px rule between the lines as
+  wide as the wider line. **V16** (`fixtures/atlas/v16/`): on the Time Zones map a click on France lists Western Europe,
+  West Central Europe, France, Europe (no time zone; the title stays "France | Europe"); a click on the Atlantic lists only
+  Atlantic Ocean. **Sea clicks** (`fixtures/atlas/sea-click/`): 1-3 km off Brittany only "Bay of Biscay" (and a nearby
+  city point) is listed, though France, Brittany and Morbihan polygons cover the point; on Lake Geneva Vaud and Switzerland
+  are listed with the lake.
+- **Timeline pop-up dates** (`fixtures/timeline/dates/`, 23 events): see timeline.md §3.2 ("June 16, 1963",
+  "120,000 years ago", "2.50 million years ago", "4.60 billion years ago", "8000 BC").
+- **Sidebars `SBA`, `SBP`** (761593235, 761594207): the same purple "sidebar" banner as the other categories.
+- **Panorama tours** have no zoom and no keyboard control (wheel, +/−, arrows, Page Up/Down, A/Z with the viewer
+  focused and auto-rotate off).
+- **Music items** start playing when their page opens; five GS Wavetable renders in `fixtures/music/`.
+- **Kids submenus** (`fixtures/ui/kids/sub-*.png`): View › Go to (Back Alt+Left, Forward Alt+Right, Home Page
+  Alt+Home), Closed Captioning Ctrl+L (On/Off); Tools › Find in this Article... Ctrl+F, Read Aloud F8 (Whole Article,
+  Selected Text, Stop Reading F9, Pause), Menu and Button Sounds (On/Off), Startup Sound (On/Off); Help › Microsoft
+  Encarta Help F1, Troubleshooting (Diagnosing Problems, Contacting Technical Support), About Encarta.
 
 ### Not done in this pass
-- Azuchi site map; single-panorama `initangle` (viewer black, Flash missing); panorama zoom; what the Music toggle
-  plays (no audio device); the Options dialog was read from the captures and the help, not each control exercised;
-  INDEX.md entries for the new captures; no new snapshot saved.
+- single-panorama `initangle` (Flash viewer); where the unheard sounds play; a listening comparison of the GS renders
+  with our synth; the Options dialog was read from the captures and the help, not each control exercised; INDEX.md
+  entries for the new captures; no new snapshot saved (usb-audio cannot be part of one).

@@ -11,6 +11,8 @@ export interface MenuEntry {
   heading?: boolean;
   /** Shown at the right ("Ctrl+P"). */
   shortcut?: string;
+  /** Makes this entry a parent: a cascading submenu (one level), opened with click, hover or ArrowRight. */
+  submenu?: MenuEntry[];
   key?: string;
 }
 
@@ -38,6 +40,7 @@ export function MenuButton({
 }) {
   const [open, setOpen] = useState<false | "first" | "last" | "none">(false);
   const [items, setItems] = useState<MenuEntry[]>([]);
+  const [sub, setSub] = useState<{ key: string; focus: boolean } | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLUListElement>(null);
@@ -46,16 +49,22 @@ export function MenuButton({
 
   const show = (focus: "first" | "last" | "none") => {
     setItems(entries());
+    setSub(null);
     setOpen(focus);
   };
   const close = (refocus = false) => {
     setOpen(false);
+    setSub(null);
     if (refocus) button.current?.focus();
   };
 
   useEffect(() => {
     setOpen(false);
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (sub?.focus) focusables(menu.current?.querySelector<HTMLElement>('ul[role="menu"]') ?? null)[0]?.focus();
+  }, [sub]);
 
   useEffect(() => {
     if (!open) return;
@@ -93,9 +102,17 @@ export function MenuButton({
   };
 
   const onMenuKey = (e: ReactKeyboardEvent) => {
-    const all = focusables(menu.current);
-    const i = all.indexOf(document.activeElement as HTMLElement);
+    const active = document.activeElement as HTMLElement | null;
+    const list = (active?.closest('ul[role="menu"]') as HTMLElement | null) ?? menu.current;
+    const inSub = list !== menu.current;
+    const all = focusables(list);
+    const i = all.indexOf(active as HTMLElement);
     const go = (j: number) => all[(j + all.length) % all.length]?.focus();
+    const parentKey = inSub ? (list?.parentElement?.dataset.sub ?? null) : null;
+    const closeSub = () => {
+      setSub(null);
+      list?.parentElement?.querySelector<HTMLElement>(':scope > [aria-haspopup="menu"]')?.focus();
+    };
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
@@ -115,14 +132,28 @@ export function MenuButton({
         break;
       case "Escape":
         e.preventDefault();
-        close(true);
+        if (inSub && parentKey) closeSub();
+        else close(true);
         break;
       case "Tab":
         setOpen(false);
+        setSub(null);
         break;
       case "ArrowRight":
+        if (active?.getAttribute("aria-haspopup") === "menu") {
+          e.preventDefault();
+          if (!active.hasAttribute("disabled")) setSub({ key: active.closest("li")?.dataset.sub ?? "", focus: true });
+        } else if (inSub) e.preventDefault();
+        else if (neighbour(wrap.current, 1, true)) {
+          e.preventDefault();
+          setOpen(false);
+        }
+        break;
       case "ArrowLeft":
-        if (neighbour(wrap.current, e.key === "ArrowRight" ? 1 : -1, true)) {
+        if (inSub) {
+          e.preventDefault();
+          closeSub();
+        } else if (neighbour(wrap.current, -1, true)) {
           e.preventDefault();
           setOpen(false);
         }
@@ -132,8 +163,66 @@ export function MenuButton({
 
   const pick = (entry: MenuEntry) => {
     setOpen(false);
+    setSub(null);
     entry.onSelect?.();
   };
+
+  const renderEntries = (list: MenuEntry[], nested: boolean): ReactNode =>
+    list.map((m, i) => {
+      const key = m.key ?? `${i}`;
+      if (m.separator) return <li key={key} role="separator" className="menu-sep" />;
+      if (m.heading) {
+        return (
+          <li key={key} role="presentation" className="menu-heading">
+            {m.label}
+          </li>
+        );
+      }
+      const body = (
+        <>
+          <span className="menu-label">{m.label}</span>
+          {m.shortcut && <span className="menu-shortcut">{m.shortcut}</span>}
+          {m.submenu && <span className="menu-arrow" aria-hidden="true">▸</span>}
+        </>
+      );
+      if (m.submenu) {
+        const isOpen = sub?.key === key;
+        return (
+          <li key={key} role="none" data-sub={key} className="menu-parent" onMouseEnter={() => !m.disabled && setSub({ key, focus: false })}>
+            <button
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              aria-haspopup="menu"
+              aria-expanded={isOpen}
+              disabled={m.disabled}
+              aria-disabled={m.disabled}
+              onClick={() => setSub({ key, focus: true })}
+            >
+              {body}
+            </button>
+            {isOpen && (
+              <ul className="menu-popup menu-sub" role="menu" aria-label={typeof m.label === "string" ? m.label : undefined}>
+                {renderEntries(m.submenu, true)}
+              </ul>
+            )}
+          </li>
+        );
+      }
+      return (
+        <li key={key} role="none" onMouseEnter={() => !nested && setSub(null)}>
+          {m.to && !m.disabled ? (
+            <Link role="menuitem" tabIndex={-1} to={m.to} onClick={() => pick(m)}>
+              {body}
+            </Link>
+          ) : (
+            <button type="button" role="menuitem" tabIndex={-1} disabled={m.disabled} aria-disabled={m.disabled} onClick={() => pick(m)}>
+              {body}
+            </button>
+          )}
+        </li>
+      );
+    });
 
   return (
     <div className={`menu ${className}`} ref={wrap}>
@@ -152,36 +241,7 @@ export function MenuButton({
       </button>
       {open && (
         <ul id={id} ref={menu} className={`menu-popup ${menuClassName}`} role="menu" aria-label={ariaLabel} onKeyDown={onMenuKey}>
-          {items.map((m, i) => {
-            const key = m.key ?? `${i}`;
-            if (m.separator) return <li key={key} role="separator" className="menu-sep" />;
-            if (m.heading) {
-              return (
-                <li key={key} role="presentation" className="menu-heading">
-                  {m.label}
-                </li>
-              );
-            }
-            const body = (
-              <>
-                <span className="menu-label">{m.label}</span>
-                {m.shortcut && <span className="menu-shortcut">{m.shortcut}</span>}
-              </>
-            );
-            return (
-              <li key={key} role="none">
-                {m.to && !m.disabled ? (
-                  <Link role="menuitem" tabIndex={-1} to={m.to} onClick={() => pick(m)}>
-                    {body}
-                  </Link>
-                ) : (
-                  <button type="button" role="menuitem" tabIndex={-1} disabled={m.disabled} aria-disabled={m.disabled} onClick={() => pick(m)}>
-                    {body}
-                  </button>
-                )}
-              </li>
-            );
-          })}
+          {renderEntries(items, false)}
         </ul>
       )}
     </div>
@@ -189,7 +249,7 @@ export function MenuButton({
 }
 
 function focusables(menu: HTMLElement | null): HTMLElement[] {
-  return menu ? Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])')) : [];
+  return menu ? Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])')).filter((e) => e.closest('ul[role="menu"]') === menu) : [];
 }
 
 /** Focuses the next or previous menu button of the enclosing menubar (and opens it when `open`). */

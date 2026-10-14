@@ -425,8 +425,9 @@ Still open:
    Kingdom introductions, Moon §2, East Timor §13), where the VM leaves more paragraphs between them than
    `⌊free/items⌋`. Answered: the country introductions (Facts and Figures closes the section) and the items
    carried into the next section (timeline items and virtual tours).
-2. Sidebar categories `SBA`, `SBP` (not in the captures; the Dutch strings suggest sport and popular culture).
-3. Timeline pop-up wording of full dates and geologic dates (only "4? BC - AD 29?" was observed).
+2. ~~Sidebar categories `SBA`, `SBP`~~: answered (VM 2026-10-14, 761593235 and 761594207): both show the plain
+   purple "sidebar" banner like the other categories; the category changes nothing on screen.
+3. ~~Timeline pop-up wording of full dates and geologic dates~~: answered, see timeline.md §3.2 (VM 2026-10-14).
 4. DATAF `pn`, REL/DATAF editions `STE`/`STC` meaning; `section@type` vs heading look (type 6 at top level).
 5. The right-column modules of an article (World Atlas map, Quick Facts, Related Articles, Web Sites):
    which DATA records feed them and in which order.

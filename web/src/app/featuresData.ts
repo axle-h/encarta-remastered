@@ -1,8 +1,12 @@
 /** The Features menu as measured in the original (docs/vm-findings.md, "Features menu"). */
+export type QuickKind = "article" | "map" | "media" | "quotation" | "dictionary";
+
 export interface FeatureEntry {
   label: string;
   /** Content id of the entry's record; the route is `/item/{id}`. */
   id: number;
+  /** Opens the Quick Search dialog for this category instead of a page. */
+  quick?: QuickKind;
 }
 
 export interface FeatureGroup {
@@ -27,7 +31,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
     title: "Geography Tools",
     entries: [
       { label: "World Atlas", id: 701713739 },
-      { label: "Quick Search: Maps", id: 701766739 },
+      { label: "Quick Search: Maps", id: 701766739, quick: "map" },
       { label: "Country Facts and Figures", id: 701713705 },
     ],
     more: [
@@ -47,7 +51,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
     ],
     more: [
       { label: "Timeline", id: 701779281 },
-      { label: "Quick Search: Photos & More", id: 701779282 },
+      { label: "Quick Search: Photos & More", id: 701779282, quick: "media" },
       { label: "Virtual Tours", id: 701713684 },
       { label: "Videos", id: 701713681 },
       { label: "Encarta on the Web", id: 701835573 },

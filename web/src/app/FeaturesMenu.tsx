@@ -2,7 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Icon } from "../components/Icons";
 import { FEATURES_EVENT } from "./commands";
-import { BROWSE_ALL, FEATURE_GROUPS, featureHref } from "./featuresData";
+import { openQuickSearch } from "./searchPanel";
+import { BROWSE_ALL, FEATURE_GROUPS, featureHref, type FeatureEntry } from "./featuresData";
+
+/** Quick Search entries open the dialog over the current page; the link stays for new tabs. */
+const quickClick = (e: FeatureEntry) => (ev: { preventDefault(): void; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }) => {
+  if (!e.quick || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+  ev.preventDefault();
+  openQuickSearch(e.quick);
+};
 
 /** Hover delay before a "More" flyout opens (measured: 100 ms). */
 export const FLYOUT_DELAY_MS = 100;
@@ -79,7 +87,7 @@ export function FeaturesMenu() {
               <ul>
                 {g.entries.map((e) => (
                   <li key={e.id} role="none" onMouseEnter={() => hover(null)}>
-                    <Link role="menuitem" to={featureHref(e)}>
+                    <Link role="menuitem" to={featureHref(e)} onClick={quickClick(e)}>
                       {e.label}
                     </Link>
                   </li>
@@ -104,7 +112,7 @@ export function FeaturesMenu() {
                       <ul className="ff-sub" role="menu" aria-label={`More ${g.title}`}>
                         {g.more.map((e) => (
                           <li key={e.id} role="none">
-                            <Link role="menuitem" to={featureHref(e)}>
+                            <Link role="menuitem" to={featureHref(e)} onClick={quickClick(e)}>
                               {e.label}
                             </Link>
                           </li>

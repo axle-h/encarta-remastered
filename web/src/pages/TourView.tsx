@@ -13,7 +13,7 @@ import {
   drawSiteMap,
   encodePose,
   markerMoved,
-  markerOnLocation,
+  MARKER_BLINK_MS,
   mountTour,
   parseWorldLoaded,
   siteMapMarker,
@@ -200,7 +200,7 @@ export function TourView({ tourId }: { tourId: string }) {
             <Icon name="back" size={12} /> All tours
           </Link>
           <span className="tv-menu-gap" />
-          <MusicToggle audioId={meta?.contentId ? (AMBIENT_AUDIO[meta.contentId] ?? null) : null} />
+          <MusicToggle audioId={meta?.contentId ? (AMBIENT_AUDIO[meta.contentId] ?? null) : null} ready={state === "ready"} />
           <button type="button" className={`tv-menu-item${labels ? " tv-on" : ""}`} aria-pressed={labels} onClick={() => setLabels((v) => !v)}>
             Labels and Hot Spots
           </button>
@@ -265,10 +265,17 @@ function SiteMap({
       alive = false;
     };
   }, [image]);
+  // The marker blinks dark/light blue (VM); steady dark blue when the user asks for reduced motion.
+  const [lit, setLit] = useState(false);
+  useEffect(() => {
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const t = window.setInterval(() => setLit((v) => !v), MARKER_BLINK_MS);
+    return () => window.clearInterval(t);
+  }, []);
   useEffect(() => {
     const g = canvas.current?.getContext("2d");
-    if (g) drawSiteMap(g, img, size, cfg, marker, markerOnLocation(marker, locations));
-  }, [img, size, cfg, marker, locations]);
+    if (g) drawSiteMap(g, img, size, cfg, marker, lit);
+  }, [img, size, cfg, marker, lit]);
   const [hover, setHover] = useState(false);
   const hit = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -295,9 +302,12 @@ function SiteMap({
   );
 }
 
-/** The Music toggle (VM: a speaker entry that shows pressed while on): loops the tour's ambient audio. */
-function MusicToggle({ audioId }: { audioId: number | null }) {
-  const [on, setOn] = useState(false);
+/**
+ * The Music toggle (VM: a speaker entry that shows pressed while on). Heard in the VM: it starts on, playing the
+ * tour's ambient audio once the world has loaded; off stops it, on again restarts it from the beginning.
+ */
+function MusicToggle({ audioId, ready }: { audioId: number | null; ready: boolean }) {
+  const [on, setOn] = useState(true);
   const item = useApi(on && audioId ? (s) => api.item(audioId, s) : null, [on, audioId]);
   const src = audioSources(fileByRole(item.data ?? undefined, "audio"))[0];
   if (!audioId) return null;
@@ -306,7 +316,7 @@ function MusicToggle({ audioId }: { audioId: number | null }) {
       <button type="button" className={`tv-menu-item${on ? " tv-on" : ""}`} aria-pressed={on} onClick={() => setOn((v) => !v)}>
         <Icon name="speaker" size={12} /> Music
       </button>
-      {on && src && <audio src={src.src} autoPlay loop aria-hidden="true" />}
+      {on && ready && src && <audio src={src.src} autoPlay loop aria-hidden="true" />}
     </>
   );
 }

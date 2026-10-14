@@ -410,6 +410,12 @@ velocity-to-cutoff one); the synth applies the specification's default modulator
 FLAC files unless the source soundfont changed (`source` in `index.json`). The server serves the directory at
 `/out/soundfont/` (api.md); `out/` is synced to the cluster with the rest of the data.
 
+**Reference renders (VM 2026-10-14).** With sound in the guest, Encarta's own playback of five music items (461531492,
+461531551, 461531578, 461531864, 461531913) through the Microsoft GS Wavetable SW Synth is recorded in the private
+`fixtures/music/<id>-gs.wav` (44.1 kHz stereo); their lengths match the MIDI files (11.7, 3.3, 4.0, 14.3, 1.3 s). Encarta
+starts a music item as soon as its page opens, so the client's MIDI player now autoplays in the media viewer like the
+other audio. A side-by-side listening comparison with our soundfont synth is still to do (it needs a browser recording).
+
 ## 9. Interface sounds (`encarta-convert content`, step "ui sounds")
 
 The application's own sounds are `WAVE` resources inside two DLLs (a PE resource directory walk, `content/pe_wave.rs`):
@@ -420,9 +426,29 @@ random while the splash animation steps (`ENCARTA.EXE` picks one that differs fr
 named in `mainhome_kids.xsl` (`window.external.PlaySoundAsync(id)`). The other 31906-31978 are short clicks and blips
 whose triggers we have not found (the host seems to play them from menu code; not traced).
 
-Written to `out/sounds/` as the unchanged RIFF files: `startup.wav`, `click.wav` (31973), `kids-1..10.wav` (31979-31988
-in order; the XSL's `GetSoundRes(position)` is `31978 + position`). The server serves them at `/sounds/{name}.wav`
-(api.md). **Ours:** the web client plays `click` for every button, menu item and tab (the original's menu and button
-sound mapping is not captured); the startup sound plays once per page load. Open: which of 31906-31978 the original
-plays for which menu or button (VM).
+Written to `out/sounds/` as the unchanged RIFF files: `startup.wav`, `click.wav` (31973), `tick.wav` (31971),
+`kids-hover.wav` (31975), `timeline.wav` (575), `kids-1..10.wav` (31979-31988 in order; the XSL's
+`GetSoundRes(position)` is `31978 + position`). The server serves them at `/sounds/{name}.wav` (api.md).
+
+**Mapping (measured in the XP reference VM** with "Play menu and button sounds" ticked; ids with identical audio grouped):
+
+| Sound | Ids | Plays |
+|---|---|---|
+| `tick` | 31971 (= 31914, 31915, 31935) | rollover: pointer enters an enabled adult toolbar button (Back, Forward, Home, Features, search Go, Back history ▾) or an atlas text button (Map Legend, About this Map); every highlight change in the menu-bar menus (pointer, arrow keys, Esc closing a menu). Disabled buttons are silent |
+| `click` | 31973 (= 31916, 31917, 31936, 31974, 31976, 31977) | round toolbar buttons (adult and Kids): on mouse-down and again on mouse-up; menu-bar titles, check boxes, dialog buttons, atlas tool buttons, zoom −, Map Legend, map-style list arrows and Kids home category panels: once on click |
+| `kids-hover` | 31975 | rollover of the Kids round toolbar buttons (Home, Back, Forward, Copy, Print, search arrow), enabled ones only |
+| `timeline` | 575 | timeline controls: zoom in/out, era links (1600, PREHISTORY …), View as List, next/previous 25, Main Timeline, the Compare dialog opener |
+| `kids-N` | 31979-31988 | pointer enters the N-th Kids home category |
+
+Ordinary links inside pages (article sections, Show Full Article, browse-page links, search results, the search panel's
+category bars) play no Encarta sound, only Windows' own navigation click, which we do not reproduce; tabs: none heard.
+Defaults in the original (Options › Default): startup sound on, menu and button sounds **off**. Not heard in the views
+tried (home, browse, search panel, article, atlas, timeline, Kids home): ids 578, 579, 682/31972/31978, 702/31909,
+31906-31908, 31910/31911, 31912, 31913.
+
+**Ours:** `web/src/settings/uiSounds.ts` has one document-level delegate that maps controls to the sounds above
+(`playUiSound('tick'|'click'|'kidsHover'|'timeline')`); the rules are selectors there, and `data-snd="timeline"`
+marks the timeline controls. Plain links and tabs are silent; `menuSounds` defaults to false (persisted choices are
+kept); the startup sound plays once per page load. The timeline's Compare / View as List / Main Timeline controls do
+not exist in our timeline page yet (so `timeline` plays for the era links, pan/zoom buttons and the list pager).
 

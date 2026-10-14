@@ -6,5 +6,5 @@ export { mountTour, type MountOptions, type TourEvent, type TourHandle } from ".
 export { TourControl, type ControlOptions } from "./control";
 export type { ViewOptions } from "./render/view";
 export { currentPose, decodePose, defaultStop, encodePose, hotspotDestination, poseCommand, type Pose } from "./host";
-export { SITE_MAP_WINDOW, LOCATION_BOX, drawSiteMap, markerMoved, markerOnLocation, parseWorldLoaded, siteMapMarker, wedgeAngles, type SiteMapConfig, type SiteMapMarker } from "./sitemap";
+export { SITE_MAP_WINDOW, LOCATION_BOX, drawSiteMap, MARKER_BLINK_MS, markerMoved, parseWorldLoaded, siteMapMarker, wedgeAngles, type SiteMapConfig, type SiteMapMarker } from "./sitemap";
 export type { TourScene } from "./types";

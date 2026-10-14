@@ -11,8 +11,9 @@ interface Playback {
 /**
  * Plays a MIDI file with the General MIDI soundfont synth (`synth.ts`). The song's instruments load
  * on the first Play; without a soundfont on the server, a small oscillator synth plays instead.
+ * `autoPlay` starts it once the file is parsed (VM: Encarta plays a music item as soon as it opens).
  */
-export function MidiPlayer({ src, captions }: { src: string; captions?: string }) {
+export function MidiPlayer({ src, captions, autoPlay = false }: { src: string; captions?: string; autoPlay?: boolean }) {
   const [song, setSong] = useState<MidiSong | null>(null);
   const [error, setError] = useState("");
   const [playing, setPlaying] = useState(false);
@@ -24,11 +25,13 @@ export function MidiPlayer({ src, captions }: { src: string; captions?: string }
   /** undefined: not loaded yet; null: no soundfont (oscillator fallback). */
   const instruments = useRef<Instruments | null | undefined>(undefined);
   const generation = useRef(0);
+  const autoStarted = useRef(false);
 
   useEffect(() => {
     const ctl = new AbortController();
     const gen = ++generation.current;
     instruments.current = undefined;
+    autoStarted.current = false;
     fetch(src, { signal: ctl.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -108,6 +111,13 @@ export function MidiPlayer({ src, captions }: { src: string; captions?: string }
     start(song, pos >= song.duration ? 0 : pos);
     setPlaying(true);
   };
+
+  useEffect(() => {
+    if (!autoPlay || !song || autoStarted.current) return;
+    autoStarted.current = true;
+    void toggle();
+    // toggle reads the current state; it only needs to run once per parsed song
+  }, [autoPlay, song]);
 
   if (error) return <p className="enc-muted">This music could not be played ({error}).</p>;
   const cue = cues.find((c) => pos >= c.start && pos < c.end);

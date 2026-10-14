@@ -123,8 +123,12 @@ except one data-entry error (below). Worked examples:
 - Periods (0x01) and essays (kind 3) are bars; their label is the title in upper case, essays prefixed
   "HISTORICAL ESSAY: ".
 - The event pop-up date line: circa is a trailing "?" on the year and a range that starts BC and ends AD
-  writes "AD" on the end: **"4? BC - AD 29?"**. How full dates and geologic dates are worded was not
-  observed; the converter writes "October 14, 1066" and "4.7 billion years ago" (our choice).
+  writes "AD" on the end: **"4? BC - AD 29?"**. Full dates read "June 16, 1963" and ranges
+  "October 12, 1964 - October 13, 1964" (VM 2026-10-14). Years before 8000 BC are shown counted back from 2000,
+  without the circa "?": 9000? BC → "11,000 years ago", 118000? BC → "120,000 years ago", 938000 BC - 878000 BC →
+  "940,000 years ago - 880,000 years ago"; from a million on with two decimals: "2.50 million years ago",
+  "540.00 million years ago", "4.60 billion years ago". 8000 BC and later stay "8000 BC", "7000? BC" (no event lies
+  between 9000 and 8000 BC, so the converter cuts at "before 8000 BC"). Captures: `fixtures/timeline/dates/`.
 - A larger importance number is less prominent: the title of importance 1 is drawn largest.
 
 The converter stores these as `timeline_event.display` (`point` | `period` | `essay`), `label`,

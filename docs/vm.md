@@ -25,5 +25,8 @@ into setup straight from the user's own media and is never stored (see [CLEAN_RO
   back camera state (run `vm/tour.py setup` after each start).
 - Results: [vm-findings.md](vm-findings.md), grouped by spec. Captures are indexed in `fixtures/{articles,tours,atlas}/INDEX.md`.
 - Full instructions: `vm/README.md` (local only).
-- Not yet available: sound in the guest; Flash (no official installer any more); 3D hardware (the Cirrus card forces
+- Sound: `vm/start.sh --loadvm encarta-home --wav out.wav` hot-plugs a USB audio device (XP's own usbaudio.sys, ~20 s to
+  install) and QEMU records everything the guest plays to the WAV (it only grows while sound plays). usb-audio cannot be
+  migrated, so no live snapshot holds it; `vm/scratch/sndmatch.py` matches a slice against the ENCARTAR.DLL sounds.
+- Not yet available: Flash (no official installer any more); 3D hardware (the Cirrus card forces
   the tours' software renderer, so gravity mode can't be observed); a debugger workflow (OllyDbg 1.10 is installed, unused).

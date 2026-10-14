@@ -137,17 +137,23 @@ const MONTHS: [&str; 12] = [
     "December",
 ];
 
-/// One date as the pop-up prints it. Circa is a trailing "?" on the year (VM: "4? BC"); `ad`
-/// prefixes "AD" (used for the end of a range that starts BC). Month and day, and the wording of
-/// geologic dates, are our own (not observed).
+/// One date as the pop-up prints it (VM 2026-10-14, 23 events). Circa is a trailing "?" on the year ("4? BC"); `ad`
+/// prefixes "AD" (used for the end of a range that starts BC); "June 16, 1963". Years before 8000 BC are counted
+/// back from 2000 without the circa mark: "120,000 years ago" (118000? BC), "11,000 years ago" (9000? BC), and from
+/// a million on with two decimals: "2.50 million years ago", "4.60 billion years ago". 8000 BC stays "8000 BC"
+/// (no event lies between 9000 and 8000 BC, so the exact cut is not known).
 pub fn date_text(d: &timeline::Date, ad: bool) -> String {
     let q = if d.circa { "?" } else { "" };
     let mag = d.year.unsigned_abs();
-    if d.year < 0 && mag >= 1_000_000 {
-        let (n, unit) = if mag >= 1_000_000_000 { (mag as f64 / 1e9, "billion") } else { (mag as f64 / 1e6, "million") };
-        let n = format!("{n:.3}");
-        let n = n.trim_end_matches('0').trim_end_matches('.');
-        return format!("{n}{q} {unit} years ago");
+    if d.year < -8000 {
+        let ago = mag + 2000;
+        return if ago >= 1_000_000_000 {
+            format!("{:.2} billion years ago", ago as f64 / 1e9)
+        } else if ago >= 1_000_000 {
+            format!("{:.2} million years ago", ago as f64 / 1e6)
+        } else {
+            format!("{},{:03} years ago", ago / 1000, ago % 1000)
+        };
     }
     let year = if d.year < 0 { format!("{mag}{q} BC") } else if ad { format!("AD {mag}{q}") } else { format!("{mag}{q}") };
     match (d.month, d.day) {
@@ -567,7 +573,12 @@ mod tests {
         assert_eq!(timeline_label(&r, "Synthetic Era").as_deref(), Some("SYNTHETIC ERA"));
         let r = rec(3, false, date(-3000, 0, 0, false), None);
         assert_eq!(timeline_label(&r, "Rise of X").as_deref(), Some("HISTORICAL ESSAY: RISE OF X"));
-        assert_eq!(date_text(&date(-4_700_000_000, 0, 0, false), false), "4.7 billion years ago");
+        assert_eq!(date_text(&date(-4_600_000_000, 0, 0, false), false), "4.60 billion years ago");
+        assert_eq!(date_text(&date(-2_500_000, 0, 0, false), false), "2.50 million years ago");
+        assert_eq!(date_text(&date(-118_000, 0, 0, true), false), "120,000 years ago");
+        assert_eq!(date_text(&date(-9_000, 0, 0, true), false), "11,000 years ago");
+        assert_eq!(date_text(&date(-8_000, 0, 0, false), false), "8000 BC");
+        assert_eq!(date_text(&date(1963, 6, 16, false), false), "June 16, 1963");
         assert_eq!(timeline_prominence(1), 5);
         assert_eq!(timeline_prominence(0), 0);
     }

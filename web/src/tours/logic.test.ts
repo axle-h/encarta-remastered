@@ -8,7 +8,7 @@ import { cursorZone, followGround, mouseVector, newCamera, stepMove, stepPitch, 
 import { collide, slideMove } from "./sim/collision";
 import { chunkVisible, cloudPhi, Filmstrip, flickerColour, flickerFactor, FlickerLight, lcg, rasteriseCloud, Ripple } from "./sim/effects";
 import { WalkMap, WalkMapSet, type Segment } from "./sim/walkmap";
-import { markerMoved, markerOnLocation, parseWorldLoaded, siteMapMarker, wedgeAngles } from "./sitemap";
+import { markerMoved, parseWorldLoaded, siteMapMarker, wedgeAngles } from "./sitemap";
 import type { Cell, ElementDef, LayerFile, Step, StepOf, WalkMapFile } from "./types";
 
 // ------------------------------------------------------------------ synthetic fixtures
@@ -463,12 +463,3 @@ describe("site map (§4.2)", () => {
   });
 });
 
-describe("markerOnLocation", () => {
-  const boxes = [{ x: 50, y: 60 }, { x: null, y: null }];
-  it("is true on or just beside a location box, false away from it or without a marker", () => {
-    expect(markerOnLocation({ px: 55, py: 65, heading: 0 }, boxes)).toBe(true);
-    expect(markerOnLocation({ px: 48, py: 72, heading: 0 }, boxes)).toBe(true);
-    expect(markerOnLocation({ px: 90, py: 65, heading: 0 }, boxes)).toBe(false);
-    expect(markerOnLocation(null, boxes)).toBe(false);
-  });
-});

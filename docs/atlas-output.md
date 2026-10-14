@@ -163,10 +163,23 @@ restricted mask). The report's `area_masks` gives per class the polygons and the
 over water, summed over the bands: 0.6–1.0 for the "… - Small" dependency and country colours, 0.15–0.46 for
 most Admin1/CountryRegion colours, 0.2 for International organization, 0.07–0.3 for time zones, 0.01–0.05 for
 parks and urban areas. In band 7, 88,072 of 390,040 masked polygons are cut and 31,192 lie entirely over water.
-Water parts are dropped for classes that no style fills over its water pixel class (`ClassUse::fill_water`) and
-that are not interactive (hit layers need them): 108 classes, 0.3 MB saved; the rest are kept.
-Cost: `earth.pmtiles` 316 → 399 MB (pixel staircases along the coasts), `earth-detail` 18.2 → 18.6 MB, the
-vector stage 5 → 21 s.
+Water parts are dropped for classes that no style fills over its water pixel class (`ClassUse::fill_water`);
+the rest are kept for drawing, never for hit-testing.
+
+**Land-only hits.** The click menu lists no land area where the point is over the sea (VM, Comprehensive at
+300 km off the Breton coast: only "Bay of Biscay", while our polygons of France, Brittany and Morbihan reach
+1–3 km offshore; on land "Saint-Aubin, Morbihan, Brittany, France"; Lake Geneva, land in the HYPSO mask, still
+lists Vaud and Switzerland). So interactive Earth area classes are split as above even without a masked fill
+(`Classes::land_hits`: Admin 1, Admin 2, Continent, Physiographic region, Island, Statistical region, Beach,
+regions, LANG/REL no-draw …, 15 classes with polygons in `earth`), except the classes listed over the sea too:
+water bodies (pen groups 31/42/43 or draw group b12 = 120), World (pen group 36), tectonic plates (136) and
+Reef (the last three by assumption, not checked in the VM). The client's hit layers skip `water: true` parts
+(atlas-client.md). Off Brittany (47.596, −3.368) France, Brittany and Morbihan are then only water parts; at
+Lake Geneva (46.426, 6.332) Vaud, Switzerland, Lake Geneva and the Rhône are land parts. In band 7, 101,496 of
+448,005 split polygons are cut and 43,523 lie entirely over water. Cost of the masks and the land-only hits:
+`earth.pmtiles` 316 → 400.3 MB (pixel staircases along the coasts; land-only hits +1.5 MB over the 398.8 MB
+of masked fills alone, as dropping unfilled water parts of masked classes offsets most of it), `earth-detail`
+18.2 → 18.4 MB, the vector stage 5 → 28 s.
 
 GeoGem cells never straddle ±180°. Features near the antimeridian are also written, shifted by ±360°, into the
 buffers of the edge tiles. Latitudes beyond ±85.05° are clipped by the tile bounds.
@@ -221,7 +234,7 @@ follows mad-styling.md §14.1:
 | line pens: width, dashes (`line-dasharray` from the bit mask), offset, edge-only pens (`passes < width` → two 1-px lines) | §5.1 |
 | point symbols: `icon-image` = bitmap of pen w7, symbol and label together (`icon-optional: false`); radius points as circles | §7.4, §8 |
 | labels: GeoLabel font/size/colour, bold/italic → face, rule halo colour, 1-px halo; line labels along lines, area labels on `labels` | §7 |
-| alternative name (`w6` set, not on lines): the label's `text-field` is a `format`: main name in the `w5` style plus `"\n"` and the tile's `alt_names` as a last section with the `w6` face (`text-font`), `font-scale` = w6 size / w5 size and `text-color`; in brackets when the main name starts with U+3040…U+9FFF (kana/CJK); `w6` none → no alternative. Upper case (GeoLabel byte 26) is `upcase` per section | §4.1, §7.2, §7.3 |
+| alternative name (`w6` set, not on lines): the label's `text-field` is a `format`: main name in the `w5` style plus `"\n"` and the tile's `alt_names` as a last section with the `w6` face (`text-font`), `font-scale` = w6 size / w5 size and `text-color`; in brackets when the main name starts with U+3040…U+9FFF (kana/CJK); `w6` none → no alternative. Upper case (GeoLabel byte 26) is `upcase` per section. The 1-px rule between the lines (V15) comes from rule faces (Glyphs, below): the main section uses `"<w5 face> Rule …"`, the alternative `"<w6 face> Rule …"`. Such labels do not wrap (`text-max-width` 1000 when `alt_names` is present). Point labels have `text-justify: auto`, so the lines align on the symbol's side | §4.1, §7.2, §7.3 |
 | road shields: a line class whose `w5` GeoLabel has a shape (byte 12 ≠ 0) gets a `symbol` layer on `lines` (filter `has name`, order after the labels) instead of a line label: `symbol-placement: line`, `symbol-spacing` 400, the name upright (`text-rotation-alignment`/`icon-rotation-alignment: viewport`), `icon-image` = sprite `shield<shape>-<outline>-<width>-<fill>-<fill2>`, `icon-text-fit: both` with padding, no overlap | §8.1 |
 | `metadata["encarta:menu_excluded_classes"]`: the classes of PDCAttribute pen group 134 (time zones, DST areas, "Shading - gray"), which the click menu never lists | §16 (V11 result) |
 | highlight pens (b15/b16/w17) as `feature-state: hover` layers (the client uses them for the selected place; Encarta highlights nothing on hover, V11) | §4.1 |
@@ -242,7 +255,11 @@ Placeholders (layer `metadata["encarta:placeholder"]`): GeoTrans tint ramps over
 likewise at 60 % (the "relative" highlight variant's per-colour offsets are not specified); GeoLabel letter spacing
 (byte 10) is a hypothesis (upper case is byte 26, specified). The abbreviation test's 0.6 em per character is a
 hypothesis (the spec says only "when the full name does not fit"); it gives "NETH." and "LUX." over Europe at
-3,000 km, as V3/V11 show. Not modelled: the choice among Encarta's three label layouts by overlap cost (§7.3: the
+3,000 km, as V3/V11 show. The alternative-name rule sits at the main line's descender and the alternative 1.2 em
+below the main line, about 2 px lower than in V15 (rule 3 px under the baseline, 2 px over the alternative's
+capitals). Its thickness is 2 glyph units (1.2 px at 14 px, 0.9 px at 11 px; ×1.25 with Large labels), its ends
+overhang by half the letter spacing, and a name with an alternative stays on one line (V15 wraps "Caldaro sulla
+strada del vino"). Not modelled: the choice among Encarta's three label layouts by overlap cost (§7.3: the
 alternative name is always drawn when the rule has `w6` and the feature has one, even when it makes the label
 collide), the one-same-text-shield-per-sixth-of-the-pane rule and the shield's two-digit minimum width (§8.1:
 `symbol-spacing` stands in for the first; MapLibre has no text-width minimum), the shield candidate cost, and the
@@ -266,6 +283,18 @@ family; a missing family falls back to MS Reference Sans Serif/Serif. Characters
 the other disc fonts (`glyphs.missing_chars` in the report: none). The ranges cover every character of the
 GeoObj names (5 ranges; no kana/CJK, so the Japanese faces MS Mincho/MS PGothic are not needed). These are
 Microsoft fonts: the output stays in `out/`.
+
+**Rule faces** (the rule between a name and its alternative, mad-styling.md §7.3). MapLibre has no text
+decoration, so the rule is built into the glyphs. A face `"<face> Rule <top> <height> <overhang>"` is `<face>`
+with a bar in every glyph, in rows `top…top + height` of the glyph frame (24 units per em, 0 at the line top; the
+generator scales each font so that ascender + descender = 24), from `overhang` before the pen position to
+`overhang` past the advance. Main-name glyphs carry the bar at 24…26, the descender line. Alternative glyphs
+carry it at (24 − 28.8)/s, with height 2/s and overhang/s for its `font-scale` s, because MapLibre starts the
+second line 1.2 em (28.8 units) of the main scale lower. The two bars meet, and as both lines share the
+justification, their union spans the wider line. The overhang is half the letter spacing, so the bar has no
+gaps. Rule faces hold only the characters of names with an alternative (both cases, brackets, "; "). There are
+108 of them (one per face, line role, scale and letter spacing of the rules with `w6`), 8 MB of the 12.9 MB of
+glyphs. MapLibre fetches one only when a label with an alternative in that style is on screen (about 70 KB).
 
 ## Other outputs
 

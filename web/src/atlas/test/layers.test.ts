@@ -60,6 +60,7 @@ describe("added layers", () => {
     expect(h.map((l) => l.id)).toContain("encarta-hit-areas-earth-0");
     expect(h.every((l) => (l as { paint: Record<string, unknown> }).paint["fill-opacity"] === 0)).toBe(true);
     expect(JSON.stringify(h.find((l) => (l as { minzoom?: number }).minzoom === 0.97))).toContain('"literal",[62]');
+    expect(h.every((l) => JSON.stringify((l as { filter?: unknown }).filter).includes('["get","water"]'))).toBe(true);
   });
   it("leaves out the classes of pen group 134 (time zones) from the click menu", () => {
     const none = { on: new Set<number>(), off: new Set<number>() };

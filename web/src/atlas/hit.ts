@@ -57,6 +57,8 @@ export function rankHits(
     if (!Number.isFinite(entity) || !name || p.anonymous === true || p.anonymous === 1) continue;
     if (allowed && !(typeof p.class === "number" && allowed.has(p.class))) continue;
     const kind = kindOf(f);
+    // Water parts of split areas: Encarta lists no land area over the sea (Brittany coast, VM).
+    if (kind === "area" && p.water === true) continue;
     const prev = seen.get(entity);
     if (prev) {
       // A label anchor and its area are one place; a point beats both.

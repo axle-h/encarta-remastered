@@ -20,6 +20,14 @@ use tantivy::{Index, IndexWriter, TantivyDocument};
 /// Bumped whenever the index layout changes; the reader refuses other versions.
 pub const FORMAT_VERSION: u32 = 1;
 
+/// `title` without a trailing parenthetical (`Rome (Italy)` -> `Rome`); `None` when there is none or nothing is left.
+pub fn strip_qualifier(title: &str) -> Option<&str> {
+    let t = title.trim_end();
+    let open = t.strip_suffix(')')?.rfind(" (")?;
+    let head = t[..open].trim_end();
+    (!head.is_empty()).then_some(head)
+}
+
 /// One searchable item.
 #[derive(Debug, Clone, Default)]
 pub struct ItemDoc {
@@ -176,8 +184,12 @@ impl IndexBuilder {
         if let Some(h) = d.title_html.as_ref().filter(|h| **h != d.title) {
             doc.add_text(f.title_html, h);
         }
+        // "Rome (Italy)" also answers to "rome": a disambiguating parenthetical is not part of the name.
+        let stripped: Vec<&str> = std::iter::once(&d.title).chain(&d.keys).filter_map(|t| strip_qualifier(t)).collect();
         let mut keys: Vec<String> = std::iter::once(&d.title)
             .chain(&d.keys)
+            .map(String::as_str)
+            .chain(stripped)
             .map(|t| normalize_with(&mut self.analyzer, t))
             .filter(|k| !k.is_empty())
             .collect();

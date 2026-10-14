@@ -151,13 +151,36 @@ struct Proto {
 const CHAR_EM: f64 = 0.6;
 
 /// The alternative-name line of a label (mad-styling.md §4.1 `w6`, §7.3): MOBB draws it as an extra last
-/// line under the main name, in the `w6` style.
+/// line under the main name, in the `w6` style, with a 1-px rule between the lines as wide as the wider line.
 struct AltLine {
-    face: String,
     /// Size relative to the main name's.
     scale: f64,
     colour: String,
     upper: bool,
+    /// Glyph faces of the two lines with the rule built in (`rule_faces`).
+    main_rule_face: String,
+    alt_rule_face: String,
+}
+
+/// MapLibre's default `text-line-height` (ems), which the label layers keep.
+const LINE_HEIGHT_EM: f64 = 1.2;
+/// Rule thickness in glyph units (24 per em): about 1 px at the 11–14 px label sizes.
+const RULE_THICKNESS: f64 = 2.0;
+
+/// Glyph faces for the rule between a name and its alternative (mad-styling.md §7.3). MapLibre has no
+/// text decoration, so each glyph of the main line carries an underline and each glyph of the alternative
+/// an overline, both at the main line's descender: the union spans the wider line, aligned like the text.
+/// Glyph frames are 24 units per em with the line top at 0 and the descender at 24 (glyphs.rs scales every
+/// face so), and the alternative's line starts `LINE_HEIGHT_EM` main ems lower. `spacing`: the letter
+/// spacing in glyph units, split over both sides of each glyph so that the rule has no gaps.
+/// Face names: `"<face> Rule <top> <height> <overhang>"` (glyph units of that line's scale).
+fn rule_faces(main_face: &str, alt_face: &str, alt_scale: f64, spacing: f64) -> (String, String) {
+    let k = alt_scale.max(0.1);
+    let top = 24.0 - LINE_HEIGHT_EM * 24.0;
+    (
+        format!("{main_face} Rule 24.00 {:.2} {:.2}", RULE_THICKNESS, spacing / 2.0),
+        format!("{alt_face} Rule {:.2} {:.2} {:.2}", top / k, RULE_THICKNESS / k, spacing / 2.0 / k),
+    )
 }
 
 /// Text of a label: the name (upper case by GeoLabel byte 26) and, with an alternative style, the
@@ -188,9 +211,15 @@ impl TextSpec {
         let a = if alt.upper { json!(["upcase", a]) } else { a };
         let a = json!(["case", cjk, ["concat", "(", a.clone(), ")"], a]);
         json!(["case", ["has", "alt_names"],
-            ["format", main.clone(), {}, "\n", {},
-                a, { "text-font": ["literal", [alt.face.clone()]], "font-scale": alt.scale, "text-color": alt.colour }],
+            ["format", main.clone(), { "text-font": ["literal", [alt.main_rule_face.clone()]] }, "\n", {},
+                a, { "text-font": ["literal", [alt.alt_rule_face.clone()]], "font-scale": alt.scale, "text-color": alt.colour }],
             main])
+    }
+
+    /// `text-max-width` (ems): a name with an alternative stays on one line, so that the rule is drawn
+    /// only once (Encarta may still wrap it: "Caldaro sulla strada del vino" in two lines, V15).
+    fn max_width(&self, ems: f64) -> Value {
+        if self.alt.is_some() { json!(["case", ["has", "alt_names"], 1000, ems]) } else { json!(ems) }
     }
 }
 
@@ -252,9 +281,11 @@ impl Ctx<'_> {
         let spacing = l.b4[6] as f64;
         // The alternative name (w6), under the main name; not on lines, whose text follows the line.
         let alt = self.labels.get(rule.w5_13[1] as usize).cloned().filter(|_| kind != GeometryKind::Line).map(|l6| {
-            let face = face_name(&self.fonts, l6.b0, l6.tail[0] == 1, l6.tail[1] == 1);
-            self.faces.insert(face.clone());
-            AltLine { face, scale: l6.b4[0] as f64 / size.max(1.0), colour: hex(l6.color1), upper: l6.tail[3] == 1 }
+            let alt_face = face_name(&self.fonts, l6.b0, l6.tail[0] == 1, l6.tail[1] == 1);
+            let scale = l6.b4[0] as f64 / size.max(1.0);
+            let (main_rule_face, alt_rule_face) = rule_faces(&face, &alt_face, scale, spacing / size.max(1.0) * 24.0);
+            self.faces.extend([main_rule_face.clone(), alt_rule_face.clone()]);
+            AltLine { scale, colour: hex(l6.color1), upper: l6.tail[3] == 1, main_rule_face, alt_rule_face }
         });
         let text = TextSpec { upper: l.tail[3] == 1, alt };
         let mut layout = json!({
@@ -271,11 +302,17 @@ impl Ctx<'_> {
                 layout["symbol-placement"] = json!("line");
             }
             GeometryKind::Area => {
-                layout["text-max-width"] = json!(8);
+                layout["text-max-width"] = text.max_width(8.0);
                 layout["text-field"] = area_text_field(size, spacing / size.max(1.0), zooms.0, zooms.1, &text);
             }
             _ => {
+                if text.alt.is_some() {
+                    layout["text-max-width"] = text.max_width(10.0);
+                }
                 layout["text-variable-anchor"] = json!(["left", "right", "top", "bottom"]);
+                // Lines align on the symbol's side ("Mumbai" over "Bombay" right-aligned left of
+                // the city, V15).
+                layout["text-justify"] = json!("auto");
                 layout["text-radial-offset"] = json!(0.6);
             }
         }
@@ -838,6 +875,19 @@ mod tests {
         assert_eq!(dasharray(0x3F, 10, 2.0), Some(vec![3.0, 2.0]));
         // Pattern not starting at bit 0 is rotated to start with ones.
         assert_eq!(dasharray(0b0110, 4, 1.0), Some(vec![2.0, 2.0]));
+    }
+
+    #[test]
+    fn alternative_name_rule_meets_at_the_main_descender() {
+        // 14 px main name, 12 px alternative, letter spacing 2 glyph units.
+        let (main, alt) = rule_faces("Arial Bold", "Arial Regular", 12.0 / 14.0, 2.0);
+        assert_eq!(main, "Arial Bold Rule 24.00 2.00 1.00");
+        assert_eq!(alt, "Arial Regular Rule -5.60 2.33 1.17");
+        // The alternative's line starts 28.8 main units lower: −5.6 × 12/14 + 28.8 = 24.
+        let text = TextSpec { upper: false, alt: Some(AltLine { scale: 0.5, colour: "#000000".into(), upper: false, main_rule_face: main.clone(), alt_rule_face: alt.clone() }) };
+        let f = text.with_alt(text.name()).to_string();
+        assert!(f.contains(&main) && f.contains(&alt) && f.contains("\"font-scale\":0.5"), "{f}");
+        assert_eq!(text.max_width(8.0), json!(["case", ["has", "alt_names"], 1000, 8.0]));
     }
 
     #[test]

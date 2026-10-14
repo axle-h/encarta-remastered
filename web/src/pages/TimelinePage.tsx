@@ -131,7 +131,7 @@ export function TimelinePage() {
             </button>
           </p>
         )}
-        <div className="tl-eras" role="group" aria-label="Eras">
+        <div className="tl-eras" data-snd="timeline" role="group" aria-label="Eras">
           {ERAS.map((e) => {
             const on = from >= e.from && to <= e.to;
             return (
@@ -167,7 +167,7 @@ export function TimelinePage() {
           <input type="search" value={text} onChange={(e) => setText(e.target.value)} placeholder="Find events" aria-label="Find events" />
         </div>
       </div>
-      <div className="tl-controls">
+      <div className="tl-controls" data-snd="timeline">
         <button type="button" onClick={() => set(pan(from, to, -0.5, min, max))} aria-label="Earlier">
           <Icon name="back" size={16} />
         </button>
@@ -233,7 +233,7 @@ export function TimelinePage() {
         </ol>
       </div>
       {res.data && res.data.total > LIST_PAGE && (
-        <div className="search-pager">
+        <div className="search-pager" data-snd="timeline">
           <button type="button" disabled={listOffset === 0} onClick={() => setListOffset(Math.max(0, listOffset - LIST_PAGE))}>
             Earlier
           </button>

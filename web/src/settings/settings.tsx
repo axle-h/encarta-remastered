@@ -5,7 +5,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { configureUiSounds, isClickable, playMenuSound, playStartupSound } from "./uiSounds";
+import { configureUiSounds, installUiSoundDelegates, playStartupSound } from "./uiSounds";
 
 export type TextSize = "small" | "medium" | "large";
 export type LatLongFormat = "dm" | "dms" | "decimal";
@@ -20,19 +20,25 @@ export interface Settings {
   atlasCrosshairs: boolean;
   latLongFormat: LatLongFormat;
   units: Units;
+  /** Search panel: open the first best match by itself. */
+  autoBestMatch: boolean;
+  /** Search panel: keep it open when the page is clicked. */
+  keepSearchOpen: boolean;
 }
 
 export const SETTINGS_KEY = "encarta.settings.v1";
 
 export const DEFAULT_SETTINGS: Settings = {
   startupSound: true,
-  menuSounds: true,
+  menuSounds: false,
   textSize: "medium",
   captions: false,
   atlasLinearStats: false,
   atlasCrosshairs: true,
   latLongFormat: "dm",
   units: "us",
+  autoBestMatch: false,
+  keepSearchOpen: false,
 };
 
 const bool = (v: unknown, d: boolean) => (typeof v === "boolean" ? v : d);
@@ -57,6 +63,8 @@ export function parseSettings(raw: string | null): Settings {
     atlasCrosshairs: bool(o.atlasCrosshairs, d.atlasCrosshairs),
     latLongFormat: oneOf(o.latLongFormat, ["dm", "dms", "decimal"], d.latLongFormat),
     units: oneOf(o.units, ["metric", "us"], d.units),
+    autoBestMatch: bool(o.autoBestMatch, d.autoBestMatch),
+    keepSearchOpen: bool(o.keepSearchOpen, d.keepSearchOpen),
   };
 }
 
@@ -102,11 +110,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => configureUiSounds(settings.startupSound, settings.menuSounds), [settings.startupSound, settings.menuSounds]);
   useEffect(() => {
     playStartupSound();
-    const click = (e: MouseEvent) => {
-      if (isClickable(e.target)) playMenuSound();
-    };
-    document.addEventListener("click", click);
-    return () => document.removeEventListener("click", click);
+    return installUiSoundDelegates();
   }, []);
   const value = useMemo(() => ({ settings, update }), [settings, update]);
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

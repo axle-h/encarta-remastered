@@ -327,7 +327,7 @@ pub async fn font(State(st): State<Arc<AppState>>, UrlPath(name): UrlPath<String
 }
 
 /// `/sounds/{name}`: an interface sound of `out/sounds/` (`encarta-convert content`: the startup
-/// sound, the button click and the Kids home category sounds, `.wav` only).
+/// sound, the click, tick, Kids hover and timeline sounds and the Kids home category sounds, `.wav` only).
 pub async fn sound(State(st): State<Arc<AppState>>, UrlPath(name): UrlPath<String>, req: Request) -> Response {
     let req = Req::from(req);
     if !is_sound_name(&name) {
@@ -402,7 +402,7 @@ async fn spa(st: &AppState, req: &Req) -> Response {
 mod tests {
     #[test]
     fn sound_names() {
-        assert!(super::is_sound_name("kids-10.wav"));
+        assert!(super::is_sound_name("kids-10.wav") && super::is_sound_name("kids-hover.wav") && super::is_sound_name("tick.wav"));
         for n in ["", ".wav", "../x.wav", "a/b.wav", "click.wav.partial", "Click.wav", "click.mp3"] {
             assert!(!super::is_sound_name(n), "{n}");
         }

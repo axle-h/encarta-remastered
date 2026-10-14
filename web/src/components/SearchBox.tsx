@@ -27,7 +27,7 @@ const CATEGORY_LABEL: Record<string, string> = {
  * The search box with Encarta's word-wheel autocomplete (`/api/suggest`). Enter on a highlighted
  * suggestion opens it; otherwise Enter runs a full search.
  */
-export function SearchBox({ kids = false, placeholder = "Type a search term", autoFocus = false }: { kids?: boolean; placeholder?: string; autoFocus?: boolean }) {
+export function SearchBox({ kids = false, placeholder = "Type a search term", autoFocus = false, onSearch, label = "Search Encarta" }: { label?: string; kids?: boolean; placeholder?: string; autoFocus?: boolean; onSearch?: (term: string) => void }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [q, setQ] = useState("");
@@ -81,7 +81,8 @@ export function SearchBox({ kids = false, placeholder = "Type a search term", au
       return;
     }
     const term = q.trim();
-    if (term) navigate(`${kids ? "/kids" : ""}/search?q=${encodeURIComponent(term)}`);
+    if (term && onSearch) onSearch(term);
+    else if (term) navigate(`${kids ? "/kids" : ""}/search?q=${encodeURIComponent(term)}`);
   };
 
   return (
@@ -99,7 +100,7 @@ export function SearchBox({ kids = false, placeholder = "Type a search term", au
             type="search"
             value={q}
             placeholder={placeholder}
-            aria-label="Search Encarta"
+            aria-label={label}
             role="combobox"
             aria-expanded={open && items.length > 0}
             aria-controls={listId}

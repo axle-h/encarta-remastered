@@ -114,7 +114,15 @@ pub fn run(paths: &Paths) -> Result<()> {
                 chars.extend(n.chars().filter(|c| !c.is_control()));
             }
         }
-        let r = glyphs::run(&paths.extracted, &faces, &chars, &out, &log)?;
+        // Names with an alternative (U+0004), as the labels may show them: both cases, brackets.
+        let mut rule_chars: std::collections::BTreeSet<char> = " ();".chars().collect();
+        for o in objs.as_ref().unwrap().objs.iter().filter(|o| o.name.raw.contains('\u{4}')) {
+            for c in o.name.raw.chars().filter(|c| !c.is_control()) {
+                rule_chars.insert(c);
+                rule_chars.extend(c.to_uppercase());
+            }
+        }
+        let r = glyphs::run(&paths.extracted, &faces, &chars, &rule_chars, &out, &log)?;
         report.insert("glyphs".into(), serde_json::to_value(&r)?);
     }
 

@@ -1117,13 +1117,18 @@ mod font_tests {
 
 /// The interface sounds written to `out/sounds/{name}.wav` from the `WAVE` resources of the
 /// application's DLLs (docs/media.md §9): `(file, DLL, resource)`. `startup` is the splash
-/// sound; `click` is the button click (the Kids home plays it when a category is clicked); `kids-N`
+/// sound; `click` the button click, `tick` the rollover of toolbar buttons and menu highlights,
+/// `kids-hover` the rollover of the Kids round buttons, `timeline` the timeline controls (the
+/// mapping was measured in the VM, docs/media.md §9); `kids-N`
 /// plays when the pointer enters the N-th Kids home category.
 fn ui_sound_sources() -> Vec<(String, &'static str, pe_wave::ResName)> {
     use pe_wave::ResName::{Id, Name};
     let mut v = vec![
         ("startup".to_string(), "EE/ENCARTA/ENCSPLSH.DLL", Name("INTROSOUND".into())),
         ("click".to_string(), "EE/ENCARTA/ENCARTAR.DLL", Id(31973)),
+        ("tick".to_string(), "EE/ENCARTA/ENCARTAR.DLL", Id(31971)),
+        ("kids-hover".to_string(), "EE/ENCARTA/ENCARTAR.DLL", Id(31975)),
+        ("timeline".to_string(), "EE/ENCARTA/ENCARTAR.DLL", Id(575)),
     ];
     for n in 1..=10u32 {
         v.push((format!("kids-{n}"), "EE/ENCARTA/ENCARTAR.DLL", Id(31978 + n)));
@@ -1258,11 +1263,14 @@ mod disc_tests {
         let Some(x) = extracted() else { return };
         let dir = root().join("target/test-ui-sounds");
         let _ = std::fs::remove_dir_all(&dir);
-        assert_eq!(write_ui_sounds(&x, &dir).unwrap(), 12);
+        assert_eq!(write_ui_sounds(&x, &dir).unwrap(), 15);
         let startup = std::fs::read(dir.join("startup.wav")).unwrap();
         assert_eq!(&startup[..4], b"RIFF");
         assert_eq!(startup.len(), 445_980);
         assert_eq!(std::fs::read(dir.join("click.wav")).unwrap().len(), 1128);
+        for f in ["tick", "kids-hover", "timeline"] {
+            assert_eq!(&std::fs::read(dir.join(format!("{f}.wav"))).unwrap()[..4], b"RIFF", "{f}");
+        }
         assert_eq!(std::fs::read(dir.join("kids-1.wav")).unwrap().len(), 125_480);
     }
 

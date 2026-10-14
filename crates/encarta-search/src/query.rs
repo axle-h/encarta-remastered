@@ -419,6 +419,13 @@ impl SearchIndex {
         if let Some(e) = req.edition.as_deref().filter(|e| !e.is_empty() && *e != "all") {
             let q = TermQuery::new(Term::from_field_text(f.edition, e), IndexRecordOption::Basic);
             out.push((Occur::Must, const_q(Box::new(q))));
+        } else if req.edition.as_deref() != Some("all") {
+            // No edition asked for: Premium search, which has no Kids-only items (`edition=all` keeps them).
+            let has = |e: &str| -> Box<dyn Query> {
+                Box::new(TermQuery::new(Term::from_field_text(f.edition, e), IndexRecordOption::Basic))
+            };
+            let kids_only = BooleanQuery::new(vec![(Occur::Must, has("kids")), (Occur::MustNot, has("deluxe"))]);
+            out.push((Occur::MustNot, const_q(Box::new(kids_only))));
         }
         out
     }
@@ -657,5 +664,59 @@ mod tests {
         assert_eq!(split_query("french r").prefix, None);
         assert_eq!(split_query("").prefix, None);
         assert_eq!(regex_escape("a.b c"), "a\\.b c");
+    }
+
+    fn test_index() -> (tempfile::TempDir, SearchIndex) {
+        use crate::build::{BuildOptions, IndexBuilder, ItemDoc};
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("s");
+        let opts = BuildOptions { threads: 1, heap_bytes: 50 << 20, merge: false };
+        let mut b = IndexBuilder::create(&root, &opts).unwrap();
+        for (id, title, ed, body) in [
+            (1, "Rome (Italy)", 1u8, "capital of Italy"),
+            (2, "Rome (Georgia)", 1, "city in Georgia"),
+            (3, "University of Rome", 1, "rome university rome rome"),
+            (4, "Rome", 2, "kids rome"),
+            (5, "Zebra", 1, "striped"),
+            (6, "Zebras", 2, "kids zebras"),
+        ] {
+            b.add_item(&ItemDoc {
+                ref_id: id,
+                category: "article",
+                item_kind: "article".into(),
+                editions: ed,
+                title: title.into(),
+                body: body.into(),
+                prior: 1.0,
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        b.finish(&opts, &[]).unwrap();
+        let idx = SearchIndex::open(&root).unwrap();
+        (dir, idx)
+    }
+
+    fn titles(idx: &SearchIndex, q: &str, edition: Option<&str>) -> Vec<String> {
+        let req = SearchRequest { q: q.into(), edition: edition.map(str::to_string), limit: 10, ..Default::default() };
+        idx.search(&req).unwrap().hits.into_iter().map(|h| h.title).collect()
+    }
+
+    #[test]
+    fn default_search_has_no_kids_only_items() {
+        let (_d, idx) = test_index();
+        assert_eq!(titles(&idx, "zebra", None), ["Zebra"]);
+        assert_eq!(titles(&idx, "zebra", Some("kids")), ["Zebras"]);
+        assert_eq!(titles(&idx, "zebra", Some("all")).len(), 2);
+        assert!(!titles(&idx, "rome", None).contains(&"Rome".to_string()));
+        assert_eq!(titles(&idx, "rome", Some("kids")), ["Rome"]);
+    }
+
+    #[test]
+    fn parenthetical_titles_are_exact_matches() {
+        let (_d, idx) = test_index();
+        let t = titles(&idx, "rome", None);
+        assert_eq!(t.len(), 3);
+        assert_eq!(t[2], "University of Rome", "{t:?}");
     }
 }
