@@ -7,6 +7,7 @@ import { Icon, mediaIcon } from "../components/Icons";
 import { kidsUrl, SearchBox } from "../components/SearchBox";
 import { useDocumentTitle } from "../components/useDocumentTitle";
 import { fileUrl, mediaClass } from "../media/pick";
+import { IndexTermEntries, useExpanded } from "./IndexTerm";
 
 export const SEARCH_TABS: { kind: string; label: string }[] = [
   { kind: "", label: "All" },
@@ -128,18 +129,31 @@ const CATEGORY: Record<string, string> = {
 
 function Hit({ h, kids }: { h: SearchHit; kids: boolean }) {
   const cls = mediaClass({ kind: h.kind, media_type: h.media_type });
+  // Index terms expand in place to their entries (Encarta 2009 has no separate index view).
+  const isIndexTerm = h.kind === "index-term";
+  const [open, toggle] = useExpanded();
   return (
     <li className={`search-hit search-hit-${h.category}`}>
       <span className="search-hit-icon">
         {h.thumb ? <img src={fileUrl(h.thumb)} alt="" width={40} height={40} /> : <Icon name={h.category === "article" ? "article" : h.category === "dictionary" ? "book" : h.category === "timeline" ? "clock" : mediaIcon(cls)} size={20} />}
       </span>
       <div className="search-hit-body">
-        <Link className="search-hit-title" to={kidsUrl(h.url, kids)}>
-          <Html as="span" html={h.title_html ?? h.title} />
-        </Link>
+        {isIndexTerm ? (
+          <button type="button" className="search-hit-title index-term-toggle" aria-expanded={open} onClick={toggle}>
+            <span className="index-term-caret" aria-hidden="true">
+              ▸
+            </span>
+            <Html as="span" html={h.title_html ?? h.title} />
+          </button>
+        ) : (
+          <Link className="search-hit-title" to={kidsUrl(h.url, kids)}>
+            <Html as="span" html={h.title_html ?? h.title} />
+          </Link>
+        )}
         {h.para?.section_title && <span className="search-hit-section"> › {h.para.section_title}</span>}
-        <span className="search-hit-cat">{CATEGORY[h.category] ?? h.category}</span>
-        {h.snippet_html && <Html className="search-hit-snippet" html={h.snippet_html} />}
+        <span className="search-hit-cat">{isIndexTerm ? "Index" : (CATEGORY[h.category] ?? h.category)}</span>
+        {h.snippet_html && !open && <Html className="search-hit-snippet" html={h.snippet_html} />}
+        {isIndexTerm && open && <IndexTermEntries id={h.ref_id} kids={kids} />}
       </div>
     </li>
   );

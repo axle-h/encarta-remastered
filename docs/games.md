@@ -36,12 +36,12 @@ Server (`GET /api/games/geoquiz/{level}`):
   Asia). Names are distinct; a tiny pool gives fewer buttons rather than repeats.
 - Pool region quirks are kept as data (e.g. D1 files the United Kingdom under Oceania).
 
-Client: the quiz runs its own MapLibre map on `out/atlas/styles/atlas-quiz.json` (Encarta's quiz style: satellite,
-borders, no names). The shared `<Atlas />` was not used: it shows names on hover and has no hook to highlight one
-entity, which would give answers away. The highlight is a fill on the `areas` layer filtered by `entity`; continent
+Client: the quiz runs on the shared `<Atlas quizMode initialStyle="atlas-quiz" />` (Encarta's quiz style: satellite,
+borders, no names), plus a Hand/Pointer tool toggle. Quiz mode hides every name and the Read Article, Legend,
+Customizer, Globe/Flat and style controls; the locator globe and zoom slider stay. The highlight is a fill on the `areas` layer filtered by `entity`; continent
 areas are coarse outlines in the atlas data, so they are tinted at 42 % rather than filled **(ours)**. Countries fit
 their bounding box (antimeridian-safe), cities a regional view (zoom 3.6) **(ours, close to the VM's 600-mile scale
-bar)**. After a right pick the next question follows after 1.4 s **(ours: not captured)**. The end shows the score and a
+bar)**. After a right pick the next question appears at once; after question 20 a "Scores" dialog opens (VM, vm-findings.md › UI parity pass). The end shows the score and a
 per-level table of the ten best scores in this browser **(ours)**. Not done: the VM's locator globe, zoom slider and
 hand tool (MapLibre's zoom buttons and dragging instead).
 

@@ -143,7 +143,7 @@ describe("topic timeline window", () => {
 
 describe("panoramic tours", () => {
   it("reads scenes, hotspot rectangles, label points and destinations", async () => {
-    const { childIds, destOf, isPanoramicTour, labelPoint, shedRect, wrapScroll } = await import("./pages/panorama");
+    const { childIds, destOf, isPanoramicTour, labelPoint, shedRect } = await import("./pages/panorama");
     expect(isPanoramicTour({ meta: { source_attrs: { type: "2DVT" } } })).toBe(true);
     expect(isPanoramicTour({ meta: { source_attrs: {} } })).toBe(false);
     expect(isPanoramicTour({ meta: { source_attrs: { group: "virttour", ticon: "vtour", type: "" } } })).toBe(true);
@@ -156,8 +156,5 @@ describe("panoramic tours", () => {
     expect(labelPoint({ source_attrs: { x: "1042" } })).toBeNull();
     expect(destOf({ meta: { source_attrs: { destmedia: "461545494" } } })).toBe(461545494);
     expect(destOf({ meta: {} })).toBeNull();
-    expect(wrapScroll(100, 1000)).toBe(1100);
-    expect(wrapScroll(1600, 1000)).toBe(600);
-    expect(wrapScroll(1000, 1000)).toBe(1000);
   });
 });

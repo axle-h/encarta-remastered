@@ -400,3 +400,213 @@ The scale bar is drawn at the lower right (x 856-1007, y ~706) as alternating se
 - New live snapshot **`tours-ready`**: Encarta on its home page, tour files extracted to `C:\tours\<nnnnn>\`,
   tourhost built in `C:\tools`.
 - Sound (stretch item 4): not attempted.
+
+---
+
+## UI parity pass (2026-10-14): menus, dialogs, panoramas, Map Trek, index, quiz, tour pitch
+
+Captures in `fixtures/ui/` (subfolders `vtour/`, `panorama/`, `maptrek/`, `kids/`, `items/`, `print/`, `copy/`, `help/`,
+`favorites-files/`), `fixtures/geoquiz/1*.png`, `fixtures/geoquiz/nav-*`, `fixtures/tours/701505917/sitemap/`,
+`fixtures/tours/701504257/pitch-limit-log.txt` and `encarta-music-*.png`. Not yet listed in the fixtures' INDEX.md files.
+Started from `tours-ready`; the guest now also has a file printer "PS" (HP LaserJet 4000 PS driver, port `C:\out.ps`)
+and `C:\tools\clipdump.exe` (our clipboard dumper); no snapshot was saved with them. Measurements only, wording paraphrased.
+
+### Features menu (`features-menu.png`, `.html`, `features-flyouts.html`)
+- An HTML flyout 292 px wide under the Features button, vertical gradient #E2F0D9 → white. Three groups, each with a
+  picture on the left, a bold green (#5B9510, 15 px) heading and plain entries; a hovered entry gets a green rounded
+  highlight with white text. Each group ends in a "More" entry with an arrow that opens a second flyout after a 100 ms
+  hover. A "Browse all" entry (Tahoma 14 px, green) at the bottom opens a "Features" browse page (`features-browse-all.png`).
+- Order and content ids: **Dictionary & Foreign Language Tools**: Dictionary 701712323, Thesaurus 701712324,
+  Translations 701767016, World Languages Interactivity 701878967. **Geography Tools**: World Atlas 701713739, Quick
+  Search: Maps 701766739, Country Facts and Figures 701713705, More → World Statistical Map 701713537, Flags of the World
+  701713732, Map Treks 701713686, U.S. State Facts and Figures 701713708, Canadian Province & Territory Facts and
+  Figures 701713706. **Explore**: 3D Ancient Sites 701713683, Encarta Kids 701712340, Panoramas 701713680, More →
+  Timeline 701779281, Quick Search: Photos & More 701779282, Virtual Tours 701713684, Videos 701713681, Encarta on the Web
+  701835573. Browse all → 701766702. (A third flyout 701780438 is registered but held only World Languages Interactivity.)
+- Most entries are browse pages (home-page records); Geography Quiz and Games are not in this menu.
+
+### Menu bar (`menubar-*.png`)
+- File, Edit, Favorites, Help, classic Win32 menus. File has a "Go to" submenu (`menubar-File-goto.png`), Print and
+  Options (Ctrl+O). Edit: Copy, Read Aloud submenu (`menubar-Edit-readaloud.png`), Find in Article. Favorites: Add to
+  Favorites…, Organize Favorites…, a separator, then folders as submenus and favorites as items.
+- Help (`help-menu-1..6.png`): Help (F1) opens the HTML Help window on ERL.CHM; an "Encarta Search Bar" dialog; a further
+  CHM topic; an entry that opens Internet Explorer (online page; fails offline); Customer Support Options (PSS.CHM in
+  an HTML Help window); About Microsoft Encarta Premium 2009 (dialog with Credits / Contributors / Consultants buttons
+  that switch a scrolling list, `about-*.png`).
+- Keyboard shortcuts (from the help topic): Alt+Home home, Alt+←/→ back/forward, Alt+T Features menu, Ctrl+S search box,
+  Ctrl+C copy, Ctrl+P print, Ctrl+M atlas, Ctrl+D dictionaries, Ctrl+Q geography quiz, Ctrl+Z MindMaze (dead in 2009),
+  Ctrl+O options, Ctrl+F find, Ctrl+L closed captions, Ctrl+U update, Ctrl+T timeline, timeline +/− zoom, panorama
+  Shift/Ctrl zoom, F8/F9 read aloud start/stop.
+
+### Options dialog (`options-1..5.png`)
+- Window "Options" (#32770), white, about 676×411 at (175,165). Left: a list of five pages (General, Encarta Updates,
+  Closed Captioning, World Atlas, Quality) on #F7FBFF with a #424142 frame; the selected row is #7396BD with white text.
+  Right: a two-tone heading ("<page>" in light #C6D7EF + "Options" in #7396BD), #C6D7EF rules, section labels in
+  dark #21304A, OK/Cancel buttons with a #7396BD border at the bottom right.
+- Controls: General: play startup sound (check), play menu and button sounds (check), article text size Small / Medium /
+  Large (radio). Encarta Updates: a check-for-updates button. Closed Captioning: one check box (captions for audio and
+  video). World Atlas: always linear statistical data (check), crosshairs at map centre (check), lat/long format
+  degrees-minutes / degrees-minutes-seconds / decimal (radio), units metric / U.S. (radio). Quality: CEIP check box.
+
+### Help system (`help/`, `help-f1.png`)
+- F1 and Help › Help open an HTML Help (HH) window titled "Help" (contents tree left, topic right, toolbar Hide / Back /
+  Forward / Print, tabs Contents and Search). Source: `ERL.CHM` (87 files, 65 kB; the Kids copy is byte-identical);
+  `PSS.CHM` is a single support-contacts page. TOC (`help/erl/ERL06.hhc`): Getting started (6 topics), About tools and
+  features (6), Exploring tools and features (6), Copying information (5), Printing information (5), Accessibility (5),
+  Troubleshooting (9), Glossary. Extracted text: `help/erl-text.txt`. "Page not found" pages also pop the Help window.
+
+### Search box, ▾ tab, Quick Search (`search-*.png`, `quicksearch-*.png`)
+- Autocomplete is a word-wheel dropdown under the box while typing. Enter opens a **results panel docked at the right**
+  (x≈650–1024, full height) with collapsible category bars Best Matches / Articles / Photos & More / Web Links /
+  Dictionaries / Maps (Quotations appears when present), each with an icon and "(count)"; one category is open at a
+  time (+/− at right). No-result categories show a short message and a "Search all <kind>" link. Two check boxes at
+  the bottom: automatically display best match; keep search results list open.
+- **The ▾ tab under the search box toggles this panel** (▾ shows it, ▴ when open). With "keep open" off the panel hides
+  when you click the page; it does not hide on mouse-out alone (`search-closed-on-page-click.png`).
+- Quick Search (Features › Quick Search: Maps / Photos & More) is a small modal dialog titled "Quick Search" with one
+  text box, autocomplete and Go; Enter closes it and opens the same right panel with only that category
+  (`quicksearch-maps-result.png`).
+
+### Print and copy (`print/`, `copy/`, `print-*.png`, `copy-dialog-*.png`)
+- File › Print / Ctrl+P on an article first shows Encarta's own dialog: radio Whole Article Text / Whole Article with
+  Media / Selected Text (enabled only with a selection), Print and Cancel; for a picture: Picture / Picture plus caption.
+  Articles longer than 5 pages ask for confirmation (`print-longer-than-5-pages.png`), then the Windows Print dialog.
+- Output (`print/zebra-text.pdf`, 5 pages; `zebra-media.pdf`, 7 pages): running header with the title left and "Page n"
+  right; title, numbered section heads, paragraphs, "Contributed By" + name; a copyright line after the text and again
+  as page footer. With media, pictures are placed beside the text with captions.
+- Edit › Copy shows the same style of dialog (Whole Article Text / Selected Text; for pictures Picture / Picture plus
+  caption). Clipboard: Text, Unicode, HTML Format (SourceURL `msencxml://content/<id>?…&display=copytext`, own print
+  style sheet), RTF. Plain Ctrl+C on a selection copies the selection **plus** a bold copyright line as a new paragraph
+  (HTML) / new line (text). Copy and print always append that line.
+
+### Favorites (`favorites-*.png`, `favorites-files/`)
+- Add to Favorites: dialog with a Name box (default "Article - <title>" for articles, the plain title for media), a folder
+  tree ("Favorites" root), New Folder… (sub-dialog "Create New Folder"), OK/Cancel. Organize Favorites: tree with
+  context menu and tooltip buttons for new folder / rename / delete / move.
+- Storage: one `.erl` file per favorite under `%APPDATA%\Microsoft\Encarta Reference Library\Favorites\<folders>\`, in
+  Internet-shortcut INI format: `URL=msencarta://view=ERSArticleView/display=article/id=<id>/xst:secstate=,1,/sku=E09AXLRD`
+  (media: `view=ERSMediaView/id=<id>/sku=…`), IconFile = ENCARTA.EXE, plus an `[Encarta]` section `TiconIndex=1`.
+  Folders are real directories and show as submenus of the Favorites menu.
+
+### Parental controls (`dict-*.png`, `search-bitch-*.png`)
+- Set only in the Encarta Dictionaries window (its "Parental Controls" button): a small dialog with one check box and
+  OK / Apply / Cancel. Stored machine-wide as `HKLM\SOFTWARE\Microsoft\Microsoft Reference\E09AXLRD\EDICT`
+  `ParentalControls` DWORD (1/0); help says it needs Administrator or Power User rights and the list is fixed.
+- Effect: flagged headwords disappear from the dictionary word wheel and lookups (a lookup of a flagged word lands on the
+  nearest unflagged entry, e.g. a derived adjective). Entries that merely carry an "offensive" sense label but are not
+  flagged stay. The main search's Dictionaries category behaves the same. **Nothing else is filtered**: articles, web
+  links and media are unaffected (also stated in the help).
+
+### Map Trek (`maptrek/`)
+- Features › Map Treks opens a browse page of trek categories (one per atlas style); a trek opens the atlas at stop 1
+  **and a modeless dialog "Map Trek"** (HTML, brown #765C26 body, `maptrek-dialog.html`): right-aligned banner "map trek"
+  (Tahoma 23 pt, #CEB57B) over a rule; left a white text box (trek title bold #765C26, then the stop: 64×64 thumbnail
+  with a caption under it, bold place name, text); right a white stop list (Tahoma 8 pt, current row white on #A9A9A9)
+  with a dark footer "Stop n of N"; buttons New Trek (left), Back, Next (right), brown with #CEB57B border, disabled
+  ones with #CEB57B text.
+- Changing stop navigates the main window to `msencarta://view=MapView/cmd=map/lat=…/long=…/alt=…/style=…`. New Trek
+  closes the dialog and returns to the Map Treks page.
+
+### Panoramas (2D virtual tours and singles)
+Measured on Westminster Abbey (461545486), Mont-Saint-Michel (461549315) and Alcatraz (461545621); `vtour/`.
+- **Layout.** Tour page: green (#B5CB94) panel at (194,173)-(832,676); view (picture area) **624×289 px** at screen
+  (200,192)-(824,481) with a 1 px black frame; menu bar "Tour Stops | Tour Settings | Credits | Appears in" above it;
+  "360 VIEW" caption under it; site map at the lower left (≈190×146); scene title and scrolling text at the lower right;
+  tour title large white on black at the bottom. Tour Settings has two checked toggles: show labels and hot spots;
+  auto-rotate 360 views. Tour Stops: one entry per scene (four-way arrow icon) followed by its hotspots (picture, audio
+  icons); the current scene has a bullet. Credits opens a small window; Appears in a list menu.
+- **(a) Opening yaw.** Every scene measured opens with the **picture's left edge (x = 0 = W) at the view centre**
+  (view centre matched at x = W−4 in all cases), whatever `panangle` is: Nave and Sanctuary (panangle 0), Alcatraz
+  Broadway (0), Mont-Saint-Michel On the Island (250) and Cloister (30). So `panangle` is not the opening yaw. It gives
+  the map orientation instead (see (e)). Singles: the `.svj` ActiveX viewer (REFSV.DLL, CLSID 8399E3C5-…) stays black in
+  this VM, and the Panoramas feature list opens the Flash versions (Flash missing), so `initangle` could not be measured.
+- **(b) Projection, FOV, horizon.** Planar perspective from a cylinder: the horizontal shift between frames grows from
+  26 px at the view centre to 44 px at the edges, fitting `dx = A + B·x²` with f ≈ 297 px (Westminster, W = 1824). The
+  scale at the view centre is 1:1 with the picture (cylinder radius = focal length = W/2π: 290 px for W 1824, 229 for
+  1440). So the FOV is **not fixed**: hfov = 2·atan(312/(W/2π)) ≈ 94° for W 1824, 107° for 1440, matching the site-map
+  wedge widths (92–95°, 105°). The view shows 290 picture rows centred on the **middle row** (rows 46–335 of 380,
+  77–366 of 443, 84–373 of 456): horizon = middle row. A vertical drag shifts the window up to the picture top (row 3
+  reached); no zoom was seen with Shift/Ctrl.
+- **(c) Auto-pan.** On by default when a tour opens (the setting then persists for the session). The view jumps in
+  discrete steps 7–8 times per second (6–7 px, sometimes a double step) for ≈ 20°/s: **one full turn in 18.3 s**
+  (Westminster, W 1824, and Alcatraz, W 1440 alike, so it is angular). Direction: picture x increases (view turns right).
+  A click on the view pauses it; it resumed by itself about 9–10 s later. Dragging: rotation speed proportional to the
+  pointer's horizontal distance from the press point, ≈ 4 px/s per px (10 px → 38 px/s, 25 → ≈ 98, 50 → ≈ 176,
+  100 → ≈ 380 px/s), pointer right of the press point turns right.
+- **(d) Hotspots and labels.** All hotspots are **always visible** (no hover needed): a box with black fill, 1 px border
+  and text in light green (181,203,148), Tahoma ≈ 8 pt, a type icon at the left (square-in-square picture, speaker
+  audio, four-way arrow scene link) and the hotspot title. Hover: border and text turn white, hand cursor. The box sits
+  just above / beside the `quadrant` area (Richard II: box bottom row ≈ quadrant top). Text labels (`label` x,y) are
+  bold white with a black outline plus a thin white leader line from the text down to the object. A one-line bold
+  white instruction across the top of the view is removed after the first drag.
+- **(e) Site map.** Yes, there is a **view wedge**: peach tint (247,227,214) from the current scene's point, as wide as
+  the hfov (≈ 94°). Its screen direction (clockwise from map-right) = **view yaw − panangle**, where view yaw = 360·x/W
+  of the picture column at the view centre: Nave 0° → −2.4°, 10.1° → 9.2°, 65.3° → 67.0°; On the Island (250) opens at
+  110° (= −250), Cloister (30) at −30.7°. Points: scenes are green-bordered boxes with a four-way arrow, pictures small
+  grey squares, audio a speaker; hovering one shows a black tooltip with its title.
+
+### Kids chrome and home (`kids/`)
+- Window "Microsoft Encarta Kids 2009". Top bar lime green (#9CE721 → #B5F331) with round buttons: Home (house), Back,
+  Forward, Copy, Print (each with a yellow tooltip and a small arrow), a menu bar File / Edit / View / Favorites / Tools /
+  Help (dark green #006500 text) and a "search" box with a green arrow; Encarta Kids logo at the right. Menus are lime
+  (#B5F331) with dark green text: File Print/Exit; Edit Copy/Find in this Article; View Go to ▸, Closed Captioning ▸;
+  Favorites Add/Organize; Tools Find, Read Aloud ▸, Menu and Button Sounds ▸, Startup Sound ▸; Help Help (F1),
+  Troubleshooting ▸, About Encarta.
+- Home: orange swoosh background, logo in the middle, ten yellow tilted panels with pictures (Animals, Science, Sports
+  and Recreation, The Arts, Reading and Writing / People, Places, History, Social Studies, Games and Fun Stuff!).
+  Clicking a panel highlights it blue and opens a blue rounded list of subcategories with icons in the middle; a
+  subcategory opens a page with the category title in orange, the subcategory list at left (current one highlighted)
+  and a 7-column grid of 64-px tiles (photo or a generic "book" icon) with captions.
+
+### Other item views (`items/`)
+- Web link (762518793): opens Internet Explorer on `encartaupdate.msn.com/teleport/teleport.aspx?…&tname=weblinks&…&ud=<id>`
+  (a redirector, not the stored URL); offline it fails. Encarta shows no page of its own.
+- Quotation author (1861680808) and contributor (761601779) ids: "Page or keyword not found" (no view of their own).
+  Authors appear only inside quotation pages (green header band "quotations", category, quote, rule, author name with
+  dates, description, source). Contributors appear as a popup "Credentials" (#A09683 brown, name with degree bold, one
+  line of credentials) from the article's "Contributed By" link (`contributor-popup.png`, `.html`).
+- Topic timeline (461575603, 701767509): opens the native Timeline view zoomed to the topic's span with the topic title
+  large and grey at the lower left; "View as list" shows the topic's events 25 at a time with dates (circa as "?"),
+  title and text, and previous/next 25 buttons.
+
+### Index (`index-*.png`)
+- No index browser exists (no menu, feature or view). Index terms appear **inside search results**: the phrase
+  "people buried at the abbey" gives a Best Matches entry "Westminster Abbey – people buried at the Abbey" with a (+)
+  that expands in place into sub-terms (composers, explorer, …), each expanding to article leaves (title + snippet).
+  Opening a leaf opens the article at the paragraph (`jump=p1&mark=1`) with that paragraph's background **#FFFAB8**.
+  Opening an index-term id directly gives "Page or keyword not found".
+
+### Tour Music (3D tours, `fixtures/tours/701504257/encarta-music-*.png`)
+- The Music entry has a speaker icon and toggles between a pressed look (lighter blue box) and normal; nothing else
+  changes visually. No sound device exists in the VM, so what plays was not heard. The data has one
+  "<tour> 3DVT: Ambient Audio" record per tour (701504966–701504972, a 88–105 s WMA each), which no tour record links;
+  they are the likely source.
+
+### Geography Quiz, full Navigator game (`fixtures/geoquiz/1*.png`, `nav-*`)
+- Start dialog "Geography Quiz": name box, four difficulty radios, OK/Cancel. Map (style 19) with a locator globe, a
+  zoom slider (9 ticks, −/+) and hand / zoom tools. Question types seen: country (highlighted yellow), city (ring
+  marker), continent.
+- **After a correct answer** the next question appears within one frame (< 80 ms): no feedback screen, no pause; the
+  map recentres for the next question. After a wrong answer the button greys out and the points drop (5 → 4).
+- **End:** after question 20 the clicked button turns yellow (255,211,82) and a modal "Geography Quiz - Scores" dialog
+  opens at once: heading "scores", a high-score table (rank, name, points, level; 19×5 + 4 = 99 here), buttons Exit and
+  Try Again. Try Again reopens the start dialog with the name kept; Cancel there returns to the previous page.
+
+### Tours: pitch limit and rotated site maps
+- **PITCH? per tick** (tourhost, Acropolis, PITCHSPEED 6, four yaws; `fixtures/tours/701504257/pitch-limit-log.txt`):
+  steps are 6° ± 1.2·10⁻⁴ (float noise). A step is taken only if the **resulting** |pitch| ≤ 45: from 38.9 it reaches
+  44.9; from 39.0001, 39.001, 39.01, 39.1 it is refused; from exactly 39 (read back 39.000000) it is accepted in 9 of
+  12 runs and refused in 3, depending on float noise at different yaws. So the rule is `|p + Δ| ≤ 45` on the
+  float-noisy value, with no extra tolerance. `CAMERA.PITCH=` with |v| ≥ 45 stores ±44.9; 44.95 is kept.
+- **Rotated site map (Persepolis, `SM_ROTATEFRAME=-90`, `fixtures/tours/701505917/sitemap/`).** §4.2 confirmed: at
+  Apadana Stairs the marker centre is exactly at the predicted (96,118) in window coordinates, and at the other three
+  stops it sits on its location box. The wedge (≈ 80° wide) points at the predicted heading at all four stops
+  (expected 102/180/72/196°, measured 102.2/177.5/71.2/194.5°).
+- **Highlighted-location look:** when the marker is on a location box (Terrace Stairs, Gate of Xerxes, Apadana Interior)
+  the four-way marker is drawn in light blue **0x6371B5** instead of dark blue 0x103463; at Apadana Stairs (no box) it is
+  dark blue.
+
+### Not done in this pass
+- Azuchi site map; single-panorama `initangle` (viewer black, Flash missing); panorama zoom; what the Music toggle
+  plays (no audio device); the Options dialog was read from the captures and the help, not each control exercised;
+  INDEX.md entries for the new captures; no new snapshot saved.

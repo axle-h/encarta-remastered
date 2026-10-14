@@ -235,6 +235,7 @@ pub fn router(st: Arc<AppState>) -> Router {
         .route("/meta", get(api::meta))
         .route("/item/{id}", get(api::item))
         .route("/article/{id}", get(api::article))
+        .route("/index-term/{id}", get(api::index_term))
         .route("/place/{gid}", get(api::place))
         .route("/quiz/{id}", get(api::quiz))
         .route("/interactive/{name}", get(api::interactive))

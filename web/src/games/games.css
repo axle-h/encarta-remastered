@@ -1486,3 +1486,32 @@ button.mm-full {
   width: 44px;
   height: 44px;
 }
+
+/* Geography Quiz on the shared atlas */
+.gq-map {
+  position: relative;
+}
+.gq-map .gq-atlas {
+  height: 100%;
+}
+.gq-tools {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: flex;
+  gap: 4px;
+  z-index: 2;
+}
+.gq-tools button[aria-pressed="true"] {
+  background: #fbf06c;
+  color: #000;
+}
+.gq-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 50;
+}

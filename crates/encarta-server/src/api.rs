@@ -259,8 +259,9 @@ fn atlas_media_item(c: &Connection, has_m: bool, id: i64, edition: &str) -> anyh
     let s = |k: &str| row.get(k).and_then(|v| v.as_str()).map(str::to_string);
     let audio = s("kind").as_deref() == Some("w");
     let mut files = Vec::new();
-    // The atlas's 64×64 pushpin picture (`MSWORLD.EIT/dtn/<stem>.dtn`) stands in where the main
-    // file is not on the disc under its catalog name (msworld.md §3: 1,496 pictures, every sound).
+    // Catalog names resolve through the manifest's `atlas_file` when the file is on the disc under
+    // another name (media.md §7). The 64×64 pushpin (`MSWORLD.EIT/dtn/<stem>.dtn`) stands in for
+    // the pictures that are not on the disc at all.
     let stem = s("thumbnail").or_else(|| s("file")).and_then(|f| f.rsplit_once('.').map(|(a, _)| a.to_string()));
     let pin = if audio { None } else { stem.map(|st| format!("{st}.dtn")) };
     let roles: Vec<(&str, Option<String>)> =
@@ -281,6 +282,42 @@ fn atlas_media_item(c: &Connection, has_m: bool, id: i64, edition: &str) -> anyh
         "meta": { "atlas_media": { "place_id": row.get("place_id"), "paired_ref_id": row.get("paired_ref_id"), "legacy_id": row.get("legacy_id") } },
         "children": [], "media": [], "appears_in": [], "referenced_by": [], "parents": [], "data_table": null, "timeline": null,
     })))
+}
+
+/// `GET /api/index-term/{id}`: an index term (DATAF, content-schema §4) with its entries, which a
+/// search result expands to. The tree is the edition's (`DLX`, or `KDC` with `edition=kids`).
+pub async fn index_term(State(st): St, Path(id): Path<i64>, Query(q): Query<EditionQuery>) -> ApiResult<Json<Value>> {
+    let ed = if q.edition.as_deref() == Some("kids") { "KDC" } else { "DLX" };
+    let v = content(&st)?
+        .call(move |c| {
+            let Some(mut o) = c
+                .prepare_cached("SELECT ref_id, title, title_html, in_deluxe, in_kids FROM item WHERE ref_id = ?1 AND kind = 'index-term'")?
+                .query_row([id], row_object)
+                .optional()?
+            else {
+                return Err(ApiError::not_found(format!("no index term {id}")).into());
+            };
+            let d = o.remove("in_deluxe").and_then(|v| v.as_i64()).unwrap_or(0) != 0;
+            let k = o.remove("in_kids").and_then(|v| v.as_i64()).unwrap_or(0) != 0;
+            o.insert("editions".into(), json!(editions(d, k)));
+            // The edition's tree, else any (a term carries one tree per edition set).
+            let tree: Option<(String, String)> = c
+                .prepare_cached(
+                    "SELECT editions, tree_json FROM index_tree WHERE ref_id = ?1
+                     ORDER BY (',' || editions || ',') LIKE '%,' || ?2 || ',%' DESC, editions LIMIT 1",
+                )?
+                .query_row(params![id, ed], |r| Ok((r.get(0)?, r.get(1)?)))
+                .optional()?;
+            let (eds, tree) = tree.unwrap_or_default();
+            let tree: Value = serde_json::from_str(&tree).unwrap_or(json!([]));
+            // The root node is the term itself; its children are the entries.
+            let entries = tree.get(0).and_then(|r| r.get("children")).cloned().unwrap_or(json!([]));
+            o.insert("tree_editions".into(), json!(eds));
+            o.insert("entries".into(), entries);
+            Ok(Value::Object(o))
+        })
+        .await?;
+    Ok(Json(v))
 }
 
 #[derive(Serialize)]

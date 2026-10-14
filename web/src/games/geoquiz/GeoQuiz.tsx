@@ -3,7 +3,7 @@
  * difficulties), then a question column on the left ("Which country is this?", the points on
  * offer, five answer buttons, "Question n of 20", Exit Quiz) beside the quiz map showing the place.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useApi } from "../../api/useApi";
 import { useDocumentTitle } from "../../components/useDocumentTitle";
@@ -140,52 +140,42 @@ function QuizRun({ game, name, level, onAgain, onExit }: { game: GeoGame; name: 
   const [q, setQ] = useState<QuestionState>(FRESH);
   const [score, setScore] = useState(0);
   const [right, setRight] = useState(0);
-  const [mapError, setMapError] = useState<string>();
+  const [hand, setHand] = useState(true);
   const [table, setTable] = useState<HighScore[] | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
   const place = game.places[index] ?? null;
   const done = index >= game.places.length;
 
-  useEffect(() => () => clearTimeout(timer.current), []);
   useEffect(() => {
     if (done && table === null) setTable(addScore({ name, score, level: game.level, date: Date.now() }));
   }, [done, table, name, score, game.level]);
 
+  // A right answer (or the last wrong one) goes straight to the next question, as in the VM.
   const choose = (entity: number) => {
-    if (!place || q.done) return;
+    if (!place || done) return;
     const next = pick(q, entity, place.entity, points);
-    setQ(next);
-    if (next.done) {
-      setScore((s) => s + next.points);
-      if (next.wrong.length === 0) setRight((n) => n + 1);
-      timer.current = setTimeout(() => {
-        setIndex((i) => i + 1);
-        setQ(FRESH);
-      }, 1400);
+    if (!next.done) {
+      setQ(next);
+      return;
     }
+    setScore((s) => s + next.points);
+    if (next.wrong.length === 0 && next.points > 0) setRight((n) => n + 1);
+    setQ(FRESH);
+    setIndex((i) => i + 1);
   };
 
   return (
     <div className="gq-run">
       <aside className="gq-panel" aria-live="polite">
         <div className="gq-panel-title">Geography Quiz</div>
-        {mapError && <p className="games-error">The map could not load: {mapError}</p>}
         {place && (
           <>
             <div className="gq-question">{questionText(place)}</div>
-            <div className="gq-points">{q.done ? (q.points ? `Correct! (+${q.points})` : `It is ${place.name}.`) : `(${pointsFor(points, q.wrong.length)} points)`}</div>
+            <div className="gq-points">({pointsFor(points, q.wrong.length)} points)</div>
             <div className="gq-choices">
               {place.choices.map((c) => {
                 const wrong = q.wrong.includes(c.entity);
-                const isAnswer = q.done && c.entity === place.entity;
                 return (
-                  <button
-                    key={c.entity}
-                    type="button"
-                    className={`gq-choice${wrong ? " is-wrong" : ""}${isAnswer ? " is-answer" : ""}`}
-                    disabled={wrong || q.done}
-                    onClick={() => choose(c.entity)}
-                  >
+                  <button key={c.entity} type="button" className={`gq-choice${wrong ? " is-wrong" : ""}`} disabled={wrong} onClick={() => choose(c.entity)}>
                     {c.name}
                   </button>
                 );
@@ -195,29 +185,6 @@ function QuizRun({ game, name, level, onAgain, onExit }: { game: GeoGame; name: 
               Question {index + 1} of {game.places.length}
             </div>
           </>
-        )}
-        {done && (
-          <div className="gq-done">
-            <div className="gq-question">Quiz complete</div>
-            <p>
-              {name}, your score is <b>{score}</b> of {game.places.length * (points[0] ?? 0)}. You answered {right} of {game.places.length} on the first try.
-            </p>
-            {table && (
-              <>
-                <div className="gq-best-title">Best {level?.name} scores</div>
-                <ol className="gq-table">
-                  {table.map((s, i) => (
-                    <li key={i}>
-                      <span>{s.name}</span> <b>{s.score}</b>
-                    </li>
-                  ))}
-                </ol>
-              </>
-            )}
-            <button type="button" className="gq-choice" onClick={onAgain}>
-              Play Again
-            </button>
-          </div>
         )}
         <div className="gq-exit">
           {!done && <span className="gq-score">Score: {score}</span>}
@@ -229,7 +196,79 @@ function QuizRun({ game, name, level, onAgain, onExit }: { game: GeoGame; name: 
           Games &amp; Fun Stuff
         </Link>
       </aside>
-      <QuizMap place={done ? null : place} onError={setMapError} />
+      <QuizMap place={done ? null : place} hand={hand} onHand={setHand} />
+      {done && (
+        <ScoresDialog
+          name={name}
+          level={level}
+          score={score}
+          max={game.places.length * (points[0] ?? 0)}
+          right={right}
+          total={game.places.length}
+          table={table}
+          onAgain={onAgain}
+          onExit={onExit}
+        />
+      )}
+    </div>
+  );
+}
+
+/** The modal "Geography Quiz - Scores" dialog that opens after question 20. */
+export function ScoresDialog({
+  name,
+  level,
+  score,
+  max,
+  right,
+  total,
+  table,
+  onAgain,
+  onExit,
+}: {
+  name: string;
+  level: GeoLevel | null;
+  score: number;
+  max: number;
+  right: number;
+  total: number;
+  table: HighScore[] | null;
+  onAgain: () => void;
+  onExit: () => void;
+}) {
+  return (
+    <div className="gq-modal">
+      <div className="gq-dialog" role="dialog" aria-modal="true" aria-label="Geography Quiz - Scores">
+        <div className="gq-dialog-title">
+          <span>Geography Quiz - Scores</span>
+        </div>
+        <div className="gq-dialog-body">
+          <div className="gq-dialog-banner">scores</div>
+          <p>
+            {name}, your score is <b>{score}</b> of {max}. You answered {right} of {total} on the first try.
+          </p>
+          {table && (
+            <>
+              <div className="gq-best-title">Best {level?.name} scores</div>
+              <ol className="gq-table">
+                {table.map((s, i) => (
+                  <li key={i}>
+                    <span>{s.name}</span> <b>{s.score}</b>
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
+          <div className="gq-dialog-buttons">
+            <button type="button" onClick={onExit}>
+              Exit
+            </button>
+            <button type="button" autoFocus onClick={onAgain}>
+              Try Again
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -230,6 +230,16 @@ export interface SearchHit {
   thumb?: FileRef | null;
 }
 
+/** `/api/index-term/{id}`: an index term and its entries (content-schema §4, DATAF). */
+export interface IndexTerm {
+  ref_id: number;
+  title: string;
+  title_html?: string;
+  editions?: Edition[];
+  tree_editions?: string;
+  entries: TreeNode[];
+}
+
 export interface SearchResponse {
   query: string;
   mode?: "all" | "any";

@@ -1,61 +1,19 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "../components/Icons";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { MenuButton, type MenuEntry } from "../components/Menu";
+import { OptionsDialog } from "./OptionsDialog";
+import { COPY_CHOICES, PRINT_CHOICES, ScopeDialog } from "./ScopeDialog";
+import { FeaturesMenu } from "./FeaturesMenu";
+import { useShortcuts } from "./shortcuts";
 import { SearchBox } from "../components/SearchBox";
-import { copySelection, openFind, printPage, selectedText } from "./commands";
+import { COPY_EVENT, OPTIONS_EVENT, PRINT_EVENT, copyScope, copySelection, openFind, printPage, printWith, selectedText, type ArticleScope } from "./commands";
 import { favorites, pageTitle } from "./favorites";
 import { useHistoryButtons } from "./history";
 
-export const FEATURES: { to: string; label: string }[] = [
-  { to: "/kids", label: "Encarta Kids" },
-  { to: "/dictionary", label: "Dictionary" },
-  { to: "/thesaurus", label: "Thesaurus" },
-  { to: "/translate", label: "Translations" },
-  { to: "/atlas", label: "World Atlas" },
-  { to: "/timeline", label: "Timeline" },
-  { to: "/media", label: "Media Gallery" },
-  { to: "/tours", label: "3D Virtual Tours" },
-  { to: "/search", label: "Search" },
-  { to: "/games/geoquiz", label: "Geography Quiz" },
-  { to: "/games", label: "Games & Quizzes" },
-];
-
-/** Rebuilt from data on the disc that Encarta 2009 itself no longer opens (docs/games.md). */
-export const EXTRAS: { to: string; label: string }[] = [
-  { to: "/games/mindmaze", label: "MindMaze" },
-  { to: "/games/city-climate", label: "City Climate" },
-  { to: "/games/population", label: "Population Chart" },
-];
-
 /** How many favorites the menu lists (Organize Favorites shows them all). */
 export const FAVORITES_IN_MENU = 20;
-
-function FeaturesMenu() {
-  const entries = (): MenuEntry[] => [
-    ...FEATURES.map((f) => ({ label: f.label, to: f.to, key: f.to })),
-    { heading: true, label: "Extras", key: "extras" },
-    ...EXTRAS.map((f) => ({ label: f.label, to: f.to, key: f.to })),
-  ];
-  return (
-    <MenuButton
-      className="features"
-      buttonClassName="features-btn"
-      menuClassName="features-menu"
-      ariaLabel="Features"
-      label={
-        <>
-          <span>
-            Feat<u>u</u>res
-          </span>{" "}
-          <Icon name="chevron" size={12} />
-        </>
-      }
-      entries={entries}
-    />
-  );
-}
 
 /** Encarta's menu bar: File, Edit, Favorites, Help. */
 export function MenuBar() {
@@ -67,13 +25,46 @@ export function MenuBar() {
     setNote(msg);
     window.setTimeout(() => setNote(""), 2500);
   };
-  const file = (): MenuEntry[] => [{ label: "Print…", shortcut: "Ctrl+P", onSelect: printPage }];
+  const [dialog, setDialog] = useState<null | "options" | "print" | "copy">(null);
+  const isArticle = () => location.pathname.startsWith("/item/") && !!document.querySelector(".art-text");
+  const print = () => (isArticle() ? setDialog("print") : printPage());
+  const copy = () => {
+    if (isArticle()) setDialog("copy");
+    else void copySelection(pageTitle(document.title)).then((ok) => flash(ok ? "Copied, with its source." : "Nothing was copied."));
+  };
+  useEffect(() => {
+    const on = (name: string, fn: () => void) => {
+      window.addEventListener(name, fn);
+      return () => window.removeEventListener(name, fn);
+    };
+    const offs = [on(OPTIONS_EVENT, () => setDialog("options")), on(PRINT_EVENT, print), on(COPY_EVENT, copy)];
+    return () => offs.forEach((f) => f());
+  });
+  const choose = (kind: "print" | "copy", scope: ArticleScope) => {
+    setDialog(null);
+    const title = pageTitle(document.title);
+    if (kind === "print") window.setTimeout(() => printWith(scope, title), 50);
+    else void copyScope(scope, title).then((ok) => flash(ok ? "Copied, with its source." : "Nothing was copied."));
+  };
+  const file = (): MenuEntry[] => [
+    { heading: true, label: "Go to", key: "goto" },
+    { label: "Home", to: "/", shortcut: "Alt+Home", key: "g-home" },
+    { label: "World Atlas", to: "/atlas", shortcut: "Ctrl+M", key: "g-atlas" },
+    { label: "Dictionary", to: "/dictionary", shortcut: "Ctrl+D", key: "g-dict" },
+    { label: "Timeline", to: "/timeline", shortcut: "Ctrl+T", key: "g-tl" },
+    { label: "Geography Quiz", to: "/games/geoquiz", shortcut: "Ctrl+Q", key: "g-quiz" },
+    { label: "Games & Fun Stuff", to: "/games", key: "g-games" },
+    { separator: true, key: "sep1" },
+    { label: "Print…", shortcut: "Ctrl+P", onSelect: print },
+    { label: "Options…", shortcut: "Ctrl+O", onSelect: () => setDialog("options") },
+  ];
   const edit = (): MenuEntry[] => [
     {
       label: "Copy",
-      disabled: !selectedText().trim(),
-      onSelect: () => void copySelection(pageTitle(document.title)).then((ok) => flash(ok ? "Copied, with its source." : "Nothing was copied.")),
+      disabled: !selectedText().trim() && !location.pathname.startsWith("/item/"),
+      onSelect: copy,
     },
+    { label: "Read Aloud", disabled: true, key: "read-aloud" },
     { label: "Find in Article…", shortcut: "Ctrl+F", disabled: !location.pathname.startsWith("/item/"), onSelect: openFind },
   ];
   const favs = (): MenuEntry[] => {
@@ -94,6 +85,7 @@ export function MenuBar() {
     ];
   };
   const help = (): MenuEntry[] => [
+    { label: "Help", onSelect: () => navigate("/help"), key: "help" },
     { label: "Keyboard Shortcuts", onSelect: () => navigate("/help#keys") },
     { label: "About This Encarta", onSelect: () => navigate("/help") },
   ];
@@ -106,6 +98,13 @@ export function MenuBar() {
       <span className="menubar-note" role="status" aria-live="polite">
         {note}
       </span>
+      {dialog === "options" && <OptionsDialog onClose={() => setDialog(null)} />}
+      {dialog === "print" && (
+        <ScopeDialog title="Print Options" action="Print" choices={PRINT_CHOICES} hasSelection={!!selectedText().trim()} onChoose={(sc) => choose("print", sc)} onCancel={() => setDialog(null)} />
+      )}
+      {dialog === "copy" && (
+        <ScopeDialog title="Copy Options" action="Copy" choices={COPY_CHOICES} hasSelection={!!selectedText().trim()} onChoose={(sc) => choose("copy", sc)} onCancel={() => setDialog(null)} />
+      )}
     </div>
   );
 }
@@ -133,6 +132,7 @@ export function NavButtons({ homeTo = "/" }: { homeTo?: string }) {
 export function Shell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const home = location.pathname === "/";
+  useShortcuts();
   return (
     <div className={`shell${home ? " shell-home" : ""}`}>
       <a className="skip-link" href="#content">

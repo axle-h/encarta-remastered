@@ -124,6 +124,12 @@ async fn content_endpoints() {
     assert_eq!(song["kind"], "audio");
     assert_eq!(song["credit"], "Synthetic Records");
     assert_eq!(song["files"].as_array().unwrap().len(), 0);
+    // A catalog name found on the disc under another name (manifest `atlas_file`) resolves.
+    let (_, dusk) = json(&app, "/api/item/802").await;
+    assert_eq!(dusk["files"][0]["url"], "/media/file/yy000002.jpg", "{dusk}");
+    assert_eq!(dusk["files"][0]["media"]["sha256"], common::SHA_JPG);
+    assert_eq!(get(&app, "/media/file/yy000002.jpg").await.status(), 200);
+    assert_eq!(get(&app, "/media/file/zz000801.wav").await.status(), 404);
     assert_eq!(json(&app, "/api/quiz/7").await.1["quiz"]["q"], 1);
     let (_, ia) = json(&app, "/api/interactive/ZZ.IAX").await;
     assert_eq!(ia["definition"]["@id"], "zz");
@@ -286,6 +292,23 @@ async fn search_suggest_spell() {
     assert_eq!(r["mode"], "any");
     let (_, r) = json(&app, "/api/search?q=strpes").await;
     assert_eq!(r["did_you_mean"], "stripes");
+    // Index terms: a result of their own (first when no item has that title) and an alias of the
+    // items they point to.
+    let (_, r) = json(&app, "/api/search?q=hippotigris").await;
+    let hits = r["hits"].as_array().unwrap();
+    assert_eq!(hits.len(), 3, "{r}");
+    assert_eq!(hits[0]["ref_id"], INDEX_TERM, "{r}");
+    assert_eq!(hits[0]["kind"], "index-term");
+    assert!(hits[0]["snippet_html"].as_str().unwrap().starts_with("Index: 2 entries"));
+    assert!(hits.iter().any(|h| h["ref_id"] == ZEBRA) && hits.iter().any(|h| h["ref_id"] == HORSE));
+    let (s, t) = json(&app, &format!("/api/index-term/{INDEX_TERM}")).await;
+    assert_eq!(s, 200, "{t}");
+    assert_eq!(t["title"], "Hippotigris");
+    assert_eq!(t["editions"][0], "deluxe");
+    assert_eq!(t["entries"].as_array().unwrap().len(), 2);
+    assert_eq!(t["entries"][0]["ref"], ZEBRA);
+    assert_eq!(t["entries"][0]["para"], 2);
+    assert_eq!(json(&app, "/api/index-term/100").await.0, 404);
 
     let (_, s) = json(&app, "/api/suggest?q=ze").await;
     assert_eq!(s["suggestions"][0]["ref_id"], ZEBRA, "{s}");

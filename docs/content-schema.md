@@ -388,6 +388,18 @@ record. Current result: **0 unexplained ids, 0 unaccounted records, 0 unexplaine
 0 character problems.** String catalog keys are classified (sidebar XML → article, quiz/interactive →
 JSON tables, everything else → media converter via `baggage`/`item_file.file_name`).
 
+### 10.1 Records without content of their own
+
+Checked against everything the disc has (every DATA/CONT/REL record, the catalogs, the media manifest's file names
+and stems, `.iax` definitions, quizzes, the search exports and P2MTBL):
+
+| records | outcome |
+|---|---|
+| `audio` items without a sound file: 1,100 | **17 recovered**: their sound is a slide or clip inside an interactive, whose definition names it by the item's id in hex (`audiorefid="29D02BC1"` = 701508545, next to `audiofile`). The converter adds that file to `item_file` (role `audio`, raw path `iax:<definition>`; report count `audio.from_interactive`): the ten "Sept. 11th ASD" slides (`000a3efc.iax`) and seven Kids sound clips ("Did You Hear That?", `00175545.iax`). The other **1,083 are empty on the disc**: untitled, only the generic `audio.gif/.jtn/.jsm` icons, no children, no associations (three "Photography" records are listed in an interactive with no sounds), and no file, catalog key or `.iax` reference carries their id |
+| `unclassified` (`group="TBD"`): 617 | **Empty on the disc**: no `files` element, no children; 339 have no title and the rest a working caption ("Names and formulas of Selected Ions"). Articles associate them (641 forward rows, group `TBD`) section by section with the inline pictures (`inlinebmp` → `<id>.gif`, THUMBSTD) of that section, which the body draws; the counts agree in 80 of 252 sections, so the record ↔ picture pairing is not recoverable beyond that and the records stay empty |
+| tour hotspots titled `TBD`: 158 (151 of them in the parity count) | **Empty on the disc**: `virttour` nodes with an `x`/`y` and an empty `destmedia`, no files, no children, no parent; nothing else names them |
+| index terms (DATAF): 180,545 | used by search (api.md "Search"): each term is a result that expands to its entries (`/api/index-term/{id}`), and an alias of the items it points to when it has at most 30 of them (170,159 terms, 867,302 aliases). Encarta 2009 has no index browser (VM) |
+
 ## 11. Open questions for the VM
 
 Answered by the VM captures (`docs/vm-findings.md`): the alternative title (§2, §8), the Specialty and

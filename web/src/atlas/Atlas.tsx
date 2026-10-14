@@ -108,6 +108,12 @@ export interface AtlasProps {
   quizMode?: boolean;
   /** Every click on the map, with the places under the point (in the hit list's order). */
   onPlaceClick?: (hits: HitPlace[], lngLat: { lat: number; lon: number }) => void;
+  /** Move the view to this box (`[[west, south], [east, north]]`) or point (with `zoom`); a new object each time re-centres. */
+  focus?: { lat: number; lon: number; bounds?: [[number, number], [number, number]]; zoom?: number; maxZoom?: number; instant?: boolean } | null;
+  /** A target ring at this point (e.g. a quiz city). */
+  markerAt?: { lat: number; lon: number } | null;
+  /** Dragging pans the map (default true); false is the quiz's pointer tool. */
+  dragPan?: boolean;
   /** Base URL of `out/atlas/` (default `/out/atlas`). */
   dataUrl?: string;
   /** Base URL of the JSON API (default `/api`). */
@@ -179,6 +185,9 @@ export function Atlas({
   highlightColor = "#ffd400",
   quizMode = false,
   onPlaceClick,
+  focus,
+  markerAt,
+  dragPan = true,
   dataUrl,
   apiUrl,
   className,
@@ -719,6 +728,35 @@ export function Atlas({
     [toMapLat],
   );
 
+  useEffect(() => {
+    const map = mapReady;
+    if (!map || !focus) return;
+    const duration = focus.instant ? 0 : 900;
+    const lat = (v: number) => toMapLat(v);
+    if (focus.bounds) {
+      const [[w, so], [e, n]] = focus.bounds;
+      map.fitBounds([[w, lat(so)], [e, lat(n)]], { padding: 48, maxZoom: focus.maxZoom ?? 5.5, duration });
+    } else map.flyTo({ center: [focus.lon, lat(focus.lat)], zoom: focus.zoom ?? 3.6, duration });
+  }, [focus, mapReady, toMapLat]);
+
+  useEffect(() => {
+    const map = mapReady;
+    if (!map) return;
+    if (dragPan) map.dragPan.enable();
+    else map.dragPan.disable();
+  }, [dragPan, mapReady]);
+
+  useEffect(() => {
+    const map = mapReady;
+    if (!map || !markerAt) return;
+    const el = document.createElement("div");
+    el.className = "enc-atlas-target";
+    const m = new maplibregl.Marker({ element: el }).setLngLat([markerAt.lon, toMapLat(markerAt.lat)]).addTo(map);
+    return () => {
+      m.remove();
+    };
+  }, [markerAt, mapReady, toMapLat, projection]);
+
   const goToPlace = useCallback(
     (p: PlaceHit) => {
       setSelected(p.entity);
@@ -817,20 +855,20 @@ export function Atlas({
               {title.subtitle && !quizMode && <span className="enc-atlas-title__sub">{title.subtitle}</span>}
             </div>
             <div className="enc-atlas-toolbar">
-              <button
+              {!quizMode && <button
                 type="button"
                 className="enc-atlas-btn enc-atlas-btn--primary"
-                disabled={!titleArticle || quizMode}
+                disabled={!titleArticle}
                 onClick={() => titleArticle && title.entity !== undefined && open(titleArticle, title.entity, title.title)}
               >
                 Read Article
-              </button>
-              <button type="button" className="enc-atlas-btn" aria-pressed={panel === "legend"} onClick={() => setPanel(panel === "legend" ? null : "legend")}>
+              </button>}
+              {!quizMode && <button type="button" className="enc-atlas-btn" aria-pressed={panel === "legend"} onClick={() => setPanel(panel === "legend" ? null : "legend")}>
                 Map Legend
-              </button>
-              <button type="button" className="enc-atlas-btn" aria-pressed={panel === "customizer"} onClick={() => setPanel(panel === "customizer" ? null : "customizer")}>
+              </button>}
+              {!quizMode && <button type="button" className="enc-atlas-btn" aria-pressed={panel === "customizer"} onClick={() => setPanel(panel === "customizer" ? null : "customizer")}>
                 Map Customizer
-              </button>
+              </button>}
               <div className="enc-atlas-zoom" role="group" aria-label="Zoom">
                 <button type="button" aria-label="Zoom out" onClick={() => zoomTo(zoom - 1)}>
                   −
@@ -852,14 +890,14 @@ export function Atlas({
                   {formatAltitude(altitude)}
                 </span>
               </div>
-              <div className="enc-atlas-seg" role="group" aria-label="View">
+              {!quizMode && <div className="enc-atlas-seg" role="group" aria-label="View">
                 <button type="button" aria-pressed={projection === "globe"} onClick={() => setProjection("globe")}>
                   Globe
                 </button>
                 <button type="button" aria-pressed={projection === "flat"} onClick={() => setProjection("flat")}>
                   Flat
                 </button>
-              </div>
+              </div>}
               {!quizMode && <SearchBox ep={ep} body={body} onPick={goToPlace} />}
             </div>
           </div>
@@ -960,12 +998,12 @@ export function Atlas({
               </Panel>
             )}
           </div>
-          <aside className="enc-atlas-side">
+          {!quizMode && <aside className="enc-atlas-side">
             {index && <StylePicker ep={ep} index={index} current={entry} onPick={pickStyle} />}
             <button type="button" className="enc-atlas-btn enc-atlas-about-btn" onClick={() => setPanel(panel === "about" ? null : "about")}>
               About this Map
             </button>
-          </aside>
+          </aside>}
         </div>
         {isStatistical && (
           <StatsPanel index={statsIndex} error={statsError} indicator={indicator} values={statValues} colours={statColours} hoverCountry={hoverCountry} onChoose={chooseStat} />

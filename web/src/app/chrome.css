@@ -1,0 +1,255 @@
+/* Features flyout, Options / print dialogs, article text size and print scopes (app/). */
+.features-flyout {
+  width: 292px;
+  min-width: 292px;
+  max-width: 292px;
+  top: calc(100% + 8px);
+  padding: 8px 0 6px;
+  overflow: visible;
+  max-height: none;
+  background: linear-gradient(#e2f0d9, #fff);
+  border-radius: 6px;
+}
+
+.features-flyout ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ff-heading {
+  margin: 4px 12px 2px;
+  color: #5b9510;
+  font: bold 15px var(--ui);
+}
+
+.features-flyout a,
+.features-flyout button {
+  display: flex;
+  justify-content: space-between;
+  width: calc(100% - 16px);
+  margin: 0 8px;
+  padding: 3px 10px 3px 26px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font: 13px var(--ui);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.features-flyout a:hover,
+.features-flyout a:focus,
+.features-flyout button:hover,
+.features-flyout button:focus,
+.features-flyout .ff-more button[aria-expanded="true"] {
+  background: #5b9510;
+  color: #fff;
+  outline: none;
+}
+
+.ff-more {
+  position: relative;
+}
+
+.ff-sub {
+  position: absolute;
+  top: -6px;
+  left: 100%;
+  z-index: 61;
+  width: 292px;
+  padding: 6px 0;
+  background: linear-gradient(#e2f0d9, #fff);
+  border: 1px solid #b9b8b0;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+
+.ff-browse {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px solid #c9dfb8;
+}
+
+.features-flyout .ff-browse a {
+  padding-left: 16px;
+  color: #5b9510;
+  font: 14px Tahoma, var(--ui);
+}
+
+.features-flyout .ff-browse a:hover,
+.features-flyout .ff-browse a:focus {
+  color: #fff;
+}
+
+/* Dialogs: white, #C6D7EF rules, #7396BD accents (Options and the print/copy dialogs). */
+.dlg-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.dlg {
+  box-sizing: border-box;
+  width: min(676px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  padding: 16px 20px;
+  background: #fff;
+  border: 1px solid #424142;
+  font: 13px var(--ui);
+  color: #21304a;
+}
+
+.dlg-title {
+  margin: 0 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #c6d7ef;
+  font: normal 22px var(--ui);
+  color: #c6d7ef;
+}
+
+.dlg-title b {
+  font-weight: normal;
+  color: #7396bd;
+}
+
+.dlg-group {
+  margin: 0 0 10px;
+  padding: 6px 0 0;
+  border: 0;
+  border-top: 1px solid #c6d7ef;
+}
+
+.dlg-group legend {
+  padding: 0 6px 0 0;
+  color: #21304a;
+  font-weight: bold;
+}
+
+.dlg-group label {
+  display: block;
+  padding: 2px 0 2px 8px;
+}
+
+.dlg-disabled {
+  color: #9a9a9a;
+}
+
+.dlg-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.dlg-buttons button,
+.dlg-group button {
+  min-width: 72px;
+  padding: 3px 12px;
+  border: 1px solid #7396bd;
+  border-radius: 3px;
+  background: #fff;
+  color: #21304a;
+  font: inherit;
+  cursor: pointer;
+}
+
+.dlg-buttons button:hover,
+.dlg-group button:hover {
+  background: #c6d7ef;
+}
+
+.opt {
+  display: flex;
+  gap: 16px;
+  height: 411px;
+  max-width: 676px;
+}
+
+.opt-pages {
+  flex: none;
+  box-sizing: border-box;
+  width: 170px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: #f7fbff;
+  border: 1px solid #424142;
+  align-self: stretch;
+}
+
+.opt-pages button {
+  display: block;
+  width: 100%;
+  padding: 5px 10px;
+  border: 0;
+  background: none;
+  color: #21304a;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.opt-pages button.on {
+  background: #7396bd;
+  color: #fff;
+}
+
+.opt-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.opt-body .dlg-buttons {
+  margin-top: auto;
+}
+
+/* Article text size (Options > General). */
+html[data-text-size="small"] .art-text {
+  font-size: calc(1em * 0.9);
+}
+
+html[data-text-size="large"] .art-text {
+  font-size: calc(1em * 1.2);
+}
+
+.print-copyright,
+.print-selection {
+  display: none;
+}
+
+@media print {
+  .dlg-backdrop {
+    display: none !important;
+  }
+
+  .print-copyright {
+    display: block;
+    margin-top: 16pt;
+    font-size: 9pt;
+  }
+
+  html[data-print-scope="text"] .art-strip,
+  html[data-print-scope="text"] .art-side,
+  html[data-print-scope="text"] .enc-media,
+  html[data-print-scope="text"] .art-text img {
+    display: none !important;
+  }
+
+  html[data-print-scope="selection"] .shell {
+    display: none !important;
+  }
+
+  html[data-print-scope="selection"] .print-selection {
+    display: block;
+  }
+}

@@ -210,6 +210,12 @@ pub fn run(paths: &Paths) -> Result<()> {
     let Ctx { mut rep, sink, .. } = cx;
     drop(sink);
     let counts = writer.finish()?;
+    // Audio records whose sound is inside an interactive (content-schema §10).
+    {
+        let conn = rusqlite::Connection::open(&tmp)?;
+        let n = extras::interactive_audio(&conn)?;
+        rep.counts.insert("audio.from_interactive".into(), n as u64);
+    }
     std::fs::rename(&tmp, &final_path)?;
     rep.finish(&inventory, &counts, t0.elapsed().as_secs_f64());
     let dir = paths.out.join("report");

@@ -167,3 +167,19 @@ describe("GeoQuiz start dialog", () => {
     expect(screen.getByText(/enter your name and choose your level of difficulty/)).toBeTruthy();
   });
 });
+
+describe("GeoQuiz scores dialog", () => {
+  it("shows the result with Exit and Try Again", async () => {
+    URL.createObjectURL ??= () => "blob:test";
+    const { ScoresDialog } = await import("./geoquiz/GeoQuiz");
+    const again = vi.fn();
+    render(
+      <ScoresDialog name="Ann" level={null} score={42} max={100} right={9} total={20} table={[{ name: "Ann", score: 42, level: 1, date: 0 }]} onAgain={again} onExit={() => undefined} />,
+    );
+    expect(screen.getByRole("dialog", { name: "Geography Quiz - Scores" })).toBeTruthy();
+    expect(screen.getAllByText("42").length).toBeGreaterThan(0);
+    screen.getByText("Try Again").click();
+    expect(again).toHaveBeenCalled();
+    expect(screen.getByText("Exit")).toBeTruthy();
+  });
+});

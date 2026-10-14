@@ -143,11 +143,24 @@ pub fn resolve_sha(conn: &Connection, name: &str, edition: &str) -> rusqlite::Re
     if sha.is_some() {
         return Ok(sha);
     }
-    conn.prepare_cached(
-        "SELECT sha256 FROM m.file WHERE name = ?1 ORDER BY ((container LIKE 'EE/KIDS/%') = (?2 = 'kids')) DESC LIMIT 1",
-    )?
-    .query_row(rusqlite::params![key, edition], |r| r.get(0))
-    .optional()
+    let sha = conn
+        .prepare_cached(
+            "SELECT sha256 FROM m.file WHERE name = ?1 ORDER BY ((container LIKE 'EE/KIDS/%') = (?2 = 'kids')) DESC LIMIT 1",
+        )?
+        .query_row(rusqlite::params![key, edition], |r| r.get(0))
+        .optional()?;
+    if sha.is_some() {
+        return Ok(sha);
+    }
+    // The atlas's photos and sounds under their MSWORLD.ITR catalog names, found on the disc
+    // under other names (media.md §7; table written by `encarta-convert atlas-media`).
+    let has: bool = conn
+        .prepare_cached("SELECT EXISTS(SELECT 1 FROM m.sqlite_master WHERE type = 'table' AND name = 'atlas_file')")?
+        .query_row([], |r| r.get(0))?;
+    if !has {
+        return Ok(None);
+    }
+    conn.prepare_cached("SELECT sha256 FROM m.atlas_file WHERE name = ?1 AND sha256 IS NOT NULL")?.query_row([key], |r| r.get(0)).optional()
 }
 
 pub fn media_info(conn: &Connection, sha: &str) -> rusqlite::Result<Option<MediaInfo>> {

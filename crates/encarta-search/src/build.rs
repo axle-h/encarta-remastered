@@ -72,6 +72,9 @@ pub struct BuildStats {
     pub items_by_category: std::collections::BTreeMap<String, u64>,
     pub suggest_entries: usize,
     pub suggest_keys: usize,
+    /// DATAF index terms used as aliases, and the (term, item) aliases they added.
+    pub index_terms: u64,
+    pub index_term_aliases: u64,
     pub spell_words: usize,
     pub index_bytes: u64,
     pub total_bytes: u64,
@@ -230,6 +233,11 @@ impl IndexBuilder {
             }
         });
         Ok(())
+    }
+
+    pub fn set_index_terms(&mut self, terms: u64, aliases: u64) {
+        self.stats.index_terms = terms;
+        self.stats.index_term_aliases = aliases;
     }
 
     pub fn stats(&self) -> &BuildStats {

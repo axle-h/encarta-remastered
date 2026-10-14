@@ -572,3 +572,104 @@ mod tests {
         assert_eq!(timeline_prominence(0), 0);
     }
 }
+
+// ---- audio records whose sound is inside an interactive ----------------------------------
+
+/// Pairs `(ref_id, file)` from an interactive's definition: a slide's `audiorefid` is the content
+/// id of its sound in hex (`29D02BC1` = 701508545) next to the file the player loads (`audiofile`).
+pub fn iax_audio_refs(def: &Value, out: &mut Vec<(i64, String)>) {
+    match def {
+        Value::Object(o) => {
+            let id = o.iter().find(|(k, _)| k.eq_ignore_ascii_case("audiorefid")).and_then(|(_, v)| v.as_str());
+            let file = o.iter().find(|(k, _)| k.eq_ignore_ascii_case("audiofile")).and_then(|(_, v)| match v {
+                Value::String(s) => Some(s.as_str()),
+                Value::Object(f) => f.get("value").and_then(Value::as_str),
+                _ => None,
+            });
+            if let (Some(id), Some(file)) = (id, file)
+                && id.len() == 8
+                && let Ok(n) = i64::from_str_radix(id, 16)
+                && !file.trim().is_empty()
+            {
+                out.push((n, file.trim().to_string()));
+            }
+            o.values().for_each(|v| iax_audio_refs(v, out));
+        }
+        Value::Array(a) => a.iter().for_each(|v| iax_audio_refs(v, out)),
+        _ => {}
+    }
+}
+
+/// `audio` items with no sound file of their own whose sound an interactive names (the slides of
+/// a narrated slide show, the clips of a sound game): adds their `audio` file (raw path
+/// `iax:<definition>`) to `item_file`. Runs on the finished database; returns the items fixed.
+pub fn interactive_audio(conn: &rusqlite::Connection) -> Result<usize> {
+    let stubs: std::collections::HashSet<i64> = conn
+        .prepare(
+            "SELECT ref_id FROM item i WHERE kind = 'audio'
+             AND NOT EXISTS (SELECT 1 FROM item_file f WHERE f.ref_id = i.ref_id AND f.role = 'audio')",
+        )?
+        .query_map([], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut found: std::collections::BTreeMap<i64, (String, String)> = Default::default();
+    let mut st = conn.prepare("SELECT file_name, json FROM interactive ORDER BY edition = 'deluxe' DESC, file_name")?;
+    for row in st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+        let (iax, j) = row?;
+        let mut refs = Vec::new();
+        iax_audio_refs(&serde_json::from_str(&j).unwrap_or(Value::Null), &mut refs);
+        for (id, file) in refs {
+            if stubs.contains(&id) {
+                found.entry(id).or_insert((file.to_ascii_lowercase(), iax.clone()));
+            }
+        }
+    }
+    let mut ins = conn.prepare(
+        "INSERT INTO item_file (ref_id, ordinal, role, file_name, raw_path)
+         VALUES (?1, (SELECT COALESCE(MAX(ordinal), -1) + 1 FROM item_file WHERE ref_id = ?1), 'audio', ?2, ?3)",
+    )?;
+    for (id, (file, iax)) in &found {
+        ins.execute(rusqlite::params![id, file, format!("iax:{iax}")])?;
+    }
+    Ok(found.len())
+}
+
+#[cfg(test)]
+mod iax_audio_tests {
+    use super::*;
+
+    #[test]
+    fn finds_slide_sounds_by_hex_id() {
+        let def = json!({ "slides": { "slide": [
+            { "standardslide": { "audiofile": "000A3F0B.mp3", "audiorefid": "29D02BC1", "imagerefid": "00000001" } },
+            { "standardslide": { "audiofile": { "value": "B.mp3" }, "audioRefId": "0000000A" } },
+            { "standardslide": { "audiofile": "", "audiorefid": "0000000B" } },
+            { "standardslide": { "audiofile": "c.mp3", "audiorefid": "xyz" } } ] } });
+        let mut out = Vec::new();
+        iax_audio_refs(&def, &mut out);
+        assert_eq!(out, vec![(701508545, "000A3F0B.mp3".to_string()), (10, "B.mp3".to_string())]);
+    }
+
+    #[test]
+    fn adds_the_file_to_stub_items_only() {
+        let c = rusqlite::Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE item (ref_id INTEGER PRIMARY KEY, kind TEXT);
+             CREATE TABLE item_file (ref_id INTEGER, ordinal INTEGER, role TEXT, file_name TEXT, raw_path TEXT, width INTEGER, height INTEGER, src_ref_id INTEGER, disc INTEGER, package_file TEXT);
+             CREATE TABLE interactive (file_name TEXT, edition TEXT, package TEXT, control_type TEXT, title TEXT, json TEXT);
+             INSERT INTO item VALUES (10, 'audio'), (11, 'audio'), (12, 'media');
+             INSERT INTO item_file (ref_id, ordinal, role, file_name) VALUES (10, 0, 'thumb', 'audio.jtn'), (11, 0, 'audio', 'own.wma');
+             INSERT INTO interactive VALUES ('x.iax', 'deluxe', 'SW', 'slideshow', 'X',
+               '{\"s\":[{\"audiofile\":\"A.MP3\",\"audiorefid\":\"0000000A\"},{\"audiofile\":\"b.mp3\",\"audiorefid\":\"0000000B\"},{\"audiofile\":\"c.mp3\",\"audiorefid\":\"0000000C\"}]}');",
+        )
+        .unwrap();
+        assert_eq!(interactive_audio(&c).unwrap(), 1);
+        let rows: Vec<(i64, i64, String, String)> = c
+            .prepare("SELECT ref_id, ordinal, file_name, raw_path FROM item_file WHERE role = 'audio' AND raw_path IS NOT NULL")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(rows, vec![(10, 1, "a.mp3".to_string(), "iax:x.iax".to_string())]);
+    }
+}

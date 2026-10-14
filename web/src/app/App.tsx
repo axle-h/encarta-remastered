@@ -16,6 +16,8 @@ import { KidsShell } from "../kids/KidsShell";
 import { KidsHome } from "../kids/KidsHome";
 import { MediaViewerProvider } from "../media/MediaViewer";
 import { Shell } from "./Shell";
+import { SettingsProvider } from "../settings/settings";
+import "./chrome.css";
 
 import { AtlasLazy, type AtlasModuleProps, type AtlasView } from "./atlasModule";
 
@@ -119,6 +121,7 @@ function Kids() {
 
 export function App() {
   return (
+    <SettingsProvider>
     <Routes>
       <Route element={<Adult />}>
         <Route index element={<HomePage />} />
@@ -151,5 +154,6 @@ export function App() {
         <Route path="*" element={<Navigate to="/kids" replace />} />
       </Route>
     </Routes>
+    </SettingsProvider>
   );
 }

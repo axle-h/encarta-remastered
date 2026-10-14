@@ -7,6 +7,7 @@ import type {
   DictEntry,
   DictLookupResponse,
   DictionaryInfo,
+  IndexTerm,
   Edition,
   Interactive,
   Item,
@@ -89,6 +90,8 @@ export const api = {
   article: (id: number | string, edition?: Edition, s?: AbortSignal) =>
     getJson<Article>(`/api/article/${id}${query({ edition: ed(edition) })}`, s),
   place: (gid: number | string, s?: AbortSignal) => getJson<PlaceResponse>(`/api/place/${gid}`, s),
+  indexTerm: (id: number | string, edition?: Edition, s?: AbortSignal) =>
+    getJson<IndexTerm>(`/api/index-term/${id}${query({ edition: ed(edition) })}`, s),
   search: (
     p: { q: string; kind?: string; edition?: Edition; limit?: number; offset?: number },
     s?: AbortSignal,

@@ -250,8 +250,8 @@ with it when the last word is a prefix.
 Facets ignore the `kind`/`edition` filters so they can label tabs.
 
 How the index works (`crates/encarta-search`): one tantivy index with an *item* document per searchable item
-(articles, media, maps, quotations, timeline events, sidebars, web links, every dictionary/thesaurus/bilingual
-entry; not index terms or home-screen pages) and a *paragraph* document per article paragraph. Items are ranked
+(articles, media, maps, quotations, timeline events, sidebars, web links, index terms, every
+dictionary/thesaurus/bilingual entry; not home-screen pages) and a *paragraph* document per article paragraph. Items are ranked
 by BM25 over title (×4), PFX aliases (×2.5), section headings (×1.5) and text, plus a constant bonus when the
 whole query equals a title or whole-title alias (30), a smaller one (20) when a title starts with the query whose last
 word is a prefix, phrase bonuses (a phrase-prefix one on titles), and a static prior (category weight × inbound
@@ -259,6 +259,23 @@ cross-references; Kids-only items ×0.6 so Premium wins unless `edition=kids`). 
 second query restricted to the hits, earlier paragraphs winning ties. Text is lower-cased, accent-folded and
 English-stemmed ("Zebras" finds "zebra"). A partly typed last word also matches the 24 most frequent indexed terms
 of each field that start with it (unstemmed, folded), each scored by BM25 with the field's boost.
+
+**Index terms** (DATAF, content-schema §4, §10.1) are hits of kind `index-term` (category `other`, low prior), with the
+summary "Index: N entries — …". As in Encarta 2009 they are not pages: a client expands them in place with
+`/api/index-term/{id}`. A term is also an alias of each item it points to when it has at most 30 targets
+("Herpestidae" finds Mongoose), and a term with one target autocompletes to it. `out/report/search.json` counts them
+(`index_terms`, `index_term_aliases`).
+
+`GET /api/index-term/{id}[?edition=kids]` → an index term and its entries (`404` for other ids):
+```json
+{ "ref_id": 210000001, "title": "Herpestidae", "title_html": "Herpestidae", "editions": ["deluxe"],
+  "tree_editions": "STE,STC,DLX,STD",
+  "entries": [ { "title": ["mongoose"], "ref": 761574651, "group": "article", "para": 4, "pn": 1 },
+               { "title": ["quotations"], "children": [ { "title": […], "ref": 1861504632, "group": "quotation" } ] } ] }
+```
+`entries` are the children of the tree's root (the root is the term itself): tree nodes as in content-schema §4 (`ref` →
+`/item/{ref}#p{para}`; a node without `ref` is a subheading). The tree is the one whose editions include `DLX` (`KDC` with
+`edition=kids`), else another.
 
 `GET /api/suggest?q=zeb[&limit=10][&edition=kids][&kind=article]` → autocomplete over Encarta's word wheel:
 ```json
@@ -313,6 +330,9 @@ east, north, goto_km, importance, feature_type, context, class_name, classes: [�
   IAF player runs from here: `…/dswMedia/shared/players/IAFPlayer/base.swf` with `filePath=…/dswMedia/IAF/a/<id>/<id>.iax`.
   An `.iax` that is not in the tree (they live in `baggage/`) is resolved by its name. `POST` is answered like `GET`
   (Flash's `loadMovie` with variables posts them). Original bytes, same headers as `/media/file`.
+
+  The atlas's MSWORLD.ITR catalog names that are on the disc under another name resolve through the manifest's
+  `atlas_file` (media.md §7), after the catalog keys and file names.
 
   Folders in `name` are ignored (`/media/file/loose_media/dsv/t027282a.wmv` = `t027282a.wmv`); case does not
   matter. With `--extracted`, names the manifest does not know are read from the unpacked disc through the

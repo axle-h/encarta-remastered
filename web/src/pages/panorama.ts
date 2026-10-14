@@ -53,12 +53,21 @@ export function destOf(item: Pick<Item, "meta"> | undefined): number | null {
 }
 
 /**
- * Keeps a scroll offset inside the middle copy of a panorama drawn three times side by side, so
- * the view wraps around without a seam.
+ * A hotspot's `quadrant` (four points; 287 of 318 make a 10 × 24 box beside or inside its `shed`,
+ * 19 are 0 wide where the box was cut at the picture's right edge) as a marker rectangle, or null
+ * when malformed. Width is kept at least 4 and boxes wider than 60 (one record: 120,010) are dropped.
  */
-export function wrapScroll(left: number, width: number): number {
-  if (width <= 0) return left;
-  if (left < width * 0.5) return left + width;
-  if (left > width * 1.5) return left - width;
-  return left;
+export function quadrantRect(meta: Record<string, unknown> | undefined): Rect | null {
+  const q = meta?.quadrant;
+  if (!Array.isArray(q) || q.length < 2) return null;
+  const pts = q.map((p) => (Array.isArray(p) ? p.map(Number) : []));
+  if (pts.some((p) => p.length < 2 || p.some((v) => !Number.isFinite(v)))) return null;
+  const xs = pts.map((p) => p[0]!);
+  const ys = pts.map((p) => p[1]!);
+  const x0 = Math.min(...xs);
+  const y0 = Math.min(...ys);
+  const w = Math.max(...xs) - x0;
+  const h = Math.max(...ys) - y0;
+  if (w > 60 || h > 80 || h <= 0) return null;
+  return w >= 4 ? { x: x0, y: y0, w, h } : { x: x0 - 4, y: y0, w: 4, h };
 }

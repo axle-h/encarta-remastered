@@ -321,3 +321,51 @@ any-container 1, ambiguous 47, **unresolved 13** (files missing from the disc, e
 Director datasets: `encarta_formats::director::interactive::{city_climate, population_chart}` →
 `out/media/interactives/city_climate.json` and `population.json` (no data issues reported); listed under
 `interactives` in `media.json`.
+
+## 7. Atlas photos and sounds (`MSWORLD.ITR`)
+
+The atlas's own media catalog (`atlas_media` in `content.sqlite`, msworld.md §3: 4,775 pictures, 308 animal
+pictures, 330 sounds) names its files by catalog names (`14638.jpg`, `t090206a.wav`) that are mostly not file names
+on the disc. `encarta-convert atlas-media` (also the last step of `media`; needs `content.sqlite`; ~10 s;
+`src/media/atlas.rs`) looks for each one and writes the manifest table
+
+```sql
+atlas_file(name, role, ref_id, records, linked, sha256, resolution, via, score)
+  -- one row per catalog file name (main file `B` → role image/audio, thumbnail `P` → picon);
+  -- sha256 NULL = not on the disc; via = the disc name it was found under; linked = a P2MTBL place links a record
+```
+
+plus `out/report/atlas-media.json` (counts by kind × resolution, every crop match with its scores and box, and the
+list of what is absent). The server's `/media/file/{name}` consults `atlas_file` after the catalog keys and file
+names, so `/media/file/14638.jpg` serves the picture found. Resolution order:
+
+| resolution | rule |
+|---|---|
+| `catalog` | the name is a catalog key or file name |
+| `same-id` | a DATA item has the record's own id; its `image` (pictures) or `audio` (sounds) file |
+| `ext-variant` | same stem, another extension of the kind (`.wav` → `.wma`, `.jpg` → `.gif` …) |
+| `credit` | sounds: a DATA audio item whose credit names the same recording: first quoted title and the digits of `Cat.#` equal (`"Dance Tune" … LDX 274 752`) |
+| `thumbnail` | pictures: the 64-px pushpin (`MSWORLD.EIT/dtn/<stem>.dtn`) equals a disc thumbnail (`.jtn`/`.gtn`, 16×16 RGB means, RMS ≤ 10 on 0–255, next other picture ≥ 20); the picture is the image of the DATA item with that thumbnail |
+| `crop` | pictures: the pushpin is a square crop of the image of a DATA item with the same credit, photographer (credit before `/`) or title. Search over 10 crop sizes (30–100 % of the short side, step a tenth of the crop) and two refinements, grey 16×16 normalised correlation; accept when grey ≥ 0.93, colour (32×32 RGB, per-channel means removed) ≥ 0.85, crop ≥ 33 % of the short side and contrast ratio 0.7–1.4, and no other candidate within 0.03 shows a different picture |
+| `absent` | none of these |
+
+Thresholds were set on the 3,294 pictures whose catalog name is on the disc (their pushpin against their own picture:
+grey ≥ 0.92 for 95 %) and by eye on contact sheets of the matches (dtn │ matched crop │ picture). The pushpins are
+re-scans, often of another crop, so a looser rule matches different photos of the same subject by the same photographer;
+the contrast and ambiguity rules exist for those. A search over every picture on the disc (not only same-credit
+candidates) found about 15 further true matches among about 30 candidates, which this metadata-guided stage misses; it
+is not implemented (it needs a window bank of ~56 M crops).
+
+Result (records; linked = reachable from an atlas place):
+
+| kind | catalog | same-id | ext-variant | credit | thumbnail | crop | absent (linked) |
+|---|---|---|---|---|---|---|---|
+| picture (4,775) | 3,293 | 62 | 1 | — | 8 | 80 | 1,331 (875) |
+| animal picture (308) | 256 | 3 | — | — | 12 | 2 | 35 (35) |
+| sound (330) | — | 177 | — | 6 | — | — | 147 (146) |
+
+Of the records that have no DATA item of their own (the ones `/api/item` serves from `atlas_media`), the linked ones
+that showed only a pushpin went from 972 to 910 and the silent linked sounds from 152 to 146. What is absent is
+genuinely not on the disc: no file of that name or stem in any container of either edition (Kids copies included), no
+DATA item whose thumbnail, credit or title leads to a matching picture, and for the sounds no DATA audio item with the
+same recording; the 31 `proxy.jpg` and 9 `.swf` records are unlinked placeholders.

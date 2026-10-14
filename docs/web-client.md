@@ -36,6 +36,7 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
 | `/` | Premium home screen (home item 701712539: its links, logo, decoration and background) |
 | `/browse/{id}` | a category screen (`home-page` item, `grid`/`list` subgroups, separators with captions) |
 | `/item/{id}[#p{para}]` | any item: article reader, sidebar/media page, category screen, or redirect (Kids-only items go to `/kids/item`, tour items to `/tours/{tour}`) |
+| `/item/{tour}?scene=&yaw=` | a panoramic tour at a scene, looking at `yaw` degrees ([Panoramas](#panoramas)) |
 | `/item/{id}/media` | Show All Media for an article |
 | `/search?q=&kind=&offset=` | full search with category tabs (facets), did-you-mean and spelling fallback |
 | `/media?q=&type=` | Media Gallery: search restricted to multimedia, by item kind |
@@ -52,12 +53,13 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
 
 | path | role |
 |---|---|
-| `src/main.tsx`, `src/app/` | router, chrome (`Shell`: menu bar File/Edit/Favorites/Help, Back/Forward/Home orbs, Features menu, search, skip link), history button state, disc fonts (`fonts.ts`), Favorites store (`favorites.ts`), menu commands (`commands.ts`), lazy atlas (`atlasModule.tsx`) |
+| `src/main.tsx`, `src/app/` | router, chrome (`Shell`: menu bar File/Edit/Favorites/Help, Back/Forward/Home orbs, Features menu, search, skip link), history button state, disc fonts (`fonts.ts`), Favorites store (`favorites.ts`), menu commands (`commands.ts`: print and copy by scope, copyright line), Features flyout (`FeaturesMenu.tsx`, data in `featuresData.ts`: the VM's 3 groups, More flyouts and Browse all by content id), keyboard shortcuts (`shortcuts.ts`), print/copy scope dialog and Options dialog, lazy atlas (`atlasModule.tsx`); `src/settings/`: Options store (localStorage) |
 | `src/api/` | typed client for api.md (`client.ts`, in-memory cache, AbortSignal), `useApi` hook, response types |
 | `src/content/` | the content model of content-schema §8 (`model.ts`), React inline renderer (`Inlines.tsx`), link mapping |
 | `src/article/` | article reader: body renderer, layout rules (`layout.ts`), media column boxes, side panels, find bar, pronunciation |
 | `src/media/` | media viewer overlay, players (audio with captions, audio sets, video with WebVTT, MIDI), variant selection (`pick.ts`), MIDI reader and synth, Ruffle loader (`ruffle.ts`) and Flash interactives (`FlashPlayer.tsx`) |
 | `src/pages/` | home, browse, item dispatcher (+ `itemRoute.ts`: feature records, topic timelines, panoramas, Map Trek stops), views of the other item kinds (`ItemKinds.tsx`: web links, contributors, quotation authors, tour nodes, Map Trek, online features), panoramic tours (`PanoramaTour.tsx`, `panorama.ts`), search, media gallery, dictionary (+ `wordWheel.ts`), timeline (+ pure layout/date helpers), tours, favorites, help, atlas placeholder |
+| `src/panorama/` | the native panorama player ([Panoramas](#panoramas)): cylinder geometry, WebGL and Canvas 2D renderers, `PanoramaView`, parameters from the data, the image-SWF reader, single panoramas in the media viewer |
 | `src/components/Menu.tsx` | the accessible menu button (arrows, Home/End, Esc, ←/→ along a `menubar`) used by every menu |
 | `src/kids/` | Kids shell, home screen and article view |
 | `src/styles/` | CSS by area; tokens in `base.css` |
@@ -140,10 +142,73 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
   Ruffle: `base.swf` from `/media/disc/{edition}/dswMedia/shared/players/IAFPlayer/` with the FlashVar
   `filePath=/media/disc/{edition}/dswMedia/IAF/a/{id}/{id}.iax`. It reads the `.iax`, loads its control
   (`SlideShowControl.swf`, `MatchGame.swf` …), skins, `flashvr.swf` and the slide media from that tree by relative URL
-  (found by black-box observation of its requests). The player is created on open and removed on close.
+  (found by black-box observation of its requests). The player is created on open and removed on close. The 194
+  panorama interactives (DATA `subgroup="360"`, exactly the `.iax` files with a `vrslide`) are drawn by the native
+  panorama player instead ([Panoramas](#panoramas)); Ruffle remains their fallback.
 - Fonts: MS Reference Serif / Sans Serif are named first in the font stacks; when the server lists font files
   (`/api/meta` `fonts`, served from `out/fonts/`, which the content converter fills) `app/fonts.ts` declares the
   `REFSER*`/`REFSAN*` faces; without them the fallbacks (Lucida Bright/Georgia and Verdana/Tahoma/DejaVu Sans) are used.
+
+## Panoramas
+
+`src/panorama/` is our own cylindrical panorama player. It is used by the 16 panoramic tours (`/item/{tour}`,
+`pages/PanoramaTour.tsx`, 65 scenes) and by the single panoramas: the 151 `surround` items redirect to their
+interactive (`itemRoute.ts`), and the media viewer and the item page draw the 194 `subgroup="360"` interactives
+(167 `.iax` files, 152 Deluxe and 15 Kids) with `SinglePanorama` instead of the IAF Flash player.
+
+**Projection** (`geometry.ts`). The picture (W × H) lines the inside of a vertical cylinder of radius
+r = W / part (in radians). The viewer stands on the axis at the horizon row. A view is (yaw, f, shift): the picture
+angle at the view centre, in degrees from the picture's left edge; the focal length in view pixels; and a vertical
+image-plane shift, so verticals stay vertical and the horizon stays straight. View point (x, y), measured from the
+centre, sees angle = yaw + atan(x/f) and row = horizon + (y + shift)·r/√(x² + f²). The WebGL renderer evaluates this
+per pixel. The Canvas 2D fallback draws 2-pixel columns, each one picture column scaled vertically. It is used when
+WebGL or a texture of the picture's size is missing (the widest picture is 7645 px). Hotspots and labels are DOM
+elements placed with the inverse mapping on every frame.
+
+**Limits.** The view never shows past the picture's top or bottom: f ≥ H_view·r/H (the "fill" focal length), and
+the shift range follows from it. Zoom runs from the widest allowed view (the fill limit, and never wider than 120°)
+to `maxzoom` % of the opening view. A full turn (`part` = 360, every disc panorama) wraps; a partial one would clamp
+the yaw.
+
+**Where each parameter comes from**
+
+| parameter | single panoramas (`.iax` `vrdata/scene`, image SWF) | tour scenes (DATA scene record) |
+|---|---|---|
+| picture | the slide's `<image>` SWF (`/api/interactive` `refs` URL, else `dswMedia/IAF/a/{id}/`): its `DefineBitsJPEG2` JPEG. The size comes from the JPEG's SOF marker. All 167 are uncompressed SWF 5 files, 1200–7645 × 183–992 | the `surround` file (`.svj` JPEG). Its size comes from the media manifest's `original` variant, else `default/@width` |
+| horizon (eye level) | the image SWF's `DefineShape3` bitmap fill: the shape draws the JPEG at 1/10 scale (matrix scale 2 twips/px) with its origin on one row, horizon = −ty/sy. The SWF's DoAction also sets `scale = 0.1` and `offset` = (H/2 − horizon)·0.1; the two agree on 166 of the 167 (one has no `offset`). The row falls between 11 % and 91 % of the height and follows the subject: lavender field 11 %, Masada 19 %, Québec basilica ceiling 91 % | no field: the middle row *(ours)* |
+| cylinder height | derived: the picture height on a cylinder of radius W/(2π), so the picture covers atan(horizon/r) above and atan((H − horizon)/r) below eye level | same derivation |
+| angular width | `part` (360 on all 167) | 360 *(ours; the records have no field, and the pictures wrap seamlessly)* |
+| field of view | `fov`: the horizontal field of view of the `displaywidth` view, in degrees (80 on 150 scenes, 85/90/100 on 6). `AUTO` (11 scenes) = the fill limit. A value that would show past the picture opens at the fill limit | from the picture width: f ≈ W/2π px on a 624-px view (about 94° for W = 1824) *(VM: vm-findings.md › UI parity pass, Panoramas)* |
+| view size | `displaywidth` × `displayheight` (544 × 320–380; equal to the slide's `imagewidth`/`imageheight`), scaled to fit the page | 624 × 289, horizon on the middle row *(VM: vm-findings.md › UI parity pass, Panoramas)* |
+| opening yaw | `initangle`: degrees from the picture's left edge to the view centre (180 = the picture's middle, 103 of 167) | x = 0 at the view centre for every scene; `default/@panangle` only orients the site-map view wedge *(VM: vm-findings.md › UI parity pass, Panoramas)*. `lightangle` (always `panangle`/10) is unused |
+| zoom-in limit | `maxzoom` % of the opening view (200; one scene has 50, read as "no zoom-in") | 200 % *(ours)* |
+| vertical look | `tilt` (`on` everywhere) | on *(ours)* |
+| auto-pan | `auto` (3 everywhere), read as degrees per second *(ours: constant on the disc, so its unit cannot be derived)*. It runs when the panorama opens and stops at the first drag, key or button | on at open, 18.3 s per turn; a click pauses it and it resumes after 9.5 s; Tour Settings toggles it and the labels and hot spots *(VM: vm-findings.md › UI parity pass, Panoramas)* |
+| keyboard pan speed | `maxspeed` (50 everywhere), read as degrees per second at the opening zoom *(ours)* | 50 *(ours)* |
+| unused | `quality`, `interlace` (45; FlashVR's own rendering), `hsvisibility` (0; vrslides have no hotspots), `src`, `name`, and `flashvr.xml` (player chrome only: preloader, menu, pan/stop quality; no geometry) | `coord3d`, `refid` |
+
+**Tours.** Hotspots (`shed`) are boxes with an icon and title, always visible while labels and hot spots are on; the site map draws the current view wedge. A hotspot whose `destmedia` is
+a scene of the tour opens that scene (`?scene=`); any other opens the destination's media page (`/item/{id}`),
+as the 3D tours do in the VM. Before leaving, the page writes the current yaw into its own history entry
+(`?scene=&yaw=`, replace), so Back returns to the same scene and direction. The yaw is also written, debounced,
+when a drag or key ends. `quadrant` (four points; 287 of 318 make a 10 × 24 box beside or inside the `shed`, and
+19 are cut to 0 width at the picture's right edge) is drawn as a fixed-size marker: blue for scenes, yellow for
+media *(ours: the marker's look was never captured)*. Labels are centred on their `x`, `y`. The "Labels and hot
+spots" check box hides both. The site map shows the left half of its picture. Its points lead to scenes (large) and
+pictures (small), and the current scene's point is the "you are here" marker. The records give no map
+orientation, so no view wedge is drawn.
+
+**Controls** (both kinds): drag (grab), ←/→ pan, ↑/↓ look up and down, +/− (main row or keypad) and the wheel zoom,
+Home returns to the opening view, A toggles auto-pan. There are also buttons for left/right, zoom, Auto and Reset,
+and a status line with the hotspot title and the field of view. Keys stop at the view, so the media viewer's ←/→
+do not change the item while a panorama has focus.
+
+Checked in Chrome (ports 8098/5198): Westminster Abbey tour (labels on their objects, e.g. "Reredos screen", "Oaken
+pulpit"; scene hotspot Nave → Sanctuary; media hotspot "Coronation of Queen Elizabeth II" → its page, Back → the
+same scene at yaw 173; site map marker follows the scene; drag, keys, zoom), Alcatraz (tilt to the picture's top,
+zoom 80° → 56°), "View from the Great Wall" in the media viewer and on its item page (WebGL, and Canvas 2D forced
+once). In the browser, 30 image SWFs (including the extreme sizes and horizons and 3 Kids copies) gave JPEGs whose
+decoded size and horizon match an independent survey of all 167.
 
 ## Verification
 
@@ -179,12 +244,15 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
 - Inline tables lack the VM's blue box border; the Quick Facts and atlas panels are unchanged.
 - Interactives under Ruffle 0.7.1, spot-checked only: the slide shows tried run (Vasco da Gama, though its map draws
   labels but not all fills); in the match game "Brood or Gaggle?" (`MatchGame`) a script hits Ruffle's execution limit
-  and the picture tiles stay empty; the Great Wall panorama (`vrslide`, `flashvr.swf`) loads but showed no picture.
+  and the picture tiles stay empty. Panoramas (`vrslide`, `flashvr.swf`), blank under Ruffle, are now native.
   Kids copies (`edition=kids`), DragDrop/CrossFade/ZFL/BGA controls, quizzes (SWQUIZ) and timeline pop-ups were not
   tried. The players ask for "Trebuchet MS" and other device fonts that Ruffle does not have (it substitutes).
 - MIDI uses simple synthesized voices, not a General MIDI soundfont.
 - Parental Controls of the dictionary window and Encarta's Options are not implemented (not captured in the VM).
 - Item kinds, menus, Favorites, print and the panoramic tours added by the parity audit: see [parity.md](parity.md).
+- Panoramas: none of the player's behaviour has been compared with the VM yet. The open questions are the tour
+  scenes' yaw origin, the `quadrant` marker's look, `auto`/`maxspeed` units, the scenes' horizon and field of view,
+  and whether 2009 showed hot regions before hover.
 - Games live under `/games/*` (`web/src/games/`, see [games.md](games.md)); the Geography Quiz feature item
   701712336 redirects to `/games/geoquiz`. `MatchGame` interactives play natively in the media viewer.
 - Light theme only, like the original.

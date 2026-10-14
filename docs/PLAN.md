@@ -82,8 +82,8 @@ pronunciations, media galleries, outlines), media browser, video with captions, 
 thesaurus and translation, search with autocomplete, timeline, interactives (`.iax` + Ruffle),
 Encarta Kids mode.
 **Mostly done** ([web-client.md](web-client.md)): React 18 SPA in `web/`; interactives run the disc's own IAF player
-under Ruffle; word wheel and wide-picture placement match the VM. Open: Ruffle issues (Vasco da Gama map fills,
-Great Wall panorama), consuming the converter's stored clusters and columns, a MIDI soundfont, Favorites, dictionary Copy/Print.
+under Ruffle; word wheel and wide-picture placement match the VM. Panoramas (151 singles, 16 panoramic tours) use a
+native cylinder player. Open: panorama VM comparison, Ruffle issues (Vasco da Gama map fills), consuming the converter's stored clusters and columns, a MIDI soundfont, Favorites, dictionary Copy/Print.
 
 ## Step 5 — Atlas
 MapLibre globe and map: every raster look (terrain, satellite, night, moon, tectonic, climate,
@@ -119,11 +119,12 @@ MindMaze, quizzes (`SWQUIZ`), Geography Quiz, City Climate and Population Chart 
 
 ## Step 8 — Parity audit
 A feature-by-feature checklist against the VM; fix gaps; performance and accessibility pass.
-**In progress** ([parity.md](parity.md)): 134 rows, 96 done / 23 partial / 8 missing / 7 n/a. The audit made
+**In progress** ([parity.md](parity.md)): 134 rows at the first audit (96 done / 23 partial / 8 missing / 7 n/a). The audit made
 ~40k unreachable items reachable (web links, authors, contributors, topic timelines, Map Trek, 16 panoramic 2D tours,
-MSWORLD.ITR atlas media), added the menu bar, Favorites, print styles and keyboard menus. Open list: parity.md
-"Remaining gaps", led by a VM pass over never-captured UI, panoramic-tour parity, Ruffle gaps, the board-game engine
-and the unused index terms.
+MSWORLD.ITR atlas media), added the menu bar, Favorites, print styles and keyboard menus. 2026-10-14: VM pass over
+the uncaptured UI (vm-findings.md), then the Features menu, menu bar, shortcuts, Options and print/copy dialogs, panorama
+VM parity, the Geography Quiz on `<Atlas />`, index terms as search results and aliases, and MSWORLD.ITR media resolution.
+Open list: parity.md "Remaining gaps", led by Ruffle gaps, the board-game engine, parental controls and Map Trek's dialog.
 
 ---
 

@@ -10,6 +10,7 @@
 //! `MEDIA_ONLY` (comma-separated substrings of `container/member`; restricts the run to a subset,
 //! for tests; use a separate `--out`).
 
+pub mod atlas;
 mod ffmpeg;
 mod iax;
 mod jobs;
@@ -609,6 +610,11 @@ pub fn run(paths: &Paths) -> Result<()> {
         jobs_skipped: skipped,
         kind_conflicts,
     })?;
+    // 9. Where the atlas's own photos and sounds are (media/atlas.rs; needs content.sqlite).
+    let content_db = paths.out.join("content.sqlite");
+    if content_db.is_file() {
+        atlas::run(&content_db, &media_dir, &report_dir, &log)?;
+    }
     log(format!("== media run finished in {:.1} s", t0.elapsed().as_secs_f64()));
     Ok(())
 }

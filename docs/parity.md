@@ -35,8 +35,8 @@ priority order, are in [Remaining gaps](#remaining-gaps-priority-order).
 | Home screen: logo, butterfly, background, nine links in three columns | done | `/`, data item 701712539; compared with `fixtures/vm/home.png` | — |
 | Home links → category screens (History … Sports & Recreation, Games & Fun Stuff) | done | `/browse/{id}`; 7,888 `home-page` items, 50/50 sampled render links | — |
 | Home links Dictionary, Encarta Kids | done | `/dictionary`, `/kids` | — |
-| Menu bar File / Edit / Favorites / Help | done | `MenuBar` in `app/Shell.tsx` (this audit) | menu contents beyond the ones below were not captured |
-| File › Print | done | `window.print()` + `styles/print.css` (this audit) | — |
+| Menu bar File / Edit / Favorites / Help | done | `MenuBar` in `app/Shell.tsx`; entries and keyboard shortcuts (`app/shortcuts.ts`) per the VM (2026-10-14) | File › Go to is a flat group, not a submenu; Read Aloud disabled |
+| File › Print, Edit › Copy | done | Encarta's scope dialog (whole text / with media / selection), `app/ScopeDialog.tsx`, `commands.ts`; a copyright line is always appended (VM 2026-10-14) | — |
 | Edit › Copy (with a source line) | partial | `app/commands.ts` (this audit) | the source-line wording is *(ours)*; plain Ctrl+C copies without it |
 | Edit › Find in Article | done | menu entry → find bar (this audit); Ctrl+F | — |
 | Help (Encarta's own help files) | partial | `/help`: about + keyboard shortcuts (this audit) | the disc's three CHM files (Windows UI help) are omitted by design (media.md §4) |
@@ -59,7 +59,7 @@ priority order, are in [Remaining gaps](#remaining-gaps-priority-order).
 | Geography Quiz (701712336) | done | → `/games/geoquiz` | — |
 | Encarta Kids (701712340) | done | → `/kids` | — |
 | Quick Search: Articles / Maps / Photos & More / Quotations / Dictionary / Thesaurus | partial | → `/search?kind=article`, `?kind=map`, `/media`, `?kind=quotation`, `/dictionary`, `/thesaurus` (this audit) | the 2009 Quick Search dialog was not captured; these open the scoped search pages |
-| World Atlas, Media Gallery, 3D Virtual Tours, Games & Quizzes | done | Features menu entries | not feature records in 2009 (built into the UI); placement in the menu *(ours)* |
+| World Atlas, Media Gallery, 3D Virtual Tours, Games & Quizzes | done | the Features menu now follows the VM's groups and content ids; Games & Quizzes and the extras are under File › Go to and `/games` *(ours)* | — |
 | College Prep Online (701712335) | n/a | online service | page says so (`OnlineFeatureView`) |
 | Encarta on the Web (701835573, 701882633) | n/a | online service | page says so |
 | Extras: MindMaze, City Climate, Population Chart | n/a | not reachable in 2009 (vm-findings.md); rebuilt as extras | — |
@@ -102,9 +102,9 @@ priority order, are in [Remaining gaps](#remaining-gaps-priority-order).
 | Captions under audio (SAMI → WebVTT) | done | | — |
 | Video with captions (414) | done | 50/50; VM `461546454` | — |
 | MIDI music (236) | partial | own SMF synth | General MIDI soundfont missing (M) |
-| Interactives (860, Flash IAF player under Ruffle) | partial | 50/50 open a player; 82 narrated/map interactives were opened as audio or atlas maps before this audit | Ruffle issues: Vasco da Gama fills, Great Wall panorama blank, script limits (web-client.md) |
+| Interactives (860, Flash IAF player under Ruffle) | partial | 50/50 open a player; 82 narrated/map interactives were opened as audio or atlas maps before this audit | Ruffle issues: Vasco da Gama fills, script limits (web-client.md) |
 | Match games natively | done | games.md | — |
-| Panoramas (151, `surround`) | partial | open their Flash viewer item (this audit; they carried only an icon) | the viewer is Flash `vrslide`, blank under Ruffle (M: native panorama player, reuse `PanoramaTour`) |
+| Panoramas (151, `surround`) | done | native cylinder player (`web/src/panorama/`) in place of the Flash `vrslide` viewer, which is blank under Ruffle | — |
 | Maps as pictures (99,707) → "Open in the World Atlas" at the place | done | links to `/atlas/place/{geocode}` (this audit; was `/atlas`) | — |
 | Charts, tables (2,508 + 266 facts) | done | 50/50 | — |
 | Media viewer: prev/next, strip, Esc, appears-in | done | | no focus trap |
@@ -153,7 +153,7 @@ priority order, are in [Remaining gaps](#remaining-gaps-priority-order).
 | 20 menu styles + statistical, moon | done | VM V4 | 4, 18, 21–23, 26 have no MapStyle |
 | Labels, symbols, road shields | partial | | road-shield source, alternate label style w6 |
 | Click menu with Map / Read Article | done | VM V11 | time zones listed although V11 shows none |
-| Place links (P2MTBL) | done | 206/206 sampled links open (this audit: 2,656 off-disc targets are left out instead of "Item not found"; 1,229 MSWORLD.ITR photos and sounds now open) | 1,121 of those photos show only their 64-px pushpin picture; 152 sounds have no audio on the disc (msworld.md §3) |
+| Place links (P2MTBL) | done | 206/206 sampled links open (this audit: 2,656 off-disc targets are left out instead of "Item not found"; 1,229 MSWORLD.ITR photos and sounds now open) | 910 of those photos show only their 64-px pushpin picture; 152 sounds have no audio on the disc (msworld.md §3) |
 | Place search | done | gazetteer FTS | — |
 | Map Legend, Map Customizer | done | | legend captions are class names |
 | Statistics: Choose Statistic, table, details, hover | done | VM V14 | binning unknown |
@@ -180,7 +180,7 @@ priority order, are in [Remaining gaps](#remaining-gaps-priority-order).
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| 16 tours (Westminster Abbey, Alcatraz, USS Missouri …): 65 scenes, labels, hotspots, site maps, scene pictures | partial | `PanoramaTour` (this audit; before it no page showed them): wrapping panorama strip, labels at their `x`,`y`, hotspots (`shed`) to scenes or pictures, site map with scene points, scene text | built from the data, not compared with the VM; no cylinder perspective correction, no auto-pan, the `quadrant` marker shapes are unused (M for VM parity) |
+| 16 tours (Westminster Abbey, Alcatraz, USS Missouri …): 65 scenes, labels, hotspots, site maps, scene pictures | done | `PanoramaTour` (this audit; before it no page showed them): wrapping panorama strip, labels at their `x`,`y`, hotspots (`shed`) to scenes or pictures, site map with scene points, scene text | matches the VM measurements (gaps table row 2) |
 
 ## Games and quizzes
 
@@ -224,7 +224,7 @@ priority order, are in [Remaining gaps](#remaining-gaps-priority-order).
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| Options dialog (text size, search options …) | missing | not captured | needs a VM look (S); browser zoom covers text size |
+| Options dialog (5 pages: General, Encarta Updates, Closed Captioning, World Atlas, Quality) | partial | `app/OptionsDialog.tsx`, `settings/settings.tsx` (VM 2026-10-14); text size is wired | startupSound, menuSounds, captions and the atlas options are stored but not yet used (S) |
 | Parental controls (encyclopedia, web links) | missing | not captured; dictionary labels exist | (S–M after a VM look) |
 | Kids / Premium switch | done | `/kids` | — |
 
@@ -246,7 +246,7 @@ See the next section for the per-family table; summary rows:
 | Check | Status | Evidence | Gap |
 |---|---|---|---|
 | Every catalog id converted or explained | done | content-schema §10: 634,247 ids, 0 unexplained | — |
-| Every item kind opens a non-empty page | partial | 50 per kind through `/api/item` (table below) | index terms, 1,100 empty audio stubs |
+| Every item kind opens a non-empty page | partial | 50 per kind through `/api/item` (table below) | 1,083 empty audio stubs (index terms are search results) |
 | Every converted table reachable | partial | | `index_tree` unreachable; `atlas_media` and `timeline_term` made reachable in this audit |
 
 ---
@@ -261,7 +261,7 @@ Each family of the inventory, whether it is converted, and the UI path that reac
 | Images, audio, video, Flash, MIDI | yes | media viewer, item pages | done |
 | Article bodies (CONT*.AKC) | yes (102,223 articles) | search, links, browse pages, related trees | done |
 | Article metadata, related articles (DATA, REL) | yes | article panels, item pages | done |
-| Index terms (DATAF, 180,545 items, 212,631 trees) | yes | **nothing** | **converted, unreachable** |
+| Index terms (DATAF, 180,545 items, 212,631 trees) | yes (as search results; 2009 has no index browser) | search results that expand to their entries (`/api/index-term/{id}`); terms with ≤ 30 targets are search aliases | done |
 | Sidebars (MD*.EIT) | yes (2,696) | teasers, search | done |
 | Dictionary, thesaurus, translation (EDICT) | yes (292,642 entries) | dictionary pages, search | done |
 | Interactives (`.iax` + SWF) | yes (721 + 860 items) | media viewer (Ruffle / native) | partial (Ruffle) |
@@ -303,7 +303,7 @@ the page has content (article body, playable variant, picture answering 200, dat
 | interactive | 860 | 48/50 (2 opened as audio) | 50/50 |
 | maptrek-tour, maptrek-stop | 851 | thumbnail / text | 50/50 Map Trek view |
 | feature | 27 | 1 routed | 27/27 (25 pages, 2 online-only notes) |
-| audio | 3,542 | 35/50 | 33–35/50: the rest are the 1,100 empty stubs below |
+| audio | 3,542 | 35/50 | 33–35/50: the rest are the 1,083 empty stubs below |
 | unclassified (`TBD`) | 617 | 0/50 | 0/50: placeholders whose content is inline in the article body (below) |
 | home-theme, home-background | 157 | — | decoration of home and browse screens (drawn there) |
 | index-term | 180,545 | 0/50 | 0/50 (below) |
@@ -312,11 +312,11 @@ the page has content (article body, playable variant, picture answering 200, dat
 
 | What | Count | Why | Proposal |
 |---|---|---|---|
-| Index terms (DATAF) and `index_tree` | 180,545 items, 212,631 trees | where a term occurs (article and paragraph); nothing in the client or search uses them | an A–Z index browser and search boost from terms (M); first confirm in the VM whether 2009 showed an index at all |
-| Empty `audio` records | 1,100 (1,083 untitled) | generic icon files only, no audio, no children, no association anywhere | nothing to show; list in the completeness report as empty stubs |
+| Index terms (DATAF) and `index_tree` | 180,545 items, 212,631 trees | search results that expand in place; 170,159 terms are aliases of their targets (867,302 aliases) | done |
+| Empty `audio` records | 1,100 (1,083 untitled) | 17 recovered from interactives (`audiorefid`, content-schema §10.1); the 1,083 others are empty on the disc | nothing to show; listed as empty stubs |
 | `unclassified` (`group="TBD"`) | 617 | inline equation pictures' records (e.g. "phys2" in Common Physics Equations); the picture is drawn inline from the body's `img` | none needed (content is shown); give them a "see article" page if search ever indexes them |
 | Orphan tour nodes | 151 | site-map hotspots with empty `destmedia` and no parent | none (no content) |
-| MSWORLD.ITR sounds | 152 linked (330 total) | file names not on the disc (msworld.md §3) | find the sounds by content (S) |
+| MSWORLD.ITR sounds and pictures | 152 sounds, 1,121 pictures linked | `media/atlas.rs` resolves by name, id, stem, credit, thumbnail and crop (media.md §7): 146 silent and 910 pushpin-only left, not on the disc | done (≈15 more need a full-disc image search, not worth it) |
 | MSWORLD.ITR photos without a main file | 969 linked | not in `baggage.ecs`; only the 64-px pushpin exists | look for the pictures under other names (S) |
 | P2MTBL targets on no edition of this disc | 2,656 | the table is shared with other editions | none (left out of the menu) |
 
@@ -361,15 +361,15 @@ Estimates on the plan's scale (S ≈ days, M ≈ 1–2 weeks, L ≈ 2–4 weeks)
 
 | # | Gap | Why it matters | Estimate |
 |---|---|---|---|
-| 1 | VM pass over the UI that was never captured: Features menu, Options, Help, Quick Search, Favorites organiser, the ▾ tab, Map Trek, panoramic tours, timeline item view, Kids chrome | many rows above are *(ours)* until seen | S (capture) + S (adjust) |
-| 2 | Panoramic tours to VM parity: cylinder projection, auto-pan, hotspot markers (`quadrant`), compare with captures; then a native panorama player for the 151 `surround` panoramas whose Flash viewer is blank under Ruffle | 16 tours and 151 panoramas | M |
-| 3 | Ruffle gaps in the IAF player (fills, panorama, script limits) and a test pass over Kids copies and DragDrop/CrossFade/ZFL/BGA controls | 860 interactives | M |
+| 1 | VM pass over the UI that was never captured: done 2026-10-14 ([vm-findings.md › UI parity pass](vm-findings.md)). Not captured: the Azuchi site map, `initangle` for single panoramas, panorama zoom, and what the Music toggle plays | rows marked *(ours)* still need checking against these captures | S (adjust) |
+| 2 | Panoramas: tour scenes now follow the VM (opening yaw, FOV from width, 624×289, auto-pan 18.3 s/turn, always-visible hotspot boxes, site-map wedge). Left: audio hotspot icon, instruction line, ~7 Hz stepped pan, measured drag speed, singles' `initangle` (not measurable) | 16 tours and 151 panoramas | S |
+| 3 | Ruffle gaps in the IAF player (fills, script limits) and a test pass over Kids copies and DragDrop/CrossFade/ZFL/BGA controls | 860 interactives | M |
 | 4 | Board-game engine for the 10 `BGAControl` games | quizzes play without their boards | L |
-| 5 | Index terms: decide from the VM whether 2009 exposed them; if yes an index browser, else use them as search aliases | 180,545 converted items unused | M |
-| 6 | Parental controls (dictionary labels; anything else the VM shows) and Options | missing feature | S–M |
+| 5 | Index terms: done (search results that expand; aliases) | — | — |
+| 6 | Parental controls: one check box in the Dictionaries window that hides flagged headwords from the dictionary and the search's Dictionaries category, nothing else. Options dialog: 5 pages (General, Updates, Closed Captioning, World Atlas, Quality) ([vm-findings.md › UI parity pass](vm-findings.md)) | missing feature | S–M |
 | 7 | Tour Music menu (find the music data) and the tours' remaining [VM] items | missing menu entry | S–M |
-| 8 | Geography Quiz locator globe, zoom slider, hand tool, after-answer and end screens | captured screens only | M |
-| 9 | MSWORLD.ITR: find the 330 sounds and 1,496 pictures by content | 1,121 photos show a pushpin only, 152 sounds silent | S |
+| 8 | Geography Quiz: on `<Atlas quizMode>` with locator globe, zoom and hand tool, next question at once, Scores dialog after 20 (done). Left: the VM's full score table, Try Again reopening the start dialog, the 9-tick slider look | small | S |
+| 9 | MSWORLD.ITR: done; 910 pictures and 146 sounds are not on the disc | — | — |
 | 10 | MIDI soundfont | 236 music files sound synthetic | M |
 | 11 | Timeline: open items in the Timeline view at the event; event pop-up media; essay pictures | VM behaviour | S |
 | 12 | Accessibility: media viewer focus trap, timeline list alternative, axe pass | | S |

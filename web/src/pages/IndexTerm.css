@@ -1,0 +1,31 @@
+.search-hit-title.index-term-toggle {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.index-term-toggle .index-term-caret {
+  display: inline-block;
+  width: 1em;
+  transition: transform 0.15s;
+}
+.index-term-toggle[aria-expanded="true"] .index-term-caret {
+  transform: rotate(90deg);
+}
+.index-term-entries {
+  margin: 0.25rem 0 0.25rem 1.25rem;
+  padding: 0;
+  list-style: disc;
+}
+.index-term-entries .index-term-entries {
+  list-style: circle;
+}
+.index-term-sub {
+  font-style: italic;
+}
+.index-term-status {
+  margin: 0.25rem 0 0 1.25rem;
+  color: var(--muted, #666);
+}

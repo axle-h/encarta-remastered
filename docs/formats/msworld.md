@@ -168,7 +168,7 @@ The string is `type;` followed by `;`-separated fields. Each field is one letter
 | field | meaning | evidence |
 |---|---|---|
 | `L` | atlas place id where the item is pinned | 3,828 of 5,413 are P2MTBL keys. For animals it is a continent or region (742 Africa) |
-| `B` | main file name (`14632.jpg`, `T165193A.jpg`, `T090206A.wav`) | 3,279 / 4,775 image names and 252 / 308 animal names are in `baggage.ecs` (for example `14632.jpg` is in MDDLX01.EIT); the sound files are not on the disc under these names |
+| `B` | main file name (`14632.jpg`, `T165193A.jpg`, `T090206A.wav`) | 3,279 / 4,775 image names and 252 / 308 animal names are in `baggage.ecs` (for example `14632.jpg` is in MDDLX01.EIT); the sound files are not on the disc under these names; media.md §7 finds where they are (or that they are absent) |
 | `P` | thumbnail name (`14632.JSM`) | in `baggage.ecs` (3,292 + 252); the stem names `CONTENT/MSWORLD.EIT/dtn/<stem>.dtn` for 4,765 + 308 records |
 | `U` | paired item: a sound links to the photo shown while it plays, and vice versa; 0 = none | 656 of 709 non-zero values are keys of this catalog (i→w 326, w→i 330) |
 | `M` | a further 631… id, distinct from the key; it does not occur in the 2009 catalogs | probably a legacy (2001) media id. Kept, but unresolved |

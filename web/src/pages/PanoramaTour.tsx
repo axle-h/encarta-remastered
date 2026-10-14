@@ -1,13 +1,16 @@
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
-import type { AssocItem, Item } from "../api/types";
+import type { Item } from "../api/types";
 import { useApi } from "../api/useApi";
 import { ArticleInline } from "../article/ArticleInline";
 import { useDocumentTitle } from "../components/useDocumentTitle";
-import { useMediaViewer } from "../media/MediaViewer";
 import { fileByRole, fileUrl } from "../media/pick";
-import { childIds, destOf, labelPoint, shedRect, wrapScroll } from "./panorama";
+import { tourHfov, wedgeAngle, type PanoView } from "../panorama/geometry";
+import { TOUR } from "../panorama/measured";
+import { tourParams } from "../panorama/params";
+import { PanoramaView, type PanoHotspot, type PanoLabel } from "../panorama/PanoramaView";
+import { childIds, destOf, labelPoint, quadrantRect, shedRect } from "./panorama";
 
 interface Scene {
   item: Item;
@@ -26,11 +29,19 @@ async function loadScene(id: number, s: AbortSignal): Promise<Scene> {
   return { item, labels, hotspots, site, siteHotspots };
 }
 
+/** `?yaw=` as degrees, or null. */
+export function yawParam(v: string | null): number | null {
+  if (v === null || v.trim() === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 /**
- * A panoramic virtual tour (pages/panorama.ts): the scene's panorama scrolls round (drag, the
- * arrow buttons or ←/→ when focused), with its labels and hotspots; the site map and the scene list
- * pick scenes; a hotspot opens its scene or its picture in the media viewer. The original's
- * perspective correction of the cylinder is not reproduced (flat strip).
+ * A panoramic virtual tour (pages/panorama.ts for the records): the scene's panorama in the native
+ * cylindrical player (panorama/), with its labels and hotspots; the site map (current scene marked)
+ * and the scene list pick scenes. A hotspot to another scene opens it; any other hotspot opens its
+ * media page, as the 3D tours do in the VM (docs/vm-findings.md). The URL keeps the scene and the
+ * yaw (`?scene=&yaw=`), so Back returns to the same view.
  */
 export function PanoramaTour({ tour }: { tour: Item }) {
   useDocumentTitle(tour.title ? `${tour.title}: Virtual Tour` : "Virtual Tour");
@@ -38,20 +49,35 @@ export function PanoramaTour({ tour }: { tour: Item }) {
   const sceneSet = new Set(scenes.map((c) => c.ref_id));
   const intro = childIds(tour, "article")[0];
   const [search, setSearch] = useSearchParams();
+  const navigate = useNavigate();
   const wanted = Number(search.get("scene"));
   const current = sceneSet.has(wanted) ? wanted : (scenes[0]?.ref_id ?? 0);
+  const yaw = yawParam(search.get("yaw"));
   const scene = useApi(current ? (s) => loadScene(current, s) : null, [current]);
-  const viewer = useMediaViewer();
-  const go = (id: number) => setSearch({ scene: String(id) }, { replace: false });
+  const view = useRef<PanoView | null>(null);
+  // Tour Settings (vm-findings, Panoramas layout): both on by default, kept while the tour is open.
+  const [showMarks, setShowMarks] = useState(true);
+  const [autoRotate, setAutoRotate] = useState(true);
+
+  /** Records the current yaw in this history entry, so Back comes back to it. */
+  const keepYaw = () => {
+    const v = view.current;
+    if (!v || !current) return;
+    setSearch({ scene: String(current), yaw: v.yaw.toFixed(1) }, { replace: true });
+  };
+  const go = (id: number) => {
+    keepYaw();
+    setSearch({ scene: String(id) });
+  };
   const open = (dest: number | null) => {
     if (!dest) return;
     if (sceneSet.has(dest)) go(dest);
     else {
-      const pics: AssocItem[] = (scene.data?.item.children ?? []).filter((c) => c.kind === "media").map((c) => ({ ref_id: c.ref_id, group: "media", title: c.title }));
-      viewer.open(dest, pics.some((p) => p.ref_id === dest) ? pics : undefined);
+      keepYaw();
+      navigate(`/item/${dest}`);
     }
   };
-  const sc = scene.data;
+  const sc = scene.data && scene.data.item.ref_id === current ? scene.data : undefined;
   const titles = new Map<number, string>();
   for (const c of [...(tour.children ?? []), ...(sc?.item.children ?? [])]) if (c.title) titles.set(c.ref_id, c.title);
   const article = sc ? childIds(sc.item, "article")[0] : undefined;
@@ -60,11 +86,11 @@ export function PanoramaTour({ tour }: { tour: Item }) {
       <aside className="pano-side">
         <p className="itempage-kicker">Virtual Tour</p>
         <h1 className="trek-title">{tour.title}</h1>
-        {sc?.site && <SiteMap site={sc.site} hotspots={sc.siteHotspots} current={current} titles={titles} onOpen={open} />}
+        {sc?.site && <SiteMap site={sc.site} hotspots={sc.siteHotspots} current={current} scenes={sceneSet} titles={titles} onOpen={open} viewRef={view} panangle={panangleOf(sc.item)} pictureWidth={pictureWidth(sc.item)} />}
         <ol className="trek-stops" aria-label="Scenes">
           {scenes.map((c, i) => (
             <li key={c.ref_id}>
-              <button type="button" className={c.ref_id === current ? "current" : ""} aria-current={c.ref_id === current ? "step" : undefined} onClick={() => go(c.ref_id)}>
+              <button type="button" className={c.ref_id === current ? "current" : ""} aria-current={c.ref_id === current ? "step" : undefined} onClick={() => c.ref_id !== current && go(c.ref_id)}>
                 <span className="trek-num">{i + 1}</span> {c.title}
               </button>
             </li>
@@ -75,7 +101,30 @@ export function PanoramaTour({ tour }: { tour: Item }) {
       <section className="pano-main">
         {scene.error && <p className="enc-error">This scene could not be loaded ({scene.error.message}).</p>}
         {!sc && !scene.error && <div className="enc-loading"><div className="enc-spinner" /></div>}
-        {sc && <Panorama key={sc.item.ref_id} scene={sc} onOpen={open} />}
+        <div className="pano-settings" role="group" aria-label="Tour Settings">
+          <label>
+            <input type="checkbox" checked={showMarks} onChange={(e) => setShowMarks(e.target.checked)} /> Show labels and hot spots
+          </label>
+          <label>
+            <input type="checkbox" checked={autoRotate} onChange={(e) => setAutoRotate(e.target.checked)} /> Auto-rotate 360 views
+          </label>
+        </div>
+        {sc && (
+          <ScenePanorama
+            marksOn={showMarks}
+            onMarksChange={setShowMarks}
+            autoOn={autoRotate}
+            onAutoChange={setAutoRotate}
+            key={sc.item.ref_id}
+            scene={sc}
+            scenes={sceneSet}
+            titles={titles}
+            yaw={yaw}
+            viewRef={view}
+            onOpen={open}
+            onSettle={(y) => setSearch({ scene: String(current), yaw: y.toFixed(1) }, { replace: true })}
+          />
+        )}
       </section>
     </div>
   );
@@ -84,30 +133,54 @@ export function PanoramaTour({ tour }: { tour: Item }) {
 /**
  * The site map: like the 3D tours' maps, the picture holds two halves (plain and tinted); the left
  * half is shown. Its hotspots are points (`x`, `y`) leading to scenes and pictures; the current
- * scene's point is highlighted.
+ * scene's point is the "you are here" marker, with a view wedge that follows the live yaw
+ * (oriented by the scene's `panangle`).
  */
-function SiteMap({ site, hotspots, current, titles, onOpen }: { site: Item; hotspots: Item[]; current: number; titles: Map<number, string>; onOpen: (dest: number | null) => void }) {
+function SiteMap({
+  site,
+  hotspots,
+  current,
+  scenes,
+  titles,
+  onOpen,
+  viewRef,
+  panangle,
+  pictureWidth,
+}: {
+  viewRef: MutableRefObject<PanoView | null>;
+  panangle: number;
+  pictureWidth: number;
+  site: Item;
+  hotspots: Item[];
+  current: number;
+  scenes: Set<number>;
+  titles: Map<number, string>;
+  onOpen: (dest: number | null) => void;
+}) {
   const img = fileByRole(site, "image", "picon");
   if (!img?.width || !img.height) return null;
   const half = Math.round(img.width / 2);
+  const here = hotspots.map((h) => ({ p: labelPoint(h.meta), dest: destOf(h) })).find((h) => h.dest === current && h.p)?.p;
   return (
     <div className="pano-site" style={{ width: half, height: img.height }}>
       <img src={fileUrl(img)} alt="Site map" width={img.width} height={img.height} />
+      {here && pictureWidth > 0 && <ViewWedge at={here} viewRef={viewRef} panangle={panangle} pictureWidth={pictureWidth} size={Math.max(half, img.height)} />}
       {hotspots.map((h) => {
         const p = labelPoint(h.meta);
         const dest = destOf(h);
         if (!p || !dest) return null;
-        const title = titles.get(dest) ?? (h.title && h.title !== "TBD" ? h.title : `Item ${dest}`);
+        const here = dest === current;
+        const title = (titles.get(dest) ?? (h.title && h.title !== "TBD" ? h.title : `Item ${dest}`)) + (here ? " (you are here)" : "");
         return (
           <button
             key={h.ref_id}
             type="button"
-            className={`pano-site-pt${dest === current ? " current" : ""}`}
+            className={`pano-site-pt${here ? " current" : ""}${scenes.has(dest) ? "" : " picture"}`}
             style={{ left: p.x, top: p.y }}
             title={title}
             aria-label={title}
-            aria-current={dest === current ? "location" : undefined}
-            onClick={() => onOpen(dest)}
+            aria-current={here ? "location" : undefined}
+            onClick={() => !here && onOpen(dest)}
           />
         );
       })}
@@ -115,107 +188,113 @@ function SiteMap({ site, hotspots, current, titles, onOpen }: { site: Item; hots
   );
 }
 
-function Panorama({ scene, onOpen }: { scene: Scene; onOpen: (dest: number | null) => void }) {
+function ScenePanorama({
+  scene,
+  scenes,
+  titles,
+  yaw,
+  viewRef,
+  onOpen,
+  onSettle,
+  marksOn,
+  onMarksChange,
+  autoOn,
+  onAutoChange,
+}: {
+  marksOn: boolean;
+  onMarksChange: (on: boolean) => void;
+  autoOn: boolean;
+  onAutoChange: (on: boolean) => void;
+  scene: Scene;
+  scenes: Set<number>;
+  titles: Map<number, string>;
+  yaw: number | null;
+  viewRef: MutableRefObject<PanoView | null>;
+  onOpen: (dest: number | null) => void;
+  onSettle: (yaw: number) => void;
+}) {
   const file = fileByRole(scene.item, "surround");
   const orig = file?.media?.variants.original;
   const pano = scene.item.meta?.panorama as { width?: number } | undefined;
   const width = orig?.width ?? pano?.width ?? file?.width ?? 0;
-  const height = orig?.height ?? file?.height ?? 380;
-  const box = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ x: number; left: number } | null>(null);
-  const [focusTitle, setFocusTitle] = useState("");
-
-  // Start in the middle copy, at the panorama's left edge.
-  useLayoutEffect(() => {
-    if (box.current && width) box.current.scrollLeft = width;
-  }, [width]);
-  useEffect(() => {
-    const el = box.current;
-    if (!el || !width) return;
-    const onScroll = () => {
-      const w = wrapScroll(el.scrollLeft, width);
-      if (w !== el.scrollLeft) el.scrollLeft = w;
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-  }, [width]);
-
-  const by = (dx: number) => box.current?.scrollBy({ left: dx, behavior: "smooth" });
-  const down = (e: ReactPointerEvent) => {
-    if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
-    drag.current = { x: e.clientX, left: box.current?.scrollLeft ?? 0 };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  };
-  const move = (e: ReactPointerEvent) => {
-    if (drag.current && box.current) box.current.scrollLeft = drag.current.left - (e.clientX - drag.current.x);
-  };
-  const up = () => {
-    drag.current = null;
-  };
-
-  if (!file || !width) return <p className="enc-muted">This scene has no panorama picture.</p>;
-  const src = fileUrl(file);
-  const copies = [0, 1, 2];
+  const height = orig?.height ?? file?.height ?? 0;
+  const hotspots = useMemo<PanoHotspot[]>(
+    () =>
+      scene.hotspots.flatMap((h) => {
+        const rect = shedRect(h.meta);
+        const dest = destOf(h);
+        if (!rect || !dest) return [];
+        const title = h.title && h.title !== "TBD" ? h.title : (titles.get(dest) ?? `Item ${dest}`);
+        return [{ id: h.ref_id, rect, marker: quadrantRect(h.meta), title, kind: scenes.has(dest) ? ("scene" as const) : ("media" as const) }];
+      }),
+    [scene.hotspots, scenes, titles],
+  );
+  const labels = useMemo<PanoLabel[]>(
+    () =>
+      scene.labels.flatMap((l) => {
+        const p = labelPoint(l.meta);
+        return p && l.title ? [{ id: l.ref_id, x: p.x, y: p.y, text: l.title }] : [];
+      }),
+    [scene.labels],
+  );
+  const dests = useMemo(() => new Map(scene.hotspots.map((h) => [h.ref_id, destOf(h)])), [scene.hotspots]);
+  if (!file || !width || !height) return <p className="enc-muted">This scene has no panorama picture.</p>;
+  const params = tourParams(scene.item.meta, { width, height });
   return (
     <div className="pano-view">
       <h2 className="pano-title">{scene.item.title}</h2>
-      <div
-        className="pano-strip"
-        ref={box}
-        tabIndex={0}
-        role="group"
-        aria-label={`Panorama: ${scene.item.title ?? ""}. Use the left and right arrow keys to look around.`}
-        style={{ height: height + 16 }}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowLeft") (e.preventDefault(), by(-120));
-          else if (e.key === "ArrowRight") (e.preventDefault(), by(120));
-        }}
-        onPointerDown={down}
-        onPointerMove={move}
-        onPointerUp={up}
-        onPointerCancel={up}
-      >
-        <div className="pano-track" style={{ width: width * 3, height }}>
-          {copies.map((k) => (
-            <div key={k} className="pano-copy" style={{ left: k * width, width, height }} aria-hidden={k !== 1}>
-              <img src={src} alt="" width={width} height={height} draggable={false} />
-              {scene.labels.map((l) => {
-                const p = labelPoint(l.meta);
-                return p ? (
-                  <span key={l.ref_id} className="pano-label" style={{ left: p.x, top: p.y }}>
-                    {l.title}
-                  </span>
-                ) : null;
-              })}
-              {scene.hotspots.map((h) => {
-                const r = shedRect(h.meta);
-                return r ? (
-                  <button
-                    key={h.ref_id}
-                    type="button"
-                    className="pano-hot"
-                    tabIndex={k === 1 ? 0 : -1}
-                    style={{ left: r.x, top: r.y, width: r.w, height: r.h }}
-                    title={h.title}
-                    aria-label={h.title}
-                    onFocus={() => setFocusTitle(h.title ?? "")}
-                    onClick={() => onOpen(destOf(h))}
-                  />
-                ) : null;
-              })}
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="pano-bar">
-        <button type="button" className="enc-button" onClick={() => by(-300)} aria-label="Look left">
-          ◀
-        </button>
-        <button type="button" className="enc-button" onClick={() => by(300)} aria-label="Look right">
-          ▶
-        </button>
-        <span className="enc-muted">{focusTitle || "Drag the picture to look around; click a highlighted area to see more."}</span>
-      </div>
+      <PanoramaView
+        src={fileUrl(file)!}
+        width={width}
+        height={height}
+        horizon={null}
+        params={params}
+        initialYaw={yaw}
+        title={`Panorama: ${scene.item.title ?? ""}`}
+        hotspots={hotspots}
+        labels={labels}
+        viewRef={viewRef}
+        onHotspot={(h) => onOpen(dests.get(h.id) ?? null)}
+        onSettle={onSettle}
+        marksOn={marksOn}
+        onMarksChange={onMarksChange}
+        autoOn={autoOn}
+        onAutoChange={onAutoChange}
+        maxScale={2}
+      />
     </div>
+  );
+}
+
+/** The `panangle` of a scene record (0 when absent). */
+function panangleOf(scene: Item): number {
+  const n = Number((scene.meta?.panorama as { panangle?: number | string } | undefined)?.panangle);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function pictureWidth(scene: Item): number {
+  const file = fileByRole(scene, "surround");
+  return file?.media?.variants.original?.width ?? file?.width ?? Number((scene.meta?.panorama as { width?: number } | undefined)?.width) ?? 0;
+}
+
+/** Pie slice for a view wedge: apex, direction (degrees clockwise from map-right) and width in degrees. */
+export function wedgePath(x: number, y: number, dir: number, hfov: number, r: number): string {
+  const pt = (a: number) => `${(x + r * Math.cos((a * Math.PI) / 180)).toFixed(1)} ${(y + r * Math.sin((a * Math.PI) / 180)).toFixed(1)}`;
+  return `M ${x} ${y} L ${pt(dir - hfov / 2)} A ${r} ${r} 0 ${hfov > 180 ? 1 : 0} 1 ${pt(dir + hfov / 2)} Z`;
+}
+
+/** The current scene's view wedge on the site map (vm-findings (e)): as wide as the hfov, pointing at yaw − panangle. */
+function ViewWedge({ at, viewRef, panangle, pictureWidth: w, size }: { at: { x: number; y: number }; viewRef: MutableRefObject<PanoView | null>; panangle: number; pictureWidth: number; size: number }) {
+  const [yaw, setYaw] = useState(0);
+  useEffect(() => {
+    const read = () => setYaw(Math.round((viewRef.current?.yaw ?? TOUR.openYaw) * 2) / 2);
+    read();
+    const id = window.setInterval(read, 100);
+    return () => window.clearInterval(id);
+  }, [viewRef]);
+  return (
+    <svg className="pano-wedge" width="100%" height="100%" aria-hidden="true" data-testid="site-wedge">
+      <path d={wedgePath(at.x, at.y, wedgeAngle(yaw, panangle), tourHfov(w), Math.min(60, size / 2))} fill={TOUR.wedgeColour} fillOpacity="0.85" />
+    </svg>
   );
 }

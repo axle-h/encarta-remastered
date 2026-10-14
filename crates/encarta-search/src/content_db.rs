@@ -20,6 +20,9 @@ use std::path::Path;
 use std::time::Instant;
 
 /// Search category and ranking weight of an `item.kind`; `None` = not indexed.
+/// Index terms with more targets than this are not used as aliases (see `build_from_content_db`).
+pub const INDEX_TERM_MAX_TARGETS: usize = 30;
+
 pub fn category_of(kind: &str) -> Option<(&'static str, f64)> {
     Some(match kind {
         "article" => ("article", 1.0),
@@ -39,7 +42,10 @@ pub fn category_of(kind: &str) -> Option<(&'static str, f64)> {
         "timeline-topic" => ("timeline", 0.45),
         "weblink" | "live-link" => ("web", 0.25),
         "contributor" => ("other", 0.35),
-        _ => return None, // index-term, home-page, home-background, home-theme, unclassified
+        // An index term is a search result that expands to its entries (as in Encarta 2009); low
+        // weight so that the items it points to (which carry it as an alias) rank above it.
+        "index-term" => ("other", 0.15),
+        _ => return None, // home-page, home-background, home-theme, unclassified
     })
 }
 
@@ -214,6 +220,98 @@ pub fn build_from_content_db(db: &Path, out_dir: &Path, opts: &BuildOptions) -> 
             });
         }
     }
+    // Index terms (DATAF trees, content-schema §4): a term is an alias of each item its tree points
+    // to ("Herpestidae" → Mongoose), so searching the term finds them. Broad terms (more than
+    // `INDEX_TERM_MAX_TARGETS` targets, e.g. a quotation theme) would only blur the ranking and are
+    // left out; a term with a single target also autocompletes to it.
+    let (mut index_terms, mut index_aliases) = (0u64, 0u64);
+    let mut index_entries: HashMap<u64, Vec<String>> = HashMap::new();
+    let has_index: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='index_tree')", [], |r| r.get(0))?;
+    if has_index {
+        fn text(v: &serde_json::Value, out: &mut String) {
+            match v {
+                serde_json::Value::String(t) => out.push_str(t),
+                serde_json::Value::Array(a) => a.iter().for_each(|x| text(x, out)),
+                serde_json::Value::Object(o) => o.get("c").into_iter().for_each(|x| text(x, out)),
+                _ => {}
+            }
+        }
+        /// Entry titles below the root, one per line.
+        fn entries(v: &serde_json::Value, depth: usize, out: &mut Vec<String>) {
+            for n in v.as_array().into_iter().flatten() {
+                if depth > 0 {
+                    let mut t = String::new();
+                    text(n.get("title").unwrap_or(&serde_json::Value::Null), &mut t);
+                    let t = collapse_ws(&t);
+                    if !t.is_empty() && !out.contains(&t) {
+                        out.push(t);
+                    }
+                }
+                if let Some(ch) = n.get("children") {
+                    entries(ch, depth + 1, out);
+                }
+            }
+        }
+        fn refs(v: &serde_json::Value, out: &mut Vec<u64>) {
+            for n in v.as_array().into_iter().flatten() {
+                if let Some(r) = n.get("ref").and_then(|r| r.as_u64())
+                    && !out.contains(&r)
+                {
+                    out.push(r);
+                }
+                if let Some(ch) = n.get("children") {
+                    refs(ch, out);
+                }
+            }
+        }
+        let mut st = conn.prepare(
+            "SELECT ref_id, title, tree_json FROM index_tree WHERE editions LIKE '%DLX%' OR editions LIKE '%KDC%' ORDER BY ref_id, editions",
+        )?;
+        let mut rows = st.query([])?;
+        while let Some(r) = rows.next()? {
+            let term_id = r.get::<_, i64>(0)? as u64;
+            let term = collapse_ws(&r.get::<_, Option<String>>(1)?.unwrap_or_default());
+            let tree: serde_json::Value = serde_json::from_str(&r.get::<_, String>(2)?).unwrap_or_default();
+            let lines = index_entries.entry(term_id).or_default();
+            entries(&tree, 0, lines);
+            let mut targets = Vec::new();
+            refs(&tree, &mut targets);
+            targets.retain(|t| item_pos.contains_key(t));
+            if term.is_empty() || targets.is_empty() || targets.len() > INDEX_TERM_MAX_TARGETS {
+                continue;
+            }
+            index_terms += 1;
+            for &t in &targets {
+                let item = &items[item_pos[&t]];
+                if term.eq_ignore_ascii_case(&item.title) {
+                    continue;
+                }
+                let v = aliases.entry(t).or_default();
+                if !v.iter().any(|a| a.eq_ignore_ascii_case(&term)) {
+                    v.push(term.clone());
+                    index_aliases += 1;
+                }
+            }
+            if let [t] = targets[..] {
+                let item = &items[item_pos[&t]];
+                let (cat, w) = category_of(&item.kind).unwrap();
+                if !term.eq_ignore_ascii_case(&item.title) {
+                    b.add_suggestion(SuggestInput {
+                        key_text: term.clone(),
+                        display: term.clone(),
+                        display_html: None,
+                        title: Some(item.title.clone()),
+                        ref_id: t,
+                        category: cat_index(cat),
+                        editions: item.editions,
+                        score: (w * 0.5 * (1.0 + pop(t))) as f32,
+                    });
+                }
+            }
+        }
+    }
+    b.set_index_terms(index_terms, index_aliases);
+    log(format!("{index_terms} index terms → {index_aliases} aliases"));
     log(format!("{} items with aliases", aliases.len()));
 
     // Section titles.
@@ -331,12 +429,20 @@ pub fn build_from_content_db(db: &Path, out_dir: &Path, opts: &BuildOptions) -> 
                 body.push_str(t);
             }
         }
-        let summary = match (timeline.get(&it.ref_id), first.map(|f| f.1).or(it.preview.clone()).or(it.caption.clone())) {
+        if let Some(lines) = index_entries.get(&it.ref_id) {
+            body = lines.join("\n");
+        }
+        let summary = if let Some(lines) = index_entries.remove(&it.ref_id) {
+            let n = lines.len();
+            let shown: Vec<&str> = lines.iter().take(6).map(String::as_str).collect();
+            let more = if n > shown.len() { "; …" } else { "" };
+            format!("Index: {n} {} — {}{more}", if n == 1 { "entry" } else { "entries" }, truncate_words(&shown.join("; "), 260))
+        } else { match (timeline.get(&it.ref_id), first.map(|f| f.1).or(it.preview.clone()).or(it.caption.clone())) {
             (Some(t), Some(s)) => format!("{t} — {}", truncate_words(&s, 280)),
             (Some(t), None) => t.clone(),
             (None, Some(s)) => truncate_words(&s, 300),
             (None, None) => it.full_title.clone().unwrap_or_default(),
-        };
+        } };
         b.add_item(&ItemDoc {
             ref_id: it.ref_id,
             category: cat,

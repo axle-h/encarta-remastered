@@ -12,6 +12,7 @@ import { GameInteractive } from "../games/GameInteractive";
 import { AudioPlayer, VideoPlayer } from "./Players";
 import { itemHref } from "../content/links";
 import { isPanoramicTour } from "../pages/panorama";
+import { isPanoramaInteractive, SinglePanorama } from "../panorama/SinglePanorama";
 
 interface ViewerState {
   /** Opens the viewer on `id`; `list` is the sequence prev/next walk through. */
@@ -217,9 +218,14 @@ export function MediaStage({ item, kids }: { item: Item; kids: boolean }) {
     case "interactive": {
       const iax = item.files?.find((f) => f.role === "item" && /\.iax$/i.test(f.file_name));
       if (iax) {
+        const flash = <FlashInteractive iax={iax.file_name} width={iax.width ?? 556} height={iax.height ?? 400} kids={kids} />;
         return (
           <div className="mv-interactive">
-            <GameInteractive iax={iax.file_name} kids={kids} title={item.title} fallback={<FlashInteractive iax={iax.file_name} width={iax.width ?? 556} height={iax.height ?? 400} kids={kids} />} />
+            {isPanoramaInteractive(item) ? (
+              <SinglePanorama iax={iax.file_name} kids={kids} title={item.title} fallback={flash} />
+            ) : (
+              <GameInteractive iax={iax.file_name} kids={kids} title={item.title} fallback={flash} />
+            )}
           </div>
         );
       }

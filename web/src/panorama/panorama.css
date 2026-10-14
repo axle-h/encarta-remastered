@@ -1,0 +1,320 @@
+/* Native panorama player (panorama/PanoramaView.tsx) and the panoramic tour page (pages/PanoramaTour.tsx) */
+
+.panov {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.panov-stage {
+  position: relative;
+  overflow: hidden;
+  max-width: 100%;
+  border: 1px solid #000;
+  background: #000;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.panov-stage:active {
+  cursor: grabbing;
+}
+
+.panov-stage:focus-visible {
+  outline: 2px solid var(--orange, #f90);
+  outline-offset: 2px;
+}
+
+.panov-canvas {
+  display: block;
+}
+
+.panov-wait,
+.panov-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  color: #fff;
+  font: 13px var(--ui);
+}
+
+.panov-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.panov-overlay.hidden > * {
+  visibility: hidden;
+}
+
+.panov-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 1px 6px;
+  border: 1px solid #c0d1e3;
+  background: rgba(0, 0, 0, 0.75);
+  color: #c0d1e3;
+  font: 12px var(--ui);
+  white-space: nowrap;
+}
+
+.panov-hot,
+.panov-mark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* The clickable region shows itself on hover or focus; the titled box (vm-findings (d)) is always shown. */
+.panov-hot {
+  border: 2px solid transparent;
+  border-radius: 3px;
+}
+
+.panov-hot:hover,
+.panov-hot:focus-visible,
+.panov-hot.lit {
+  border-color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 210, 80, 0.22);
+  outline: none;
+}
+
+.panov-mark {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 4px;
+  border: 1px solid #b5cb94;
+  background: #000;
+  color: #b5cb94;
+  font: 11px Tahoma, Verdana, var(--ui), sans-serif;
+  white-space: nowrap;
+}
+
+.panov-mark:hover,
+.panov-mark:focus-visible {
+  border-color: #fff;
+  color: #fff;
+}
+
+.panov-mark-icon {
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* Text labels: bold white, black outline, a thin leader down to the object. */
+.panov-label {
+  padding: 0 0 14px;
+  border: 0;
+  background: none;
+  color: #fff;
+  font: bold 12px var(--ui);
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+}
+
+.panov-label::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 1px;
+  height: 14px;
+  background: #fff;
+}
+
+.pano-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 6px;
+  font: 12px var(--ui);
+}
+
+.pano-wedge {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.panov-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+  font: 12px var(--ui);
+}
+
+.panov-btn {
+  min-width: 30px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid #8a9bb3;
+  border-radius: 3px;
+  background: linear-gradient(#fdfdfd, #dfe5ee);
+  color: #1d2b40;
+  font: 12px var(--ui);
+  cursor: pointer;
+}
+
+.panov-btn:hover {
+  background: linear-gradient(#fff, #eaf0f8);
+}
+
+.panov-btn.on {
+  background: linear-gradient(#ffe7a8, #ffc94d);
+  border-color: #b8860b;
+}
+
+.panov-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.panov-status {
+  flex: 1 1 160px;
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  opacity: 0.85;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panov-fov {
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+/* In the media viewer and on interactive item pages. */
+.mv-interactive:has(.panov) {
+  width: min(900px, 100%);
+}
+
+.pano-single {
+  width: 100%;
+}
+
+.pano-single .panov-bar {
+  color: #333;
+}
+
+/* The panoramic tour page */
+.pano {
+  display: grid;
+  grid-template-columns: minmax(260px, 400px) 1fr;
+  min-height: calc(100vh - var(--chrome-h));
+  background: #31455f;
+}
+
+.pano-side {
+  overflow-y: auto;
+  max-height: calc(100vh - var(--chrome-h));
+  padding: 14px 14px 32px;
+  background: #fafaf8;
+}
+
+.pano-main {
+  min-width: 0;
+  padding: 16px;
+  color: #fff;
+}
+
+.pano-title {
+  margin: 0 0 8px;
+  font: bold 18px var(--sans);
+}
+
+.pano-main .panov-bar {
+  color: #d6dde8;
+}
+
+.pano-site {
+  position: relative;
+  max-width: 100%;
+  margin-bottom: 10px;
+  overflow: hidden;
+  border: 1px solid #999;
+}
+
+.pano-site img {
+  display: block;
+}
+
+.pano-site-pt {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--orange);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+
+.pano-site-pt.picture {
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-width: 1px;
+  background: #ffd250;
+}
+
+/* "You are here": the current scene's point. */
+.pano-site-pt.current {
+  z-index: 1;
+  background: #d00;
+  box-shadow: 0 0 0 2px rgba(208, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.5);
+  transform: scale(1.35);
+}
+
+.pano-site-pt.current::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border: 2px solid rgba(208, 0, 0, 0.6);
+  border-radius: 50%;
+  animation: pano-here 1.6s ease-out infinite;
+}
+
+@keyframes pano-here {
+  from {
+    opacity: 1;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pano-site-pt.current::after {
+    animation: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .pano {
+    grid-template-columns: 1fr;
+  }
+  .pano-side {
+    max-height: none;
+  }
+}

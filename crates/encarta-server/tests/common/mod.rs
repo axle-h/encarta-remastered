@@ -25,6 +25,7 @@ CREATE TABLE item_file (ref_id INTEGER, ordinal INTEGER, role TEXT, file_name TE
 CREATE TABLE item_child (ref_id INTEGER, ordinal INTEGER, kind TEXT, child_ref_id INTEGER, sequence INTEGER);
 CREATE TABLE data_table (ref_id INTEGER PRIMARY KEY, kind TEXT, json TEXT, html TEXT);
 CREATE TABLE related_tree (ref_id INTEGER, editions TEXT, tree_json TEXT, node_count INTEGER, PRIMARY KEY(ref_id, editions));
+CREATE TABLE index_tree (ref_id INTEGER, editions TEXT, title TEXT, tree_json TEXT, node_count INTEGER, PRIMARY KEY(ref_id, editions));
 CREATE TABLE alias (ref_id INTEGER, edition TEXT, collection INTEGER, class_id INTEGER, sort_title TEXT, display_title TEXT, display_html TEXT);
 CREATE TABLE dictionary (name TEXT PRIMARY KEY, kind TEXT, title TEXT, uniq_tag TEXT, lex_file TEXT, guid TEXT, parent_guid TEXT, entry_count INTEGER, signature_json TEXT);
 CREATE TABLE dict_entry (dictionary TEXT, ref_id INTEGER, headword TEXT, variety TEXT, summary TEXT, body_json TEXT, html TEXT, PRIMARY KEY(dictionary, ref_id));
@@ -65,6 +66,7 @@ pub const FACTS: i64 = 300;
 pub const KIDS: i64 = 400;
 pub const EVENT: i64 = 500;
 pub const SIDEBAR: i64 = 600;
+pub const INDEX_TERM: i64 = 210000001;
 pub const SHA_JPG: &str = "aa00000000000000000000000000000000000000000000000000000000000001";
 pub const SHA_THUMB: &str = "bb00000000000000000000000000000000000000000000000000000000000002";
 pub const SHA_IAX: &str = "cc00000000000000000000000000000000000000000000000000000000000003";
@@ -96,6 +98,13 @@ fn content(path: &Path) {
     item(FACTS, "facts", "Zebra", 1, 0, None, None);
     item(KIDS, "article", "Zebras for Kids", 0, 1, None, None);
     item(EVENT, "timeline-event", "Stripes Explained", 1, 0, None, None);
+    // An index term (DATAF): a search alias of its targets and an expandable search result.
+    item(INDEX_TERM, "index-term", "Hippotigris", 1, 0, None, None);
+    c.execute(
+        "INSERT INTO index_tree VALUES (?1, 'STE,STC,DLX,STD', 'Hippotigris', ?2, 3)",
+        params![INDEX_TERM, r#"[{"title":["Hippotigris"],"children":[{"group":"article","ref":100,"para":2,"pn":1,"title":["zebra"]},{"group":"article","ref":101,"title":["Horse"]}]}]"#],
+    )
+    .unwrap();
     // Schema 2 body: `title-ref` parts, a margin cluster and a text-column picture.
     let body = r#"[{"t":"section","id":1,"kind":"introduction","level":1,"number":["I"],"title":["INTRODUCTION"],"blocks":[{"t":"cluster","col":"margin","items":[{"ref":200,"group":"media","seq":1},{"ref":300,"group":"factsandfigures","seq":2}]},{"t":"p","id":1,"c":[{"t":"title-ref","title":["Zebra"],"alt":["Equus quagga"],"c":["Zebra"]},", a striped grazing animal."]}]},{"t":"section","id":2,"kind":"major","level":1,"number":["II"],"title":"STRIPES","blocks":[{"t":"media","ref":200,"group":"media","seq":3,"col":"text"},{"t":"p","id":2,"c":["The stripes may confuse biting flies."]}]}]"#;
     let html = r#"<article class="enc-article" data-ref="100"><p id="p1">Zebra, a striped grazing animal.</p><img src="/media/file/zz000001.jtn"></article>"#;
@@ -174,7 +183,8 @@ fn content(path: &Path) {
          INSERT INTO place_link VALUES (42, 0, 1, 'article', 100), (42, 1, 14, 'flag', 200), (42, 2, 15, 'anthem', 200),
                                        (42, 3, 1, 'article', 999001), (42, 4, 5, 'photo:people', 800), (42, 5, 9, 'music', 801);
          INSERT INTO atlas_media VALUES (800, 'i', 'Kenyan Herders', 'Kenyan Herders', 42, 'ZZ000001.JPG', 'zz000001.jtn', NULL, 7, 'Synthetic Photo Agency', NULL),
-                                        (801, 'w', 'Kenya: Herding Song', 'Kenya: Herding Song', 42, 'zz000801.wav', NULL, NULL, NULL, 'Synthetic Records', NULL);
+                                        (801, 'w', 'Kenya: Herding Song', 'Kenya: Herding Song', 42, 'zz000801.wav', NULL, NULL, NULL, 'Synthetic Records', NULL),
+                                        (802, 'i', 'Herders at Dusk', 'Herders at Dusk', 42, 'yy000002.jpg', 'yy000002.jsm', NULL, NULL, 'Synthetic Photo Agency', NULL);
          INSERT INTO lexicon VALUES ('EESPLA01', 'x', '0x0409', 3, 'speller'), ('DICTA', 'y', '0x0409', 3, 'dict');
          INSERT INTO lexicon_word VALUES ('EESPLA01', 'Kenya'), ('DICTA', 'zebra'), ('DICTA', 'zebu'), ('DICTA', 'stripes'), ('DICTA', 'horse');
          INSERT INTO quiz VALUES (7, 'deluxe', 'mc', 'en', '{\"q\":1}');
@@ -232,7 +242,11 @@ fn manifest(out: &Path) {
          INSERT INTO catalog_key VALUES ('deluxe', 'baggage', 'zz.iax', 2, 'SWDLX01.EIT', 1, 'CONTENT/SWDLX01.EIT', 'baggage/zz.iax', '{SHA_IAX}');
          INSERT INTO derivative VALUES ('{SHA_IAX}', 'original', 'o/cc/{SHA_IAX}.xml', NULL, NULL, NULL, {n}, '{SHA_IAX}', 'copy', NULL),
                                        ('{SHA_SWF}', 'original', 'o/dd/{SHA_SWF}.swf', NULL, NULL, NULL, 19, '{SHA_SWF}', 'copy', NULL);
-         INSERT INTO iax_ref VALUES ('{SHA_IAX}', 'image', 'Slide.jpg', 'iaf-folder', 'CONTENT/SWDLX01.EIT', 'dswMedia/IAF/a/zz/Slide.jpg', '{SHA_JPG}');",
+         INSERT INTO iax_ref VALUES ('{SHA_IAX}', 'image', 'Slide.jpg', 'iaf-folder', 'CONTENT/SWDLX01.EIT', 'dswMedia/IAF/a/zz/Slide.jpg', '{SHA_JPG}');
+         CREATE TABLE atlas_file(name TEXT PRIMARY KEY, role TEXT NOT NULL, ref_id INTEGER NOT NULL, records INTEGER NOT NULL, linked INTEGER NOT NULL,
+                                 sha256 TEXT, resolution TEXT NOT NULL, via TEXT, score REAL);
+         INSERT INTO atlas_file VALUES ('yy000002.jpg', 'image', 802, 1, 0, '{SHA_JPG}', 'crop', 'zz000001.jpg', 0.97),
+                                       ('zz000801.wav', 'audio', 801, 1, 1, NULL, 'absent', NULL, NULL);",
         n = IAX.len()
     ))
     .unwrap();
