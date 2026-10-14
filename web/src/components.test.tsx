@@ -375,4 +375,37 @@ describe("MediaViewer", () => {
     expect(screen.getByTestId("where").textContent).toBe("/item/1");
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  it("traps Tab inside the dialog and returns focus to the opener on close", async () => {
+    mockFetch();
+    const list: AssocItem[] = [
+      { ref_id: 7, group: "media", title: "Seven" },
+      { ref_id: 8, group: "media", title: "Eight" },
+    ];
+    render(
+      <MemoryRouter initialEntries={["/item/1"]}>
+        <Routes>
+          <Route path="*" element={<MediaViewerProvider><Opener list={list} /></MediaViewerProvider>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const opener = screen.getByText("open");
+    opener.focus();
+    fireEvent.click(opener);
+    const dlg = await screen.findByRole("dialog");
+    await waitFor(() => expect(document.activeElement).toBe(dlg));
+    const buttons = Array.from(dlg.querySelectorAll<HTMLElement>("button:not([disabled])"));
+    const first = buttons[0]!;
+    const last = buttons[buttons.length - 1]!;
+    last.focus();
+    fireEvent.keyDown(document.activeElement!, { key: "Tab" });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(document.activeElement!, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
+    act(() => {
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
 });

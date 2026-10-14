@@ -27,14 +27,13 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 
 ## Next (priority order)
 
-1. **Accessibility**: media viewer focus trap, timeline list alternative, axe pass. S
-2. **Article layout**: the inline-table box border; country introductions and overflow into the next section
+1. **Article layout**: the inline-table box border; country introductions and overflow into the next section
    (content-schema §11). S
-3. **Atlas**: alternate label style (w6), area-pen masks, road-shield source, flat-view re-tiling off the main
+2. **Atlas**: alternate label style (w6), area-pen masks, road-shield source, flat-view re-tiling off the main
    thread, time zones in the click menu (V11 shows none). M
-4. **Performance**: `Cache-Control` on API responses; WOFF2 fonts (a converter step; keep the TTFs, which Ruffle
+3. **Performance**: `Cache-Control` on API responses; WOFF2 fonts (a converter step; keep the TTFs, which Ruffle
    needs). S
-5. **Sounds**: startup and menu sounds (the Options setting is stored only). S
+4. **Sounds**: startup and menu sounds (the Options setting is stored only). S
 
 ### Needs the VM
 - Panoramas: single panoramas' `initangle`, panorama zoom.

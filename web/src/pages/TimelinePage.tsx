@@ -131,11 +131,11 @@ export function TimelinePage() {
             </button>
           </p>
         )}
-        <div className="tl-eras" role="tablist" aria-label="Eras">
+        <div className="tl-eras" role="group" aria-label="Eras">
           {ERAS.map((e) => {
             const on = from >= e.from && to <= e.to;
             return (
-              <button key={e.label} type="button" className={on ? "current" : ""} onClick={() => set([e.from, e.to])}>
+              <button key={e.label} type="button" className={on ? "current" : ""} aria-pressed={on} onClick={() => set([e.from, e.to])}>
                 {e.label}
               </button>
             );
@@ -188,7 +188,7 @@ export function TimelinePage() {
           {band.data && res.data && band.data.events.length - hidden.length < res.data.total && " · the band shows the most important; zoom in for more, or see the list below"}
         </span>
       </div>
-      <div className="tl-band" ref={bandRef} onWheel={onWheel} style={{ height: lanes * LANE_H + 40 }}>
+      <div className="tl-band" role="group" aria-label={`Timeline band, ${yearLabel(from)} to ${yearLabel(to)}: ${placed.length} events shown, the most important of the window. The full list in date order follows the band.`} ref={bandRef} onWheel={onWheel} style={{ height: lanes * LANE_H + 40 }}>
         <div className="tl-axis">
           {ticks(from, to, Math.max(3, Math.floor(width / 110))).map((y) => (
             <span key={y} className="tl-tick" style={{ left: ((y - from) / (to - from)) * width }}>
@@ -196,6 +196,12 @@ export function TimelinePage() {
             </span>
           ))}
         </div>
+        <a className="tl-skip" href="#tl-list" onClick={(e) => {
+          e.preventDefault();
+          document.querySelector<HTMLElement>("#tl-list button")?.focus();
+        }}>
+          Skip the band to the list of events
+        </a>
         {placed.map((p) => (
           <BandEvent key={p.ev.seq} p={p} top={30 + p.lane * LANE_H} current={selected?.seq === p.ev.seq} onSelect={setSelected} />
         ))}
@@ -214,7 +220,7 @@ export function TimelinePage() {
               // Drop `?event=` so a reload doesn't reopen the pop-up.
               if (eventId) setParams((p) => (p.delete("event"), p), { replace: true });
             }} />}
-        <ol className="tl-list">
+        <ol className="tl-list" id="tl-list" aria-label={`Events, ${yearLabel(from)} to ${yearLabel(to)}, in date order`}>
           {events.map((ev) => (
             <li key={ev.seq} className={selected?.seq === ev.seq ? "current" : ""}>
               <button type="button" onClick={() => setSelected(ev)}>
@@ -261,6 +267,7 @@ function BandEvent({ p, top, current, onSelect }: { p: Placed; top: number; curr
         style={{ left: p.x, top, width: p.w }}
         onClick={() => onSelect(ev)}
         title={title}
+        aria-label={title}
       >
         <span className="tl-bar-line" />
         {ev.picture && <img className="tl-bar-pic" src={ev.picture.url} alt="" />}
@@ -277,6 +284,7 @@ function BandEvent({ p, top, current, onSelect }: { p: Placed; top: number; curr
       style={{ left: Math.max(0, p.x), top, maxWidth: p.lw, fontSize: titleSize(prominenceOf(ev)) }}
       onClick={() => onSelect(ev)}
       title={title}
+      aria-label={title}
     >
       <i className="tl-sq" />
       <Html as="span" html={ev.title_html ?? ev.title} />

@@ -82,6 +82,29 @@ function MediaViewer({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Tab" && dialog.current) {
+        const box = dialog.current;
+        const tabbable = Array.from(
+          box.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+        );
+        const first = tabbable[0];
+        const last = tabbable[tabbable.length - 1];
+        const active = document.activeElement;
+        if (!first || !last) {
+          e.preventDefault();
+          box.focus();
+        } else if (!box.contains(active) || active === box) {
+          e.preventDefault();
+          (e.shiftKey ? last : first).focus();
+        } else if (e.shiftKey && active === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+        return;
+      }
       if (e.key === "Escape") onClose();
       else if (e.key === "ArrowLeft" && prev && !(e.target instanceof HTMLMediaElement)) onGo(prev.ref_id);
       else if (e.key === "ArrowRight" && next && !(e.target instanceof HTMLMediaElement)) onGo(next.ref_id);
@@ -90,8 +113,13 @@ function MediaViewer({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, onGo, prev, next]);
 
+  // Focus moves into the dialog and returns to the opener on close; Tab cycles inside it.
   useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialog.current?.focus();
+    return () => {
+      if (opener && opener.isConnected) opener.focus();
+    };
   }, []);
 
   useEffect(() => {

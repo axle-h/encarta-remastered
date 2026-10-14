@@ -43,7 +43,7 @@ export function OptionsDialog({ onClose }: { onClose: () => void }) {
       <div className="dlg opt" role="dialog" aria-modal="true" aria-label="Options">
         <ul className="opt-pages" role="tablist" aria-orientation="vertical">
           {OPTION_PAGES.map((p) => (
-            <li key={p}>
+            <li key={p} role="presentation">
               <button type="button" role="tab" aria-selected={page === p} className={page === p ? "on" : ""} onClick={() => setPage(p)}>
                 {p}
               </button>

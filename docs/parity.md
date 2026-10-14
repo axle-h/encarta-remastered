@@ -107,7 +107,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Panoramas (151, `surround`) | done | native cylinder player (`web/src/panorama/`) in place of the Flash `vrslide` viewer, which is blank under Ruffle | — |
 | Maps as pictures (99,707) → "Open in the World Atlas" at the place | done | links to `/atlas/place/{geocode}` (this audit; was `/atlas`) | — |
 | Charts, tables (2,508 + 266 facts) | done | 50/50 | — |
-| Media viewer: prev/next, strip, Esc, appears-in | done | | no focus trap |
+| Media viewer: prev/next, strip, Esc, appears-in, focus trap | done | `MediaViewer.tsx`, `components.test.tsx` | — |
 | Media Gallery by type | done | `/media` | — |
 
 ## Dictionary, thesaurus and translation window
@@ -234,7 +234,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Keyboard menus (Features, menu bar, tour Appears in): arrows, Home/End, Esc, ←/→ across the bar | done | `components/Menu.tsx`, tests (this audit); the Features menu could not be used from the keyboard before | — |
 | Skip to content link, `main` landmark focus target | done | (this audit) | — |
 | Focus outline (`:focus-visible`) | done | `base.css` | — |
-| ARIA: menus, dialog, tabs, live status for menu actions, labelled hotspots | partial | | media viewer has no focus trap; timeline band events lack a list alternative label; Ruffle content is opaque to screen readers |
+| ARIA: menus, dialog, tabs, live status for menu actions, labelled hotspots | partial | media viewer traps Tab and restores focus; Timeline band is a labelled group with a skip link to the date-ordered list, events carry aria-labels; axe-core (jsdom, no colour contrast) clean on Timeline, Options and the viewer | Ruffle content is opaque to screen readers; axe not run in a real browser (contrast) |
 | Alt text on pictures | partial | titles where known | many decorative images have empty alt (correct); thumbnails in strips use titles |
 | Panorama and Map Trek keyboard use | done | ←/→ in the panorama, buttons for stops (this audit) | — |
 
