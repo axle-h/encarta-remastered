@@ -8,7 +8,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useApi } from "../../api/useApi";
 import { useDocumentTitle } from "../../components/useDocumentTitle";
 import { getGeoGame, getGeoLevels, type GeoGame, type GeoLevel } from "../api";
-import { addScore, lastName, pick, pointsFor, questionText, rememberName, type HighScore, type QuestionState } from "./geo";
+import { addScore, LEVEL_NAMES, lastName, pick, pointsFor, questionText, rememberName, type HighScore, type QuestionState } from "./geo";
 import { QuizMap } from "./QuizMap";
 
 export function GeoQuiz() {
@@ -20,12 +20,14 @@ export function GeoQuiz() {
   const [started, setStarted] = useState(false);
   const [game, setGame] = useState<GeoGame | null>(null);
   const [error, setError] = useState<string>();
+  const [retrying, setRetrying] = useState(false);
 
   const start = useCallback(
     (lv: number) => {
       rememberName(name.trim());
       setError(undefined);
       setGame(null);
+      setRetrying(false);
       setStarted(true);
       getGeoGame(lv).then(setGame, (e: Error) => setError(e.message));
     },
@@ -57,9 +59,27 @@ export function GeoQuiz() {
           game={game}
           name={name.trim() || "Player"}
           level={levels.data?.levels.find((l) => l.level === game.level) ?? game.settings}
-          onAgain={() => start(game.level)}
+          onAgain={() => {
+            setLevel(game.level);
+            setRetrying(true);
+          }}
           onExit={() => setStarted(false)}
+          scoresHidden={retrying}
         />
+      )}
+      {game && retrying && (
+        <div className="gq-modal">
+          <StartDialog
+            levels={levels.data?.levels ?? []}
+            error={levels.error?.message}
+            name={name}
+            level={level}
+            onName={setName}
+            onLevel={setLevel}
+            onOk={() => start(level)}
+            onCancel={() => navigate(-1)}
+          />
+        </div>
       )}
     </div>
   );
@@ -134,7 +154,7 @@ function StartDialog({
 
 const FRESH: QuestionState = { wrong: [], done: false, points: 0 };
 
-function QuizRun({ game, name, level, onAgain, onExit }: { game: GeoGame; name: string; level: GeoLevel | null; onAgain: () => void; onExit: () => void }) {
+function QuizRun({ game, name, level, onAgain, onExit, scoresHidden }: { game: GeoGame; name: string; level: GeoLevel | null; onAgain: () => void; onExit: () => void; scoresHidden: boolean }) {
   const points = level?.points ?? [5, 4, 3, 2, 0];
   const [index, setIndex] = useState(0);
   const [q, setQ] = useState<QuestionState>(FRESH);
@@ -197,7 +217,7 @@ function QuizRun({ game, name, level, onAgain, onExit }: { game: GeoGame; name: 
         </Link>
       </aside>
       <QuizMap place={done ? null : place} hand={hand} onHand={setHand} />
-      {done && (
+      {done && !scoresHidden && (
         <ScoresDialog
           name={name}
           level={level}
@@ -249,11 +269,11 @@ export function ScoresDialog({
           </p>
           {table && (
             <>
-              <div className="gq-best-title">Best {level?.name} scores</div>
+              <div className="gq-best-title">High Scores for Geography Quiz:</div>
               <ol className="gq-table">
                 {table.map((s, i) => (
                   <li key={i}>
-                    <span>{s.name}</span> <b>{s.score}</b>
+                    <span>{s.name}</span> <b>{s.score}</b> <em>{LEVEL_NAMES[s.level] ?? ""}</em>
                   </li>
                 ))}
               </ol>

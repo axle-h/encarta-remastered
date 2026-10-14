@@ -361,6 +361,13 @@
   padding-left: 20px;
 }
 
+.gq-table li b {
+  display: inline-block;
+  min-width: 40px;
+  text-align: right;
+  margin-right: 12px;
+}
+
 .gq-table li span {
   display: inline-block;
   min-width: 80px;

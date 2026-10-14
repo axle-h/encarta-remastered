@@ -27,7 +27,7 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 
 ## Next (priority order)
 
-1. **Geography Quiz**: the VM's full score table, Try Again reopening the start dialog, the 9-tick slider look. S
+1. **Geography Quiz**: the 9-tick slider look (the score table and Try Again are done). S
 2. **MIDI soundfont**: 236 music files sound synthetic. M
 3. **Timeline**: open items in the Timeline view at the event; media in event pop-ups; essay bar pictures. S
 4. **Accessibility**: media viewer focus trap, timeline list alternative, axe pass. S

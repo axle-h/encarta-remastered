@@ -56,7 +56,7 @@ export function readScores(): HighScore[] {
   }
 }
 
-/** Adds a score and keeps the ten best per level; returns the level's table. */
+/** Adds a score and keeps the ten best per level; returns every level's scores, best first (the VM's table). */
 export function addScore(entry: HighScore, existing = readScores()): HighScore[] {
   const all = [...existing, entry];
   const keep: HighScore[] = [];
@@ -68,7 +68,7 @@ export function addScore(entry: HighScore, existing = readScores()): HighScore[]
   } catch {
     /* unavailable */
   }
-  return keep.filter((s) => s.level === entry.level);
+  return keep.sort((a, b) => b.score - a.score || a.level - b.level || a.date - b.date);
 }
 
 export function lastName(): string {
@@ -86,3 +86,5 @@ export function rememberName(n: string) {
     /* unavailable */
   }
 }
+
+export const LEVEL_NAMES: Record<number, string> = { 1: "Navigator", 2: "Explorer", 3: "Globetrotter", 4: "World Class" };

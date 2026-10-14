@@ -181,5 +181,7 @@ describe("GeoQuiz scores dialog", () => {
     screen.getByText("Try Again").click();
     expect(again).toHaveBeenCalled();
     expect(screen.getByText("Exit")).toBeTruthy();
+    expect(screen.getByText("High Scores for Geography Quiz:")).toBeTruthy();
+    expect(screen.getByText("Navigator")).toBeTruthy();
   });
 });
