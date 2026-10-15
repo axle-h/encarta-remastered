@@ -156,7 +156,10 @@ export class TourView {
       let m = variants.get(key);
       if (!m) {
         m = tourMaterial(base, this.shared, { flickerSets, fullBright });
-        if (m.map) m.map.colorSpace = THREE.NoColorSpace;
+        if (m.map) {
+          m.map.colorSpace = THREE.NoColorSpace;
+          this.deviceFilter(m.map);
+        }
         if (this.options.doubleSided) m.side = THREE.DoubleSide;
         variants.set(key, m);
         let set = this.recordMaterials.get(record);
@@ -261,6 +264,7 @@ export class TourView {
         generateMipmaps: false,
       });
       rt.texture.colorSpace = THREE.NoColorSpace;
+      this.deviceFilter(rt.texture);
       const points = new THREE.Points(geom, impostor.clone());
       points.frustumCulled = false;
       // The placeholder quad shows the impostor; give it its own material (the original draws each
@@ -299,6 +303,14 @@ export class TourView {
     await Promise.all([...paths].map((p) => this.texture(p)));
   }
 
+  /** The software device samples the nearest texel without mipmaps; hardware filters (§5.10; VM pass 4). */
+  private deviceFilter(t: THREE.Texture): void {
+    if (this.control.options.device !== "software") return;
+    t.minFilter = t.magFilter = THREE.NearestFilter;
+    t.generateMipmaps = false;
+    t.needsUpdate = true;
+  }
+
   private texture(path: string): Promise<THREE.Texture> {
     const cached = this.textureCache.get(path);
     if (cached) return Promise.resolve(cached);
@@ -310,6 +322,7 @@ export class TourView {
         t.generateMipmaps = false;
         t.minFilter = THREE.LinearFilter;
       }
+      this.deviceFilter(t);
       t.needsUpdate = true;
       this.textureCache.set(path, t);
       return t;
@@ -553,6 +566,7 @@ export class TourView {
         tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
         tex.magFilter = THREE.LinearFilter;
         tex.minFilter = THREE.LinearFilter;
+        this.deviceFilter(tex);
         tex.flipY = false;
         wt = { tex, src, version: -1 };
         this.water.set(record, wt);

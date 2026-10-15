@@ -31,9 +31,10 @@ export type FovAxis = "horizontal" | "vertical";
 
 export interface ControlOptions {
   /**
-   * Device the original would run on. Software is what Encarta uses on a machine without a D3D device
-   * (the reference VM); hardware re-renders clouds only every ~5° (§7.3.4). Both follow the ground in
-   * gravity mode (§6.8; VM, debugger).
+   * Device the original would run on. Hardware (default) is what Encarta picks with its installed
+   * `DxHardware` setting on any machine with a D3D device: gravity throughout, clouds re-rendered only
+   * every 0.09 rad (§7.3.4), filtered textures. Software (no D3D device, the plain reference VM) drops
+   * to snap mode after the first walk step and point-samples textures (§6.8, §5.10; VM pass 4).
    */
   device?: "software" | "hardware";
   /** Overrides the ground mode the device implies. */
@@ -117,7 +118,7 @@ export class TourControl implements Handlers {
   readonly walk: WalkMapSet;
   readonly layer: Layer2D;
   camera: CameraState = newCamera();
-  readonly options: Required<Omit<ControlOptions, "rng">>;
+  readonly options: Required<Omit<ControlOptions, "rng" | "groundMode">> & { groundMode?: GroundMode };
   readonly rng: Rng;
   events: ControlEvents = {};
 
@@ -142,6 +143,8 @@ export class TourControl implements Handlers {
 
   // Scene switches.
   gravity: number = CAMERA_DEFAULTS.gravity;
+  /** Walker gravity flag (+0x54): set at load, rewritten by every walk step (§6.8). */
+  private walkerGravity = true;
   fog = { color: [75, 150, 230] as RGB, start: 0, end: 20, enabled: false };
   ambient: RGB | null = null;
   specular = false;
@@ -178,10 +181,10 @@ export class TourControl implements Handlers {
 
   constructor(scene: TourScene, options: ControlOptions = {}) {
     this.scene = scene;
-    const device = options.device ?? "software";
+    const device = options.device ?? "hardware";
     this.options = {
       device,
-      groundMode: options.groundMode ?? "gravity",
+      groundMode: options.groundMode,
       tickHz: options.tickHz ?? 64,
       fovAxis: options.fovAxis ?? "horizontal",
       walkmapSwitch: options.walkmapSwitch ?? "settle",
@@ -293,7 +296,9 @@ export class TourControl implements Handlers {
     const k = timeFactor(dt);
     const walk = this.walk.enabled ? this.walk : null;
     stepMove(this.camera, input, k, walk);
-    followGround(this.camera, walk, this.options.groundMode, this.gravity);
+    // Every walk step sets the walker's gravity flag from the device; turning alone does not (§6.8).
+    if (input.move !== 0) this.walkerGravity = this.options.device === "hardware";
+    followGround(this.camera, walk, this.options.groundMode ?? (this.walkerGravity ? "gravity" : "snap"), this.gravity);
     this.hotspotCheck();
   }
 

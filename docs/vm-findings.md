@@ -1017,7 +1017,8 @@ that is not clipped in Flash. Flash's land fills in Vasco show a fine dither, wh
 
 ### Tours under the debugger (cdb attached to tourhost and to ENCARTA.EXE; `vm/dbg.sh`)
 - **Gravity mode on the software device.** Walker +0x54 is 1 in ENCARTA.EXE's control at the Acropolis start (and in
-  tourhost); GRAVITY 0.003 is at the control's static +0x11b0c8. A write breakpoint on the eye's Y shows each tick fall
+  tourhost) — but only until the first walk step, which sets it to 0 on the software device (VM pass 4 below);
+  GRAVITY 0.003 is at the control's static +0x11b0c8. A write breakpoint on the eye's Y shows each tick fall
   by `vfall` and land in the same tick. An eye raised 0.6 units fell 0.003, 0.006, …, 0.057 and landed on tick 20. This
   supersedes "§6.8 Gravity vs snap" above (tours-3d.md §6.8).
 - **Pitch limit.** A breakpoint on the pitch step (FUN_10010f80) logging eye, target and stored pitch: the step tests
@@ -1184,8 +1185,95 @@ synth on an `OfflineAudioContext` (aligned by onset).
 Method: `target/vm3/start.sh --loadvm flash-ready --wav`, WAV sliced by file size per action.
 
 ### Still open
-The hardware cloud step and MaxView (no 3D device). Print's sounds (no printer in the guest) and a cdb log of the Kids
+The hardware cloud step and MaxView (no 3D device; done in VM pass 4 below). Print's sounds (no printer in the guest) and a cdb log of the Kids
 process (the code names none of the unheard ids, so nothing is expected there). LEX: body u32s +0x04 and +0x20, the
 header stamp's meaning and the copyright's trailing u16 (never read on the search path); the other LEX files were not
 opened by searches. TIMELINE offset A is never read by the viewer. MindMaze music cannot be observed (2009 has no MIDI
 path for it). Atlas: the cost of the alternative-name layouts and which label kinds are placed first.
+
+## VM pass 4 (2026-10-15): 3D device (WineD3D + Mesa)
+
+**Setup.** The Cirrus guest has no Direct3D HAL, so the tour control always ran its software device. This pass gave it
+one with WineD3D built for Windows on a software OpenGL, never replacing anything in `C:\WINDOWS`:
+- WineD3D: the wine9x build of Wine 1.7.55 (JHRobotics, release v1.7.55.45, `-mmx` zip; its readme supports 2k/XP).
+  Its `winedd.dll` is Wine's ddraw; used as `ddraw.dll` (and as `wddraw.dll`, the same file) with `wined3d.dll`.
+- OpenGL: Mesa9x 23.1.9 llvmpipe `opengl32.dll` (JHRobotics, v23.1.9.138, the win95 build: no SSE needed, imports
+  only what XP has). mesa-dist-win 17.0.1 and 17.1.8 were tried first and do not load on XP (their LLVM imports
+  `SHGetKnownFolderPath`, `RegGetValueW`, `GetFinalPathNameByHandleW`); Mesa dropped XP in 17.2.
+- Downloads in `target/dl-d3d/<name>/` (sha256 in docs/vm.md), moved in through the exchange disk to `C:\d3d`.
+  `vm/d3d.sh` and snapshot `d3d-ready` (docs/vm.md).
+- Loading: tourhost loads the control through COM with the altered search path (the OCX's folder, then system32), so a
+  `ddraw.dll` next to tourhost.exe is not used; `tourhost.exe.local` (DLL redirection) fixes that. ENCARTA.EXE has a
+  manifest (.local is ignored) and mshtml's `ddrawex.dll` loads the system ddraw early (and crashes on Wine's), so in
+  Encarta Wine's ddraw is loaded as `C:\d3d\wddraw.dll` by cdb at the entry point and the control's two DirectDraw
+  import thunks are pointed at it.
+- The control rejects WineD3D without three in-memory patches (cdb, nothing on disk; `vm/d3d/patch2.py`):
+  1. Its render-state setup treats any failure as fatal; Wine returns `E_NOTIMPL` for `D3DRENDERSTATE_BORDERCOLOR` (43).
+     The failure branch after that call (+0x67451) is NOPed.
+  2. In hardware mode the control clears the z-buffer each frame by locking it and filling `0xFFFFFFFF` (+0x6625A);
+     wined3d never uploads CPU writes to a depth surface, so nothing passed the depth test. Replaced by a
+     `Blt(DDBLT_DEPTHFILL)`.
+  3. Wine 1.7 ignores the D3DVIEWPORT2 clip volume the control relies on for its aspect ratio (dvClipX −1, dvClipY 0.68,
+     dvClipWidth 2, dvClipHeight 1.36 at 616×420) and answers each `SetViewport2` by setting the projection to its own
+     clip matrix alone, after the control has set its projection. The same patched block sets the control's projection
+     again before `BeginScene`, with `_22` × W/H. A viewport `Clear` would also reset the projection, hence the depth fill.
+
+  After that, `Try3DHardware` returns True, `ACTIVEX3DX3+0x11C954` (hardware flag) is 1 and the three Acropolis stops
+  render with the same geometry and camera as the software device (`fixtures/tours/701504257/hw/compare-montage.png`).
+  `Force3DSoftware` on Wine's ddraw draws nothing (black), so software runs use the system ddraw (`vm/d3d.sh tour-off`).
+
+**Device probe (why the Cirrus card fails, static, OCX 0x100600F0 / 0x1005FC30).** At construction the control
+requires: DirectX ≥ 5 (the SDK's GetDXVersion), `DDCAPS_3D` and `DDCAPS2_CANRENDERWINDOWED`, a display deeper than
+8 bpp, an `IDirect3D2` whose enumerated device has a *hardware* description with the display depth in its render depths,
+RGB colour model with Gouraud RGB shading (or mono), no square-only textures, and a viewport it can create. Status codes
+go to `+0x270` (3 = no `DDCAPS_3D`, the Cirrus case). `Try3DHardware` then builds the device; any failure there sets
+the flag back to 0 and the control stays on software.
+
+### §7.3.4 Cloud re-render step (cdb + screenshots, `fixtures/tours/701504257/hw/`)
+Bronze Athena (centre −2.40049, 0.54274, −2.67199, offset −π/2), eye orbiting at 2 units facing it, a cdb breakpoint on
+the cloud's surface Lock (0x10019C4E) logging phi:
+- 1° steps (`cloud-1deg/`, `cloud-1deg.txt`, `-cdb.txt`): re-rendered at 81, 87, 91, 97° (statue box changes by 15–19
+  grey levels on those steps, ~1 otherwise). **Every 6th 1° step**, except where phi wraps 2π→0.
+- 0.1° steps (`cloud-tenth-deg-cdb.txt`): renders 5.2° apart: 5.1° (0.0890 rad) is skipped, 5.2° (0.0908) renders.
+  Confirms the 0.09 rad threshold, measured from the **last render**, not the last frame.
+- The wrap: phi is in [0, 2π) and the test is on the raw difference, so crossing 0 (geometric 90° for an offset of −π/2)
+  forces a render after 4° (357° → 1°).
+- Behind the eye and 0.9 × FOGEND hold in hardware mode (`cloud-rules-cdb.txt`): facing away, no render in 21 steps;
+  FOGEND 10: renders every 6° at 3-D distance 8.903, none at 9.103, again at 8.903.
+
+### Ground mode (correction of "Tours under the debugger", §6.8; `hw/gravity-mode.txt`)
+The walk routine (0x10022000) sets walker +0x54 on **every walk step**: 1 (gravity) if the hardware flag or the
+second flag 0x1011C958 is set, else 0 (snap). 0x1011C958 is the renderer's +0x10F0, only ever initialised to 0. The
+initial value is 1, which is what the earlier pass read at the start pose. Measured: hardware +0x54 = 1 while walking;
+software (system ddraw) +0x54 = 0 after the first step. An eye raised 0.6 with `CAMERA.POS` falls gradually before
+any walk step (0.205, 0.196, 0.184, 0.151, … sampled every ~20 ms) and is on the ground by the first sample after it. So software users (and everyone in the VM) get
+gravity only until they first walk, then snap; hardware users always get gravity.
+
+### MaxView (§4; cdb in ENCARTA.EXE, static layout, `fixtures/tours/maxview/`)
+- **MaxView is the normal tour page.** The media type table maps `virttour` to `CMaxView`, and the subtype `3DVT` to
+  `CMax3DVTView`; opening the Acropolis (`msencarta://id=701504257`) constructs `CMax3DVTView`, `CMax3DVTWnd` and
+  `C3DVirtToursWnd`, in that order. There is no other tour window and no "maximise" step. `CMaxView` is the family of
+  full-pane media views (also `MaxTimelineWnd`, `MaxMapWnd`, 2D tours `maxvtwnd`, `maxshockwavewnd`).
+- It does not depend on the 3D device: the host calls `Try3DHardware` when the undocumented profile value
+  `DxHardware` (HKLM `Software\Microsoft\Microsoft Reference\E09AXLRD`, profile id 0x10D
+  `PROFILE_UNDOC_3DVT_USEHARDWAREACCEL`, installed as 1, no UI) is set, else `Force3DSoftware`; nothing else changes.
+  With the WineD3D device (`encarta-acropolis-hardware.png`) the page is pixel-identical outside the 3D picture.
+- Layout (C3DVirtToursWnd OnSize, 0x4D6D50; client cx × cy): site map (0, 19, 172 × 194); stop text from y 214 to the
+  bottom, 172 wide; the control is always **616 × 420**, at x = 172 + (cx − 790)/2 (1 if cx − 174 < 617) and
+  y = 19 + (cy − 495)/2 (1 if cy − 75 < 421), clipped to the client; the title banner at (172, cy − 53), 54 high; the
+  menu items right-aligned along the top. Maximised at 1024×768: client 1022 × 629, control at (288, 86), screen
+  (289, 195). Restoring the window keeps 616 × 420 and re-centres it (`encarta-acropolis-restored-window-hardware.png`).
+  FOV stays the scripts' 80. It is left like any page (Back, Home, links).
+- The control's own full-screen mode (`TRYFULLSCREEN`, `TRYHARDWAREFULLSCREEN`; hidden `_dot` button, Colosseum
+  `LARGE` macro, never reachable in 2009): a modal loop in `Do` that hides and maximises the host's main window, renders
+  at the display mode's size, and ends on Esc (DirectInput) or `KILLFULLSCREEN`; `TRYHARDWAREFULLSCREEN` goes back to
+  software afterwards if it was software. Tried in tourhost on WineD3D: entered and left with Esc (`Do` returned
+  `Success`), but the picture was broken (the patches assume 616 × 420), so its look was not observed.
+
+### Other hardware-mode differences
+- Textures are filtered (bilinear, mipmaps) in hardware; software samples point. Same geometry, camera and captions.
+- The colour-keyed statue shows no magenta fringe on WineD3D, which applies the key before filtering; a 2009 driver
+  could differ (§5.10 stays open for real hardware).
+- Per-frame work moves to the device: the control sets world/view/projection with `SetTransform` and draws
+  `D3DLVERTEX` fans with `DrawIndexedPrimitive` (lighting is still the control's own, in the vertex colours); the cloud
+  image goes through a system-memory copy (§7.3.4 step 5).

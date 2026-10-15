@@ -11,7 +11,8 @@ into setup straight from the user's own media and is never stored (see [CLEAN_RO
 - Encarta: full "Copy To Hard Drive" install (all content local), Encarta Kids included. No product key was needed.
 - Snapshots in `vm/xp.qcow2`: `xp-base` (disk), `clean-install` (disk), `encarta-home` (live, Encarta on its home page),
   `tours-ready` (live: home page, the 7 tours extracted to `C:\tours\<id>\`, our tour host built in `C:\tools`),
-  `flash-ready` (live: `tours-ready` plus Flash Player 10.3 and cdb; use this one).
+  `flash-ready` (live: `tours-ready` plus Flash Player 10.3 and cdb), `d3d-ready` (live: `flash-ready` plus the
+  WineD3D/Mesa DLLs in `C:\d3d` and tourhost's `call` command; Encarta on its home page; use this one).
 - Helpers: `vm/start.sh`, `vm/stop.sh`, `vm/savevm.sh`, `vm/vmctl.py` (QMP: screenshots, keys, mouse),
   `vm/agent.py` + `vm/guest/encagent.cs` (our own small agent: run commands, move files, dump the rendered
   DOM of Encarta's HTML view), `vm/xchg.sh` (FAT32 exchange disk via mtools). Only one QMP client can
@@ -40,5 +41,14 @@ into setup straight from the user's own media and is never stored (see [CLEAN_RO
 - Parallel lanes: a `cp -a --reflink=always vm target/vmN` copy with `REPO` and the ports changed in its `start.sh`, `agent.py` and
   `tour.py` (agent 7787/7797, VNC :6/:7) runs a second guest from the same snapshots; VM pass 3 used `target/vm2` and
   `target/vm3` this way. Copy only while no VM of the source is running.
-- Not available: 3D hardware (the Cirrus card forces the tours' software renderer, so the hardware cloud step and
-  MaxView can't be observed). OllyDbg 1.10 is also installed, unused.
+- 3D hardware (`d3d-ready`): the Cirrus card has no Direct3D HAL, so the tour control normally runs its software device.
+  A HAL comes from WineD3D for Windows on a software OpenGL, both in `C:\d3d` only (nothing in `C:\WINDOWS` replaced):
+  the wine9x build of Wine 1.7.55 (github.com/JHRobotics/wine9x v1.7.55.45 `-mmx` zip, sha256 fd5d866a…; its `winedd.dll`
+  used as `ddraw.dll` and `wddraw.dll`, plus `wined3d.dll`) and Mesa9x 23.1.9 llvmpipe `opengl32.dll`
+  (github.com/JHRobotics/mesa9x v23.1.9.138 `opengl32-win95-llvmpipe` zip, sha256 dae61c5c…; mesa-dist-win builds need
+  Vista). Downloads in `target/dl-d3d/<name>/`. The control needs three in-memory patches (cdb) to run on it; `vm/d3d.sh`
+  does everything: `tour-on`/`tour-off` (DLLs and `tourhost.exe.local` in `C:\tools`; off is the default, and needed for
+  software runs, which draw black on Wine's ddraw), `tourstart [W H]` (start tourhost, patch, `Try3DHardware`),
+  `encarta` (restart ENCARTA.EXE under cdb with Wine's ddraw injected from `C:\d3d`; its tours then use the HAL; killing
+  cdb ends Encarta), `status <image>` (the control's hardware flag). Details and what differs: vm-findings.md "VM pass 4".
+- OllyDbg 1.10 is also installed, unused.

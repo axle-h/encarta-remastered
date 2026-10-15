@@ -166,7 +166,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| 7 tours: walking, collision, ground following (gravity mode), lights, statues, captions | done | 47 views match the VM read-back (tour-runtime.md); gravity fall and the drifted pitch limit as traced with the debugger; the water ripple steps once per drawn frame below 80 fps (cdb: 631 steps in 641 frames at 64 fps) and `CLEARBACKGROUND=0` keeps the colour buffer, which is what `3D.TOGGLEHIDDEN` shows (2026-10-15) | hardware cloud step and MaxView (no 3D device) |
+| 7 tours: walking, collision, ground following (per device), lights, statues, captions | done | 47 views match the VM read-back (tour-runtime.md); gravity fall and the drifted pitch limit as traced with the debugger; the water ripple steps once per drawn frame below 80 fps (cdb: 631 steps in 641 frames at 64 fps) and `CLEARBACKGROUND=0` keeps the colour buffer, which is what `3D.TOGGLEHIDDEN` shows (2026-10-15); VM pass 4 (WineD3D device): the 0.09 rad hardware cloud step, gravity on hardware vs snap after the first walk step on software, filtered vs point-sampled textures, MaxView is the normal 616×420 page; the runtime defaults to hardware | colour-key fringes on a 2009 driver; snap-mode pitch drift |
 | Tour page layout, site map, Tour Stops menu | done | VM `701504257/stops` | rotated maps unverified |
 | Labels and Hot Spots toggle | done | | — |
 | Hotspot → media page, Back restores pose | done | VM | — |

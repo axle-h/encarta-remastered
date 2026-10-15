@@ -27,7 +27,17 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 
 ## Next (priority order)
 
-Nothing queued; what is left (mostly blocked: no 3D device, no printer, unread code) is under "Needs the VM" below.
+Nothing queued; what is left (mostly blocked: no printer, unread code) is under "Needs the VM" below.
+
+Done 2026-10-15 (VM pass 4, 3D device): WineD3D 1.7.55 (wine9x) over Mesa9x 23.1.9 llvmpipe, app-local in `C:\d3d`
+(`vm/d3d.sh`, snapshot `d3d-ready`; the control needs three in-memory cdb patches on WineD3D, vm.md). **Cloud step**
+confirmed: 0.09 rad from the last render (5.1° kept, 5.2° re-rendered), forced at the unwrapped 2π crossing (§7.3.4).
+**Ground mode corrected**: every walk step rewrites the walker flag, so hardware is gravity throughout and software
+snaps after the first walk step (§6.8). **MaxView** is the normal tour page (control fixed 616×420 beside a 172-px
+panel, FOV 80, §4.0), not a hardware mode; `TRYFULLSCREEN` is unreachable in 2009. Hardware filters textures
+(bilinear, mipmaps), software point-samples (§5.10). The runtime now defaults to the hardware device (Encarta
+installs `DxHardware` = 1), with the ground mode and texture filtering following `device`; the dev page has a
+Device selector (tour-runtime.md).
 
 Done 2026-10-15 (VM pass 3, the rest of "Needs the VM"; three VM lanes from `flash-ready`, cdb, nothing installed):
 **Atlas** (from MOBB200/ENCARTA.EXE code, checked against the captures): point labels try above right, below right,
@@ -132,7 +142,8 @@ sprites), area-pen draw-over masks, flat-view tiles in Web Workers, time zones o
 
 ### Needs the VM
 Left after VM pass 3 (vm-findings "VM pass 3"):
-- Tours: the hardware cloud step and MaxView need a 3D device (the guest has none).
+- Tours: colour-key fringes on a real 2009 driver and the control's full-screen look (WineD3D shows neither);
+  whether the pitch-limit drift (§6.9) is the same in snap mode.
 - Sounds: Print's dialogs (no printer in the guest); the Kids process was not logged (its code names none of the
   unheard ids).
 - Data: LEX body u32s +0x04/+0x20, the header stamp's meaning and the copyright's trailing u16 (not read on the search

@@ -233,6 +233,34 @@ describe("walls (VM: the move is projected onto the wall, no bounce, a corner st
   });
 });
 
+describe("ground mode per device (VM pass 4: walker +0x54 is rewritten by every walk step)", () => {
+  const afterRaise = (c: TourControl) => {
+    const y0 = c.camera.y;
+    c.camera.y += 0.6;
+    c.tick();
+    return c.camera.y - y0;
+  };
+  it("hardware falls with gravity before and after walking", () => {
+    const { c } = loaded();
+    expect(c.options.device).toBe("hardware");
+    expect(afterRaise(c)).toBeGreaterThan(0.5);
+    holding(c, "ArrowUp", 0.1);
+    expect(afterRaise(c)).toBeGreaterThan(0.5);
+  });
+  it("software falls with gravity until the first walk step, then snaps; turning alone keeps gravity", () => {
+    const c = new TourControl(scene(), { device: "software", rng: lcg(1) });
+    c.do("SCENE.ALARM.ACTIVATE");
+    c.do("script.load=load.3sc");
+    for (let i = 0; i < 1000 && c.loading; i++) c.tick();
+    c.tick();
+    holding(c, "ArrowRight", 0.1);
+    expect(afterRaise(c)).toBeGreaterThan(0.5);
+    for (let i = 0; i < 200; i++) c.tick();
+    holding(c, "ArrowUp", 0.1);
+    expect(afterRaise(c)).toBeCloseTo(0, 6);
+  });
+});
+
 // ------------------------------------------------------------------ events and replies
 
 describe("events and command replies (VM)", () => {

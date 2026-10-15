@@ -111,7 +111,7 @@ export interface StepInput {
 
 export const NO_INPUT: StepInput = { move: 0, turn: 0, pitchUp: false, pitchDown: false, level: false };
 
-/** How the eye follows the ground (§6.8): gravity (what Encarta runs on both devices) or snap (an experiment). */
+/** How the eye follows the ground (§6.8): gravity (hardware device; software until the first walk step) or snap. */
 export type GroundMode = "snap" | "gravity";
 
 /** Points the look vector at `deg` (`CAMERA.PITCH=`, POS/MOVETO, Home): target = eye + unit vector, stored as float32. */
@@ -176,9 +176,9 @@ export function stepMove(cam: CameraState, input: StepInput, k: number, walk: Wa
 }
 
 /**
- * Ground following, every tick (§6.8). Gravity mode is what Encarta runs, software device included (VM,
- * debugger: walker flag set, the eye falls `vfall += GRAVITY` per tick and lands on the ground). Each fall
- * and each landing moves eye and target in float32, which is what makes the derived pitch drift.
+ * Ground following, every tick (§6.8). In gravity mode the eye falls `vfall += GRAVITY` per tick and lands on
+ * the ground; in snap mode it is set to the ground at once. Each fall and each landing moves eye and target in
+ * float32, which is what makes the derived pitch drift.
  */
 export function followGround(cam: CameraState, walk: WalkMapSet | null, mode: GroundMode, gravity: number): void {
   const map = walk?.enabled ? walk.active : null;

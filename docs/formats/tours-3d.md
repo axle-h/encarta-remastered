@@ -66,7 +66,7 @@ The full per-extension catalog of all 892 files (textures, cursors, scripts, bin
 |---|---|---|---|---|
 | 1 | `Timer` | property | `BOOL` (get `FUN_1000d1d0`, set `FUN_1000d1e0`) | Enables the per-tick update (alarms, input, rendering). Same flag as script `TIMER.ON/OFF`. |
 | 2 | `Do` | method | `BSTR Do(LPCSTR command)` (`FUN_1000d0f0`) | Runs one command string through the script interpreter (§3) and returns its result string. **This is the only way the host drives the control.** |
-| 3 | `Try3DHardware` | method | `BOOL ()` (`FUN_1000dde0`) | Selects a hardware Direct3D device. Same as `SCENE.TRYHARDWARE`. |
+| 3 | `Try3DHardware` | method | `BOOL ()` (`FUN_1000dde0`) | Selects a hardware Direct3D device. Same as `SCENE.TRYHARDWARE`. Possible only if the probe at construction (`FUN_100600f0`) found one: DirectX ≥ 5, `DDCAPS_3D` and `DDCAPS2_CANRENDERWINDOWED`, a display deeper than 8 bpp, and an `IDirect3D2` device whose hardware description renders at the display depth with RGB (or mono) Gouraud shading and no square-only textures. **(VM)** The Cirrus guest fails at `DDCAPS_3D`; on WineD3D it succeeds (vm-findings.md, VM pass 4). |
 | 4 | `TryFullScreen` | method | `void ()` | Same as `SCENE.TRYFULLSCREEN`. |
 | 5 | `Force3DSoftware` | method | `BOOL ()` (`FUN_1000e7d0`) | Selects the software rasteriser. |
 | 6 | `AbortLoad` | method | `void ()` (`FUN_1000e960`) | Abandons a load in progress. |
@@ -85,8 +85,10 @@ tick. The rest of this document describes what `do` does.
    internal alarm named `STARTUP` (interval 0.3 s) whose macro is `SCENE.EVENT(STARTUP)`. The host
    ignores the resulting `STARTUP` event.
 2. On `FinishedInitializing` the host (`FUN_004d4a10`):
-   1. calls `Try3DHardware` if the user setting "hardware acceleration" (host field `+0xcd8`) is on,
-      otherwise `Force3DSoftware`;
+   1. calls `Try3DHardware` if the profile value `DxHardware` (host field `+0xcd8`, ERSREGPR profile id 0x10D
+      `PROFILE_UNDOC_3DVT_USEHARDWAREACCEL`, HKLM `Software\Microsoft\Microsoft Reference\E09AXLRD`) is set,
+      otherwise `Force3DSoftware`. **(VM)** The installer writes 1 and no dialog shows it, so Encarta always asks for
+      hardware and falls back to software where there is none;
    2. sends `SCENE.HALFREZDRIVING=1` or `=0` (host field `+0xcdc`). **The control does not recognise this
       spelling** (it expects `HALFRESDRIVING`), so the command has no effect. A faithful port ignores it.
    3. normal case: sends `script.itsfileurl=<full path of world\7015\nnnnn.eit>` and then `script.load=load.3sc`.
@@ -402,7 +404,7 @@ names and the `WORLDLOADED` payload:
 
 ## 4. Host integration (ENCARTA.EXE) and events
 
-The tour window classes are `C3DVirtToursWnd`, `CMax3DVTWnd`/`CMax3DVTView` (the maximised view),
+The tour window classes are `C3DVirtToursWnd`, `CMax3DVTWnd`/`CMax3DVTView` (MaxView, below),
 `C3DVTBannerWnd`, the site-map window `EncartaVTSitemap`, and `CVTCreditsWnd`. The event handler is
 `FUN_004d4a10`. It matches event names by case-insensitive prefix:
 
@@ -419,6 +421,34 @@ The tour window classes are `C3DVirtToursWnd`, `CMax3DVTWnd`/`CMax3DVTView` (the
 not Roman Forum's. Roman Forum sends 701505293 (`1stFloor`), 701505292 (`2ndFloor`) and 701505286
 (`3rdFloor`). Not every `UserLevelChange` string also loads a walk map: some fire only the event,
 for the map the cell belongs to (e.g. Roman Forum `3rdFloor.3wm` cell 43, `2ndFloor.3wm` cell 224).
+
+### 4.0 MaxView: the tour page **(VM)**
+
+"MaxView" is not a maximised mode. `CMaxView` is ENCARTA.EXE's family of media views that take the whole content pane
+(timeline, map, Director, interactives, tours); its media-type table (`FUN_00442790`) maps `virttour` to `CMaxView`, and
+the subtype `3DVT` to `CMax3DVTView`. **(VM, cdb)** Opening a tour (`msencarta://id=701504257`) constructs
+`CMax3DVTView` (0x52B430), `CMax3DVTWnd` (0x4F3710) and `C3DVirtToursWnd` (0x4D40D0): this is the one and only tour page.
+It does not depend on the 3D device (only §2.2 step 1 does); with a hardware device the page is pixel-identical outside
+the 3D picture. A port needs exactly one tour page:
+
+| Element (C3DVirtToursWnd client cx × cy, OnSize 0x4D6D50) | Rectangle |
+|---|---|
+| Site map | (0, 19), 172 × 194 |
+| Stop text | (0, 214), 172 × (cy − 214) |
+| 3D control | always 616 × 420, left = 172 + (cx − 790)/2, or 173 if cx − 174 < 617; top = 19 + (cy − 495)/2, or 20 if cy − 75 < 421; clipped to the client |
+| Title banner ("Acropolis, 400 BC") | (172, cy − 53), (cx − 172) × 54 |
+| Menu (Music, Tour Stops, Start Over, Appears in, Credits) | right-aligned along the top, 80 px steps |
+
+**(VM)** Maximised at 1024×768 the client is 1022 × 629 and the control sits at (288, 86), screen (289, 195); a restored
+window keeps 616 × 420 and re-centres it. The FOV is the scripts' (80). The page is left like any other (Back, Home,
+links); it has no exit of its own.
+
+The control has a separate full-screen mode (`SCENE.TRYFULLSCREEN`, `TRYHARDWAREFULLSCREEN`, `KILLFULLSCREEN`;
+`FUN_1000dec0`), reachable in 2009 only through the hidden `_dot` button (§8.2) and the never-run `LARGE` macro: a
+modal loop inside `Do` that hides and maximises the host's top-level window, renders at the display mode's size and
+returns on Esc (read through DirectInput) or `KILLFULLSCREEN`; `TRYHARDWAREFULLSCREEN` returns to the software device
+afterwards if that was the device before. **(VM)** Entered and left with Esc on WineD3D (`Do` then returns `Success`);
+its picture was not observable there. A port ignores all three.
 
 ### 4.1 `WORLDLOADED` payload
 
@@ -833,6 +863,8 @@ For each tour, write one `.glb`:
 - How material colours, specular and power combine with `.3lt` lighting (§7).
 - What `3D.CALC64BIT` does (not read by the loader).
 - Whether colour-keyed textures are filtered bilinearly in hardware mode, which would give magenta fringes in the original.
+  **(VM)** On WineD3D (which applies the key before filtering) there is no fringe and the other textures are bilinear
+  with mipmaps; a 2009 driver may still differ.
 
 
 ---
@@ -1112,20 +1144,26 @@ After the move, FUN_10026320 runs **every tick, even when not moving**:
 * The ground point is the projection of the eye onto the cell plane along the plane normal
   (`g = E − (n·E + d)·n`). For the near-horizontal planes in the data this equals solving the plane for Y.
   `targetY = g.y + HEIGHT`.
-* **Gravity mode** (walker state +0x54, set in FUN_10022000; **(VM, debugger)** it is 1 in Encarta's own control
-  and in our host on the software device, so this is the mode every user saw):
+* **Gravity mode** (walker state +0x54). It starts at 1, and every walk step (FUN_10022000) sets it to 1 if a hardware
+  device is selected (0x1011c954) or the renderer's +0x10F0 (0x1011c958, only ever initialised to 0) is set, else to 0.
+  **(VM, debugger, corrected in VM pass 4)** Hardware device: 1 while walking. Software device: 1 at the start pose,
+  0 after the first walk step. So software users had gravity until they first walked and snap from then on (turning
+  alone does not call FUN_10022000); hardware users always had gravity. Since `DxHardware` is installed as 1 and a 2009 machine
+  almost always had a D3D device, gravity throughout was the common look; snap after the first walk step is the
+  no-3D-card look. In gravity mode:
   * If `E.y ≥ targetY`: `vfall += GRAVITY; E.y −= vfall; T.y −= vfall` (per tick, not time-scaled).
   * If `E.y < targetY` (also after the step above): `vfall = 0`, and the eye and target are raised to `targetY`
     (instant step-up).
-* **Snap mode** (walker +0x54 = 0; not seen in the VM): `E.y = targetY` and T is shifted by the same amount every
-  tick, so stepping down is instant too.
+* **Snap mode** (walker +0x54 = 0): `E.y = targetY` and T is shifted by the same amount every tick, so stepping down
+  is instant too. **(VM)** On the software device after walking: an eye raised 0.6 is back on the ground by the next
+  20-ms sample.
 * Each fall and each landing writes E.y and T.y as float32 (the landing adds `targetY − E.y` to both). The rounding
   differs between the two values, so T.y − E.y, and with it the pitch derived from the look vector, drifts a little
   every tick even when standing still (§6.9, pitch keys).
 * Encarta's Colosseum script has a `LARGE` macro that calls `SCENE.TRYHARDWARE`.
-  **(VM)** `SCENE.TRYHARDWARE` and `Try3DHardware` return `Failed` in the VM (no D3D device), so Encarta runs the
-  software device, **in gravity mode** (2026-10-15, cdb in the guest: walker +0x54 = 1 in ENCARTA.EXE's copy of the
-  control at the Acropolis start, and a write breakpoint on the eye's Y shows every tick falling by
+  **(VM)** `SCENE.TRYHARDWARE` and `Try3DHardware` return `Failed` in the VM without a D3D device, so Encarta runs the
+  software device, in gravity mode until the first walk step (2026-10-15, cdb in the guest: walker +0x54 = 1 in
+  ENCARTA.EXE's copy of the control at the Acropolis start, and a write breakpoint on the eye's Y shows every tick falling by
   `vfall = GRAVITY` = 0.003 and landing back in the same tick). An eye raised 0.6 units with `CAMERA.POS` falls
   0.003, 0.006, … 0.057 units on successive ticks and lands on tick 20 (about 0.4 s); the earlier reading "back on
   the ground at the next sample" came from samples too far apart. Walking down a stair therefore drops with
@@ -1285,7 +1323,8 @@ as in §6.5, PVS as in §6.6.
   (read-back Y = its plane + HEIGHT), whereas "the grid point lies inside the quantised polygon" puts it on the
   neighbouring step 0.044 units lower. The rule "a column belongs to a polygon when the polygon's span on that row
   overlaps the column" reproduces it and all 46 other Tour Stop read-backs.
-* The second gravity-mode flag (0x1011c958): the decompilation shows no direct writes to it. It is probably part of the hardware/fullscreen device state.
+* *Resolved:* the second gravity-mode flag (0x1011c958) is the renderer's +0x10F0 (renderer at 0x1011b868), written
+  only at initialisation (0); it never enables gravity (§6.8).
 * The meaning of the collision cell's `level` float and of the ignored u32 list in version-2 collision cells (no v2 files ship).
 * Orbit (OMNI) mode details: never used by the tours, so not specified.
 * Who sets the two vertical-fly flags (no keyboard binding was found).
@@ -1625,12 +1664,17 @@ Before each re-render (FUN_10019AB0):
 1. Compute phi as above.
 2. **Hardware mode only:** skip if |phi − lastPhi| < 0.09 rad (about 5°), so the old image is kept
    (a 0.002 threshold is also tested, which is redundant). In software mode the cloud is re-rendered
-   on every draw.
+   on every draw. lastPhi is the phi of the last render, so slow turns accumulate. The difference is not wrapped:
+   phi is in [0, 2π), so a viewer crossing phi = 0 forces a render however small the step.
+   **(VM, WineD3D device, cdb on the cloud's Lock)** Bronze Athena orbited at 2 units: with 1° steps it re-renders on
+   every 6th step (81, 87, 97°) and at the wrap (357° → 1°, after 4°); with 0.1° steps 5.2° apart (5.1° = 0.0890 rad is
+   skipped, 5.2° = 0.0908 renders). The statue picture visibly changes on exactly those steps.
 3. Skip if the object centre is behind the eye: dot(normalise(centre − eye), normalise(lookAt − eye)) < 0.
 4. After the first render, also skip if the 3-D distance eye→centre ≥ 0.9 × FOGEND (default 20, so
    **18 units**). The stale image remains visible. **(VM)** With `FOGEND=10` the Bronze Athena re-renders at 8.95 units
    and is frozen at 9.05, showing the view of its last render from any side; in software mode it re-renders on every
-   draw (the image changes between 1° steps). Step 2 needs a 3D device and was not seen.
+   draw (the image changes between 1° steps). **(VM)** Steps 3 and 4 hold on the hardware device too (facing away: no
+   render; FOGEND 10: renders at 8.903, none at 9.103).
 5. In hardware mode the image is drawn into a system-memory copy and then blitted to the video texture.
 
 #### 7.3.5 Cloud lifetime
@@ -2305,7 +2349,7 @@ Resolved:
 - [x] **Tick rate and speeds.** ~64 ticks/s idle, ~47 walking; walk 100 × `SPEED.FLY` units/s and turn 200 × `SPEED.TURN` °/s whatever the tick rate (§2.3, §6.9).
 - [x] **Pitch.** Positive looks up; exactly `PITCHSPEED` per tick; a step reaching |pitch| ≥ 45 is refused (tested on the look-vector value); Home sets 0 (§6.1, §6.9).
 - [x] **Pitch limit arithmetic** (debugger): the test is on the pitch derived from the float32 look vector, which ground following's per-tick fall and landing make drift away from the stored pitch `PITCH?` reports (§6.8, §6.9).
-- [x] **Gravity mode** on the software device: walker +0x54 = 1 in Encarta; falls grow by GRAVITY per tick (§6.8).
+- [x] **Gravity mode**: falls grow by GRAVITY per tick; on the software device only until the first walk step, then snap; always on the hardware device (§6.8, corrected in VM pass 4).
 - [x] **Collision.** Wall sliding by projection, full stop in corners (§6.7).
 - [x] **FOV.** Horizontal: FOV 80 spans the 616-px control width (§6.10).
 - [x] **Hotspot click.** `destmedia` of the hotspot record replaces the main view; Back returns at the same pose; events arrive upper-cased (§4, §4.3, §3.6).
@@ -2340,9 +2384,16 @@ Resolved in the third pass (debugger):
   ENCARTA.EXE registers, which is why tourhost loads nothing; nothing a port models changes. Cursor files are
   never read (§2.2, §6.9).
 
-Still open:
+Resolved in the fourth pass (WineD3D + Mesa as the 3D device, cdb):
 
-- [ ] The hardware 5° cloud re-render step and the maximised (MaxView) window (§7.3.4): no 3D device in the VM.
+- [x] **Hardware cloud step**: 0.09 rad from the last render (5.1° skipped, 5.2° renders), forced at the 2π wrap;
+  behind-eye and 0.9 × FOGEND unchanged (§7.3.4).
+- [x] **MaxView** is the normal tour page (`CMax3DVTView`), control 616 × 420, independent of the device; the
+  control's own full-screen mode is unreachable in 2009 (§4.0). Hardware mode is chosen by the `DxHardware` profile
+  value, 1 by default (§2.2).
+- [x] **Second gravity flag** never set; ground mode follows the device (§6.8, §6.14).
+
+Still open: what a real 2009 driver did with colour-keyed textures (§5.10); the control's full-screen picture.
 
 How to capture: a debugger breakpoint on the control's `Do` method (`FUN_1000d0f0`) and on the event fire
 (`FUN_1000e720`) logs every command and event (cdb is in the VM's `flash-ready` snapshot; `vm/dbg.sh`, docs/vm.md;
@@ -2357,7 +2408,7 @@ the control is `ACTIVEX3DX3`, at 10000000 in tourhost and relocated in ENCARTA.E
 - Per-vertex normal source and face-centre definition used by lighting and sprite pivots (§7.11).
 - The control's default FOV when a script sets none (every tour sets 80, which is horizontal, §6.10).
 - The exact edge rule of the walk-map grid rasteriser (only matters within one grid unit) (§6.14).
-- The second gravity-mode flag and the vertical-fly flags (§6.14).
+- The vertical-fly flags (§6.14).
 - `3D.LODDISTANCE` (picking-only per §7, additive switch distance per §5). It is 0 on the disc, so there is no visible effect.
 - `3D.CALC64BIT` (software-rasteriser precision only, per §7.5; the `.x` loader never reads it).
 - A few `.32d` struct fields that are never read (§8.1).

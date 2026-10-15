@@ -14,6 +14,7 @@ const params = new URLSearchParams(location.search);
 const tourSel = $<HTMLSelectElement>("tour");
 const sizeSel = $<HTMLSelectElement>("size");
 const groundSel = $<HTMLSelectElement>("ground");
+const deviceSel = $<HTMLSelectElement>("device");
 const fovSel = $<HTMLSelectElement>("fov");
 const pvsBox = $<HTMLInputElement>("pvs");
 const labelsBox = $<HTMLInputElement>("labels");
@@ -106,7 +107,7 @@ async function mount(): Promise<void> {
     stage.style.height = `${h}px`;
   }
   const id = tourSel.value;
-  const qs = new URLSearchParams({ tour: id, size, ground: groundSel.value, pvs: pvsBox.checked ? "1" : "0", fov: fovSel.value });
+  const qs = new URLSearchParams({ tour: id, size, device: deviceSel.value, ground: groundSel.value, pvs: pvsBox.checked ? "1" : "0", fov: fovSel.value });
   history.replaceState(null, "", `?${qs}`);
   try {
     handle = await mountTour(stage, {
@@ -114,6 +115,7 @@ async function mount(): Promise<void> {
       tourId: id,
       onEvent,
       control: {
+        device: deviceSel.value as "hardware" | "software",
         groundMode: (groundSel.value || undefined) as GroundMode | undefined,
         fovAxis: fovSel.value as "horizontal" | "vertical",
       },
@@ -136,10 +138,11 @@ async function init(): Promise<void> {
   const want = params.get("tour");
   if (want) tourSel.value = want;
   if (params.get("size")) sizeSel.value = params.get("size") ?? sizeSel.value;
+  if (params.get("device") !== null) deviceSel.value = params.get("device") ?? "hardware";
   if (params.get("ground") !== null) groundSel.value = params.get("ground") ?? "";
   if (params.get("pvs") !== null) pvsBox.checked = params.get("pvs") !== "0";
   if (params.get("fov")) fovSel.value = params.get("fov") ?? "horizontal";
-  for (const el of [tourSel, sizeSel, groundSel, pvsBox, fovSel]) el.addEventListener("change", () => void mount());
+  for (const el of [tourSel, sizeSel, deviceSel, groundSel, pvsBox, fovSel]) el.addEventListener("change", () => void mount());
   labelsBox.addEventListener("change", () => handle?.do(labelsBox.checked ? "2D.ON" : "2D.OFF"));
   $<HTMLFormElement>("cmdform").addEventListener("submit", (e) => {
     e.preventDefault();

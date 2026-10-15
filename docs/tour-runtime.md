@@ -63,7 +63,7 @@ In development, Vite serves the converter output `../out` under `/out/` (a middl
 `cargo run --release -p encarta-convert -- tours`. The dev page `web/tours.html` has a tour
 picker, control sizes, the labels toggle, a site-map stand-in driven by `USERLOCUPDATE` →
 `camera.pos?`, a `do()` console, the event log, and switches for the ground mode, PVS and FOV
-axis. The size defaults to Encarta's 616×420. URL parameters (`?tour=05919&size=640x480&ground=gravity&pvs=0&fov=vertical`) make views
+axis. The size defaults to Encarta's 616×420. URL parameters (`?tour=05919&size=640x480&device=software&ground=gravity&pvs=0&fov=vertical`) make views
 reproducible. `window.tour` is the handle (in the app's dev build, `globalThis.__encartaTour`).
 `tour.advance(n)` runs n ticks and draws a frame without `requestAnimationFrame`, for tests and
 hidden pages.
@@ -118,9 +118,13 @@ All world state is in glTF space; queries convert back to the disc's coordinates
   vertex-shader term: `min(255, COLOR_0 + Σ trunc(current[slot]·w))` over the
   `_FLICKER_*` sets, with one `vec3` uniform per flicker slot. `LIGHTS.OFF` and full-bright
   objects are shader switches.
-- **Ground mode** is gravity on both devices, as the VM runs it (debugger: walker +0x54 = 1 on the software
-  device, §6.8): the eye falls `vfall += GRAVITY` per tick and lands on the ground; `groundMode: "snap"` remains
-  for experiments.
+- **Device** (`ControlOptions.device`) defaults to hardware: Encarta installs `DxHardware` = 1 and picks the D3D
+  device on any machine that has one, which in 2009 was nearly every machine (§2.2; VM pass 4). Software is the
+  no-3D-card path the plain reference VM shows. The device decides the ground mode, the cloud step and texture
+  filtering below.
+- **Ground mode** follows the walker flag (§6.8): gravity at load, then every walk step (not turning) sets it to
+  gravity on hardware and snap on software. In gravity the eye falls `vfall += GRAVITY` per tick and lands on the
+  ground; in snap it is set to the ground at once. `groundMode` overrides it for experiments.
 - **Pitch** follows the original's two values (§6.9): `pitchDeg` is the stored pitch (`PITCH?`, rendering) and
   `lookY`/`lookH` the float32 look vector. Ground following moves eye and target in float32 (`Math.fround`), so the
   derived pitch drifts as in the VM, and the ±45° test of the pitch keys uses it. The target's X/Z rounding and the
@@ -214,13 +218,13 @@ All world state is in glTF space; queries convert back to the disc's coordinates
 
 ## Known gaps
 
-- VM items still open (tours-3d.md §10): the hardware 5° cloud step and the maximised window (no 3D
-  device in the VM). Faces are single-sided as converted (VM: back faces are
-  culled; `doubleSided` remains for experiments).
+- Faces are single-sided as converted (VM: back faces are culled; `doubleSided` remains for experiments).
+- The "maximised" tour view (`CMax3DVTView`) is the normal tour page, the control fixed at 616×420 (tours-3d.md
+  §4.0), which the client already shows; the control's own full-screen mode cannot be reached in Encarta 2009.
 - The app's menu offers "Labels and Hot Spots" (`2D.ON`/`2D.OFF`), but Encarta 2009 has no such
   item (VM: only its strings remain in ENCARTAR.DLL).
-- Textures are mipmapped and filtered; the VM's software rasteriser samples without mipmaps, so its
-  distant surfaces look sharper and noisier.
+- Textures are mipmapped and bilinear on the hardware device (VM pass 4, WineD3D: a 2009 driver may differ,
+  e.g. colour-key fringes) and nearest-texel without mipmaps on the software device (§5.10).
 - The VM's loading takes 1.6–2.3 s depending on the tour; the data does not explain the spread
   (tours-3d.md §8.4.3), so the runtime keeps one minimum (2 s).
 - Site map: the highlighted-location look (§4.2 step 5) and the original marker icon are not
