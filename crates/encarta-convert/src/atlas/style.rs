@@ -309,11 +309,14 @@ impl Ctx<'_> {
                 if text.alt.is_some() {
                     layout["text-max-width"] = text.max_width(10.0);
                 }
-                layout["text-variable-anchor"] = json!(["left", "right", "top", "bottom"]);
+                // Encarta puts a point label diagonally off its symbol, the text's corner at the
+                // symbol's: above right when free (VM, mad-styling.md §7.4), else above left, below
+                // right, below left (the order of the last three is a hypothesis).
+                layout["text-variable-anchor"] = json!(["bottom-left", "bottom-right", "top-left", "top-right"]);
                 // Lines align on the symbol's side ("Mumbai" over "Bombay" right-aligned left of
                 // the city, V15).
                 layout["text-justify"] = json!("auto");
-                layout["text-radial-offset"] = json!(0.6);
+                layout["text-radial-offset"] = json!(0.3);
             }
         }
         let paint = json!({
@@ -581,9 +584,6 @@ impl Ctx<'_> {
     }
 }
 
-/// Per class, the zoom ranges in which the rules make it interactive (PDCAltitudeGrid `b4` low
-/// nibble, mad-styling.md §4.1): `[[minzoom, maxzoom, tri-state], …]`, adjacent equal ranges
-/// merged, tri-state 1 = by default, 2 = when the user turns the class on.
 /// Where a layer goes in the stack. MapLibre places symbols from the top layer down, so the
 /// first-placed (winning) labels must be on top: symbol layers are stacked by descending
 /// `PDCAttribute.b13`, so that the lowest value (mad-styling.md §7.4: lower wins) is placed first.
@@ -596,21 +596,27 @@ fn stack_key(p: &Proto) -> (u8, u32, u32) {
     }
 }
 
-fn interactive_ranges(rules: &[DisplayRule]) -> BTreeMap<u16, Vec<(f64, f64, u8)>> {
-    let mut out: BTreeMap<u16, Vec<(f64, f64, u8)>> = BTreeMap::new();
+/// Per class, the zoom ranges in which the rules make it interactive (PDCAltitudeGrid `b4`,
+/// mad-styling.md §4.1, §4.3, §4.4): `[[minzoom, maxzoom, tri-state, hit side], …]`, adjacent equal ranges
+/// merged. Tri-state (low nibble) 1 = by default, 2 = when the user turns the class on. Hit side
+/// (high nibble) 0 = anywhere, 1 = land (left out when a water hit is listed too), 2 = water
+/// (listed only over water); 0 in Moon styles, whose polygons are not split.
+fn interactive_ranges(rules: &[DisplayRule], moon: bool) -> BTreeMap<u16, Vec<(f64, f64, u8, u8)>> {
+    let mut out: BTreeMap<u16, Vec<(f64, f64, u8, u8)>> = BTreeMap::new();
     for r in rules {
         let tri = r.b4 & 0x0F;
+        let side = if moon { 0 } else { r.b4 >> 4 };
         let (lo, hi) = Ctx::rule_zooms(r);
         if tri == 0 || hi <= lo {
             continue;
         }
         let v = out.entry(r.class).or_default();
         let (lo, hi) = ((lo * 100.0).floor() / 100.0, (hi * 100.0).ceil() / 100.0);
-        if let Some(last) = v.iter_mut().find(|e| e.2 == tri && ((e.1 - lo).abs() < 0.02 || (hi - e.0).abs() < 0.02)) {
+        if let Some(last) = v.iter_mut().find(|e| e.2 == tri && e.3 == side && ((e.1 - lo).abs() < 0.02 || (hi - e.0).abs() < 0.02)) {
             last.0 = last.0.min(lo);
             last.1 = last.1.max(hi);
         } else {
-            v.push((lo, hi, tri));
+            v.push((lo, hi, tri, side));
         }
     }
     for v in out.values_mut() {
@@ -732,10 +738,10 @@ pub fn run(atlas: &Atlas, classes: &Classes, detail_classes: BTreeSet<u16>, out:
             }
             layers.push(l);
         }
-        let interactive: serde_json::Map<String, Value> = interactive_ranges(&rules.rules)
+        let interactive: serde_json::Map<String, Value> = interactive_ranges(&rules.rules, is_moon_style)
             .into_iter()
             .filter(|(c, _)| classes.is_moon(*c as usize) == is_moon_style)
-            .map(|(c, v)| (c.to_string(), json!(v.iter().map(|r| json!([r.0, r.1, r.2])).collect::<Vec<_>>())))
+            .map(|(c, v)| (c.to_string(), json!(v.iter().map(|r| json!([r.0, r.1, r.2, r.3])).collect::<Vec<_>>())))
             .collect();
         // Classes of PDCAttribute pen group 134 (time zones, DST areas, "Shading - gray") never enter the click
         // menu (mad-styling.md §16 V11 result).
@@ -865,6 +871,22 @@ fn sprites(atlas: &Atlas, dir: &Path, shields: &BTreeSet<Shield>) -> Result<usiz
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn interactive_ranges_carry_the_hit_side() {
+        let rule = |class: u16, b4: u8, max_km: u32, min_km: u32| DisplayRule {
+            class, b2: 16, b3: 0, b4, w5_13: [0xFFFF; 9], b14_16: [0; 3], w17: 0xFFFF, b18_20: [0; 3], w21_24: [0xFFFF; 4],
+            max_scale: max_km * 1000, min_scale: min_km * 1000,
+        };
+        // Class 1: land side in two adjacent ranges (merged), anywhere further out; class 2: water.
+        let rules = [rule(1, 0x01, 50000, 20000), rule(1, 0x11, 19999, 3000), rule(1, 0x11, 2999, 1), rule(2, 0x21, 50000, 1), rule(3, 0x10, 50000, 1)];
+        let r = interactive_ranges(&rules, false);
+        let sides = |c: u16| r[&c].iter().map(|e| (e.2, e.3)).collect::<Vec<_>>();
+        assert_eq!(sides(1), [(1, 0), (1, 1)]);
+        assert_eq!(sides(2), [(1, 2)]);
+        assert!(!r.contains_key(&3), "tri-state 0: not interactive");
+        assert!(interactive_ranges(&rules, true).values().flatten().all(|e| e.3 == 0), "Moon polygons are not split");
+    }
 
     #[test]
     fn dash_patterns() {

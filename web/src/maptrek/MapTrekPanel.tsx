@@ -1,7 +1,8 @@
 /**
- * The modeless "Map Trek" dialog (docs/vm-findings.md, Map Trek): brown body, "map trek" banner,
- * a white text box (trek title, thumbnail and caption, place name, text), a stop list with a
- * "Stop n of N" footer, and New Trek / Back / Next buttons. Presentational: the page owns the stop.
+ * The modeless "Map Trek" dialog (docs/vm-findings.md, Map Trek): a caption bar with a close
+ * button, brown body, "map trek" banner, a white text box (trek title, thumbnail and caption,
+ * place name, text), a stop list with a "Stop n of N" footer, and New Trek / Back / Next buttons,
+ * at the VM's sizes (450 px wide). Presentational: the page owns the stop.
  */
 import type { ReactNode } from "react";
 import "./MapTrek.css";
@@ -23,23 +24,35 @@ export interface MapTrekPanelProps {
   children?: ReactNode;
   onSelect: (index: number) => void;
   onNewTrek: () => void;
+  /** The caption bar's close button (VM: the map stays at the stop). */
+  onClose?: () => void;
 }
 
-export function MapTrekPanel({ trekTitle, stops, index, thumbSrc, caption, children, onSelect, onNewTrek }: MapTrekPanelProps) {
+export function MapTrekPanel({ trekTitle, stops, index, thumbSrc, caption, children, onSelect, onNewTrek, onClose }: MapTrekPanelProps) {
   const n = stops.length;
   return (
     <div className="mt-dialog" role="dialog" aria-label="Map Trek" aria-modal="false">
+      {onClose && (
+        <div className="mt-caption">
+          <span>Map Trek</span>
+          <button type="button" className="mt-close" aria-label="Close Map Trek" onClick={onClose}>
+            ×
+          </button>
+        </div>
+      )}
       <div className="mt-banner">map trek</div>
       <div className="mt-body">
         <div className="mt-text">
           <h2 className="mt-trek-title">{trekTitle}</h2>
-          {thumbSrc && (
-            <figure className="mt-thumb">
-              <img src={thumbSrc} alt="" width={64} height={64} />
-              {caption && <figcaption>{caption}</figcaption>}
-            </figure>
-          )}
-          <div className="mt-stop-text">{children}</div>
+          <div className={`mt-stop${thumbSrc ? " has-thumb" : ""}`}>
+            {thumbSrc && (
+              <figure className="mt-thumb">
+                <img src={thumbSrc} alt="" width={64} height={64} />
+                {caption && <figcaption>{caption}</figcaption>}
+              </figure>
+            )}
+            <div className="mt-stop-text">{children}</div>
+          </div>
         </div>
         <div className="mt-list">
           <ol>

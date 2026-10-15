@@ -629,7 +629,8 @@ pub const GEOQUIZ_CHOICES: usize = 5;
 /**
  * The answer buttons for one place: the place and `choices - 1` others of the same type from the
  * level's pool, `same_region` of them (the level file's third line, per type) from the place's own
- * region and the rest from anywhere, all with distinct names, in random order (docs/games.md).
+ * region and the rest from other regions (from anywhere when those run out), all with distinct
+ * names, in random order (docs/games.md; VM: 26 questions at Explorer and Globetrotter).
  */
 pub fn deal_choices(place: &Value, pool: &[Value], same_region: usize, choices: usize, rng: &mut Rng) -> Vec<Value> {
     let name_of = |v: &Value| v["name"].as_str().unwrap_or("").to_lowercase();
@@ -637,8 +638,10 @@ pub fn deal_choices(place: &Value, pool: &[Value], same_region: usize, choices: 
     let mut out = vec![json!({ "entity": place["entity"], "name": place["name"] })];
     let region = place["region"].as_i64();
     let mut local: Vec<&Value> = pool.iter().filter(|v| v["region"].as_i64() == region).collect();
+    let mut other: Vec<&Value> = pool.iter().filter(|v| v["region"].as_i64() != region).collect();
     let mut any: Vec<&Value> = pool.iter().collect();
     rng.shuffle(&mut local);
+    rng.shuffle(&mut other);
     rng.shuffle(&mut any);
     let wanted = choices.saturating_sub(1);
     for v in local {
@@ -649,7 +652,7 @@ pub fn deal_choices(place: &Value, pool: &[Value], same_region: usize, choices: 
             out.push(json!({ "entity": v["entity"], "name": v["name"] }));
         }
     }
-    for v in any {
+    for v in other.into_iter().chain(any) {
         if out.len() > wanted {
             break;
         }
@@ -907,7 +910,7 @@ mod tests {
             assert_eq!(ch.len(), 5);
             assert_eq!(ch.iter().filter(|c| c["entity"] == 1).count(), 1);
             let local = ch.iter().filter(|c| c["entity"].as_i64().unwrap() <= 6).count() - 1;
-            assert!(local >= same, "same={same} local={local}");
+            assert_eq!(local, same, "same={same}: exactly that many from the own region (VM)");
         }
         // A tiny pool gives fewer buttons rather than repeats.
         let mut rng = Rng::new(1);

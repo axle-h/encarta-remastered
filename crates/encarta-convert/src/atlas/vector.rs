@@ -122,7 +122,7 @@ struct Include {
     outline: bool,
     /// Split lines into water and land runs.
     split: bool,
-    /// Split polygons into water and land parts (a masked fill, or hit-tested only over land).
+    /// Split polygons into water and land parts (a masked fill, or listed only over water).
     split_area: bool,
     /// The water parts of split polygons are drawn by some style.
     water_parts: bool,
@@ -145,7 +145,7 @@ fn include(ts: Tileset, classes: &Classes, row: usize) -> Include {
         label_point: kind == GeometryKind::Area && u.label > 0,
         outline: geometry && kind == GeometryKind::Area && u.outline > 0,
         split: geometry && kind == GeometryKind::Line && u.masked > 0 && ts != Tileset::Moon,
-        split_area: geometry && kind == GeometryKind::Area && (u.masked_fill > 0 || classes.land_hits(row)) && ts != Tileset::Moon,
+        split_area: geometry && kind == GeometryKind::Area && (u.masked_fill > 0 || classes.water_hits(row)) && ts != Tileset::Moon,
         water_parts: u.needs_water_parts(),
     }
 }
@@ -978,18 +978,21 @@ mod tests {
     }
 
     #[test]
-    fn interactive_land_areas_are_split_and_lose_unfilled_water_parts() {
-        let mut classes = Classes::synthetic(&[GeometryKind::Area; 4]);
+    fn water_hit_and_masked_areas_are_split_and_keep_water_parts_when_needed() {
+        let mut classes = Classes::synthetic(&[GeometryKind::Area; 5]);
         for u in &mut classes.uses {
             (u.masked_fill, u.fill_water) = (0, 0);
         }
-        classes.classes[1].pen_group = 31; // a water body: hit over the sea, never split
+        // 0: interactive, hit anywhere or over land: whole polygons.
+        classes.uses[1].water_hits = 1; // a water body: listed only over water
         classes.uses[2].interactive = 0; // drawn only, unmasked: whole polygons
-        classes.uses[3].fill_water = 1; // filled over water by some style: water parts kept
-        let i: Vec<Include> = (0..4).map(|c| include(Tileset::Earth, &classes, c)).collect();
-        assert!(i[0].split_area && !i[0].water_parts);
-        assert!(!i[1].split_area && !i[2].split_area);
-        assert!(i[3].split_area && i[3].water_parts);
+        (classes.uses[3].masked_fill, classes.uses[3].interactive) = (1, 0); // masked fill, never hit: water parts dropped
+        classes.uses[4].masked_fill = 1; // masked fill, hit-tested: water parts kept
+        let i: Vec<Include> = (0..5).map(|c| include(Tileset::Earth, &classes, c)).collect();
+        assert!(!i[0].split_area && !i[2].split_area);
+        assert!(i[1].split_area && i[1].water_parts);
+        assert!(i[3].split_area && !i[3].water_parts);
+        assert!(i[4].split_area && i[4].water_parts);
     }
 
     #[test]

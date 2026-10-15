@@ -314,7 +314,13 @@ export class SoundfontEngine {
         this.t0 += this.length;
         this.nextNote = 0;
         this.nextControl = 0;
-        for (const ch of this.channels) ch.state = initialChannel();
+        // Each pass starts from the initial channel state, gains and pitch wheel included.
+        const at = Math.max(this.t0, this.ctx.currentTime);
+        this.channels.forEach((ch, c) => {
+          ch.state = initialChannel();
+          ch.bend.offset.setValueAtTime(0, at);
+          this.applyLevels(c, at, true);
+        });
         continue;
       }
       const control = c && (!n || c.t <= n.t);

@@ -47,7 +47,7 @@ item has no body (the 13,061 timeline topics).
 | element | meaning | our model |
 |---|---|---|
 | `section id type` | section; `id` is the target of section jumps and of DATA `sec` | `section` block, `level` = nesting depth |
-| `section@type` | **heading style, not depth**: 4 introduction, 5 major (upper case title, roman numeral), 6 minor (A, B …), 7 sub-minor (1, 2 …). ContDlx has type 6 at the top level and 5 nested | `kind`: `introduction`, `major`, `minor`, `subminor`; raw `type` kept |
+| `section@type` | 4 introduction, 5 major, 6 minor, 7 sub-minor; it does **not** change the heading look: the reader draws headings by depth (VM: top level "II. TITLE" for types 4, 5 and 6 alike, depth 2 "A. Title" for 5, 6 and 7). ContDlx has type 6 at the top level and 5 nested, some 461… articles 4 at the top level | `kind`: `introduction`, `major`, `minor`, `subminor`; raw `type` kept |
 | `sectiontitle` | heading text | `title` |
 | `sec`, `seca`, `secb`, `secc` | number labels at depth 0–3 (`III`, `A`, `1`, `a`); each section repeats the outer ones | `number` (path) |
 | `pkey id` | paragraph; `id` is the paragraph link target (`xref@paraID`, search `para`) | `p` block |
@@ -131,8 +131,10 @@ and the VM's cluster boxes for all of them (1,660 items in the 25 encyclopedia a
 present). The previous rules (one timeline stream without virtual tours, Facts and Figures among the primary
 items, no carrying) gave 95.7 %, 98.4 % and 98.0 %; the old "spread evenly" rule 66 %, 89 % and 89 %. The rest,
 ten items in four sections, are primary items the VM puts later in the section than `⌊free/items⌋` spacing
-does (Mathematics and United Kingdom introductions, Moon §2, East Timor §13); no rule found over paragraph
-counts or the other items' positions explains all four (§11).
+does (Mathematics and United Kingdom introductions, Moon §2, East Timor §13). Each of these sections has one **empty
+item slot** in the VM's DOM (a `<DIV id=Child_s‹n›>` with nothing in it) exactly where the spacing needs a used slot:
+the reader lays out one more item there, as it would a timeline-stream item, and draws nothing for it. Nothing in the
+data we read accounts for that item (§11).
 
 **Sidebar teasers** (`sidebar` placed in an article) are boxes in the text column: header "Sidebars", the
 category by the sidebar's DATA `type` (VM: `SBD` HISTORIC DOCUMENTS, `SBG` GREAT MOMENTS IN SPORTS, `SBH`
@@ -140,6 +142,19 @@ HISTORIC HEADLINES, `SBI` INTERVIEWS, `SBL` GREAT WORKS OF LITERATURE, `SBO` HIS
 SCIENCE, `SBZ` POINTS OF THE COMPASS, `SHE` HISTORICAL ESSAYS, `SPC` POINT/COUNTERPOINT; `SBX`, `SBC`, `CUS`,
 `ZPA`, lower-case `sbl` and codes not seen show SIDEBAR; stored as `item.meta_json.sidebar_category`), the
 title, the preview text and "open sidebar".
+
+**Right column** (VM, 25 captures; `web/src/article/modules.ts`). Modules in this order, each only when it has
+something: **World Atlas** (the first `maps` association; the place is its `geocode`), **Quick Facts** (the facts
+table: first five entries, the fifth cut after its first value or first sub-entry; Facts and Figures `quick` marks
+unused), **Related Articles** (first five top-level nodes of the `DLX` tree, headings included), **Quotations** (count
+of `quotation` rows, the first one shown), **Web Sites** (`weblink` rows), **Primary Sources** (`sidebar` rows of
+type `SBD SBH SBI SBL SBO`, case-sensitive), **Sidebars** (the other `sidebar` rows), one **Virtual Tour** (`2DVT`) or
+**3D Ancient Site** (`3DVT`) per `virttour` row, **Further Reading** (`furtherread` rows), **Archives** (`archive` rows,
+"1938: France"), then Visual Browser and the online Radio (`livemedia`) and News modules. Web Sites, Primary Sources
+and Sidebars are sorted by the stored title text (case, apostrophes and hyphens ignored, punctuation before letters; a
+title that starts with markup is stored with leading white space and sorts first), Archives by `year` then title;
+Further Reading, Quotations and tours keep the DATA order. List modules show three rows (Archives and Further Reading
+five) and grow in place on "Show All".
 
 **Sidebar view** (items of group `sidebar`, VM: two frames): a header frame (72 pt; "Appears In", the
 banner, the title) and a body frame: intro (italic), rule, headline, by-line, then the paragraphs and
@@ -233,14 +248,19 @@ without a `sec` in six articles (values 1 and 2; meaning unconfirmed).
 
 ## 4. Trees (REL, DATAF)
 
-Each record holds one `<tree ed>` per product edition: `STD` Standard, `STE`/`STC` (student editions,
-presumably English/Canada), `DLX` Deluxe/Premium, `KDC` Kids. Identical trees are stored once with the list
-of editions; Premium should use the tree whose `editions` contains `DLX` (Kids: `KDC`).
+Each record holds one `<tree ed>` per product edition: `STD` Standard, `STE`/`STC` (other editions, perhaps student;
+this disc's program contains the codes `DLX` and `STD` but not these, so it never reads them), `DLX` Deluxe/Premium,
+`KDC` Kids. Identical trees are stored once with the list of editions; Premium uses the tree whose `editions`
+contains `DLX` (VM: Related Articles of Horse and Lillehammer match `DLX`, not `STD`; Algebra and Mathematics match
+`DLX`, not `STC,STE`), Kids `KDC`.
 
 - REL: nested `relart [nodeid] [refid group pkey]` + `title` (inline `it`, `scp`, `place gid rid`, `entity`).
   A node with `refid` links to an item, `pkey` to a paragraph; a node with only `nodeid` is a heading.
-- DATAF: nested `entry [refid group pn paragraphid IsList]` + `title`. `paragraphid` is the paragraph,
-  `pn` a small ordinal (1–27; meaning unconfirmed), `IsList` marks list entries.
+- DATAF: nested `entry [refid group pn paragraphid IsList]` + `title`. `paragraphid` is the paragraph, `IsList`
+  marks list entries. `pn` (only with `paragraphid`, 1–27) is the paragraph's **page**: ten sections to a page in
+  reading order (`⌊section number / 10⌋ + 1` for 94 % of sectioned articles, the rest one off at a page boundary;
+  1 in every article without sections). The 2009 reader has no pages and jumps by `paragraphid`, so `pn` is kept
+  but unused.
 - `<entity tag="sortattop"/>` at the start of a title is a sort marker (keep this node first) → `sort_top`.
 - Titles are pretty-printed; we collapse white space.
 
@@ -421,13 +441,14 @@ Answered by the VM captures (`docs/vm-findings.md`): the alternative title (§2,
 private-use glyphs (§7), sidebar layout (§2), Kids layout (§2), and the media placement rules (§2).
 Still open:
 
-1. Media placement residue (§2): the spacing of the primary items in four sections (Mathematics and United
-   Kingdom introductions, Moon §2, East Timor §13), where the VM leaves more paragraphs between them than
-   `⌊free/items⌋`. Answered: the country introductions (Facts and Figures closes the section) and the items
-   carried into the next section (timeline items and virtual tours).
+1. Media placement residue (§2): in the four sections (Mathematics and United Kingdom introductions, Moon §2, East
+   Timor §13) the VM lays out one item we do not have, an empty slot in its DOM that explains all ten misplaced items
+   (VM captures, 2026-10-15). Which record the native layout puts there needs the debugger. Answered earlier: the
+   country introductions (Facts and Figures closes the section) and the items carried into the next section.
 2. ~~Sidebar categories `SBA`, `SBP`~~: answered (VM 2026-10-14, 761593235 and 761594207): both show the plain
    purple "sidebar" banner like the other categories; the category changes nothing on screen.
 3. ~~Timeline pop-up wording of full dates and geologic dates~~: answered, see timeline.md §3.2 (VM 2026-10-14).
-4. DATAF `pn`, REL/DATAF editions `STE`/`STC` meaning; `section@type` vs heading look (type 6 at top level).
-5. The right-column modules of an article (World Atlas map, Quick Facts, Related Articles, Web Sites):
-   which DATA records feed them and in which order.
+4. ~~DATAF `pn`, editions `STE`/`STC`, `section@type` vs heading look~~: answered (2026-10-15): `pn` is a page
+   number the 2009 reader does not use (§4); `STE`/`STC` are never read by this disc's program (§4); headings look by
+   depth, not type (§2).
+5. ~~The right-column modules~~: answered (VM captures, 2026-10-15): §2 "Right column".

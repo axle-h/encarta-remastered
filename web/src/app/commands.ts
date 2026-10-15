@@ -1,48 +1,83 @@
 /**
- * Commands of the File and Edit menus. Encarta's Copy put a source line under copied text; the
- * wording here is ours (the VM captures do not show the clipboard).
+ * Commands of the File and Edit menus. Copy and print end with Encarta's source line
+ * (docs/vm-findings.md, "Copy source line"): a selection gets it on the next line, a whole
+ * article or dictionary entry after a blank line.
  */
 
 /** Event the article reader listens to for Edit › Find in Article. */
 export const FIND_EVENT = "encarta:find";
 
-/** Appended to everything copied or printed (Encarta did the same; the wording is generic). */
-export const COPYRIGHT = "© Microsoft Corporation. All rights reserved.";
+/** The line Encarta 2009 put under everything copied or printed. */
+export const SOURCE_NAME = "Microsoft® Encarta® 2009.";
+export const COPYRIGHT = "© 1993-2008 Microsoft Corporation. All rights reserved.";
+export const SOURCE_LINE = `${SOURCE_NAME} ${COPYRIGHT}`;
 
-export function citation(title: string, url: string): string {
-  const t = title.trim();
-  return `${t ? `"${t}." ` : ""}${COPYRIGHT} Microsoft® Encarta® Premium 2009 (resurrected). ${url}`;
+/** Selector of the elements whose text is "the article" (adult reader, Kids reader). */
+export const ARTICLE_TEXT = ".art-text, .kids-text";
+
+/**
+ * Text with the source line: `whole` (an entire article or entry) leaves a blank line before it,
+ * a selection only a line break. Null when there is nothing to copy.
+ */
+export function withSourceLine(text: string, whole = false): string | null {
+  const s = text.trim();
+  return s ? `${s}${whole ? "\n\n" : "\n"}${SOURCE_LINE}` : null;
 }
 
-/** The selected text followed by a blank line and the citation; null when nothing is selected. */
-export function textWithCitation(selected: string, title: string, url: string): string | null {
-  const s = selected.trim();
-  return s ? `${s}\n\n${citation(title, url)}` : null;
+/** The same as HTML: the copied markup, then the source line with its name in bold. */
+export function sourceLineHtml(): string {
+  return `<p><b>${SOURCE_NAME}</b> ${COPYRIGHT}</p>`;
 }
 
 export function selectedText(): string {
   return window.getSelection?.()?.toString() ?? "";
 }
 
-/** Edit › Copy: the selection with its citation. Resolves false when nothing could be copied. */
-export async function copySelection(title: string): Promise<boolean> {
-  const text = textWithCitation(selectedText(), title, window.location.href);
-  if (!text) return false;
+/** Puts text on the clipboard; resolves false when the browser refuses. */
+export async function writeClipboard(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
-    // Older browsers or no clipboard permission: the browser's own copy of the selection.
-    try {
-      return document.execCommand("copy");
-    } catch {
-      return false;
-    }
+    return false;
   }
 }
 
+/** Edit › Copy with a selection: the selection and the source line. Resolves false when nothing is selected. */
+export async function copySelection(): Promise<boolean> {
+  const text = withSourceLine(selectedText());
+  return text ? writeClipboard(text) : false;
+}
+
+/**
+ * Ctrl+C inside an article: Encarta added the source line to plain copies too. Returns true when
+ * it filled the clipboard (the caller then cancels the browser's own copy).
+ */
+export function addSourceToCopy(e: ClipboardEvent): boolean {
+  const sel = window.getSelection?.();
+  if (!e.clipboardData || !sel || sel.isCollapsed || sel.rangeCount === 0) return false;
+  const anchor = sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode?.parentElement;
+  if (!anchor?.closest(ARTICLE_TEXT)) return false;
+  const text = withSourceLine(sel.toString());
+  if (!text) return false;
+  const box = document.createElement("div");
+  box.appendChild(sel.getRangeAt(0).cloneContents());
+  e.clipboardData.setData("text/plain", text);
+  e.clipboardData.setData("text/html", `${box.innerHTML}${sourceLineHtml()}`);
+  return true;
+}
+
+/** Copy events get the source line inside articles; returns the cleanup. */
+export function installCopySourceLine(): () => void {
+  const on = (e: ClipboardEvent) => {
+    if (addSourceToCopy(e)) e.preventDefault();
+  };
+  document.addEventListener("copy", on);
+  return () => document.removeEventListener("copy", on);
+}
+
 export function printPage() {
-  printWith("media", "");
+  printWith("media");
 }
 
 /** Events the menu bar listens to, fired by keyboard shortcuts. */
@@ -53,35 +88,36 @@ export const FEATURES_EVENT = "encarta:features";
 
 export type ArticleScope = "text" | "media" | "selection";
 
-/** The article's text (the reading column), or "" when the page has none. */
+/** The article's title and text (the reading column), or "" when the page has none. */
 export function articleText(): string {
-  const el = document.querySelector<HTMLElement>(".art-text");
-  return (el?.innerText ?? el?.textContent ?? "").trim();
+  const el = document.querySelector<HTMLElement>(ARTICLE_TEXT);
+  if (!el) return "";
+  const body = (el.innerText ?? el.textContent ?? "").trim();
+  const title = (document.querySelector<HTMLElement>("main h1")?.innerText ?? "").trim();
+  return title && !body.startsWith(title) ? `${title}\n\n${body}` : body;
 }
 
-/** Edit › Copy for a scope: the article text or the selection, plus the citation. */
-export async function copyScope(scope: ArticleScope, title: string): Promise<boolean> {
-  const body = scope === "selection" ? selectedText() : articleText();
-  const text = textWithCitation(body, title, window.location.href);
-  if (!text) return false;
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
+/** Edit › Copy for a scope: the selection, or the whole article text, with the source line. */
+export async function copyScope(scope: ArticleScope): Promise<boolean> {
+  const text = scope === "selection" ? withSourceLine(selectedText()) : withSourceLine(articleText(), true);
+  return text ? writeClipboard(text) : false;
+}
+
+/** The Kids Copy button: the selection if there is one, else the whole article (VM: no dialog). */
+export async function copySelectionOrArticle(): Promise<boolean> {
+  return selectedText().trim() ? copySelection() : copyScope("text");
 }
 
 /**
  * Prints with a copyright line after the content. `text` leaves the pictures out, `selection`
  * prints only what is selected (copied into a temporary block), `media` is the whole page.
  */
-export function printWith(scope: ArticleScope, title: string) {
+export function printWith(scope: ArticleScope) {
   const root = document.documentElement;
   const added: HTMLElement[] = [];
   const line = document.createElement("p");
   line.className = "print-copyright";
-  line.textContent = `${title.trim() ? `${title.trim()}. ` : ""}${COPYRIGHT}`;
+  line.textContent = SOURCE_LINE;
   if (scope === "selection") {
     const sel = window.getSelection();
     if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {

@@ -33,7 +33,7 @@ export function syntheticStyle(): StyleSpecification {
       "encarta:space_colour": "#000000",
       "encarta:view_p_over_m": 3135,
       "encarta:view_p_over_m_per_height_px": 6.05,
-      "encarta:interactive": { "62": [[0.97, 16.59, 1]], "64": [[0.97, 5, 2]], "0": [[0, 24, 1]], "80": [[0, 24, 1]], "999": [[0, 24, 1]] },
+      "encarta:interactive": { "62": [[0.97, 4, 1, 0], [4, 16.59, 1, 1]], "64": [[0.97, 5, 2]], "0": [[0, 24, 1]], "80": [[0, 24, 1, 2]], "999": [[0, 24, 1]] },
       "encarta:min_rects": [{ bbox: [12.2, 45.3, 12.5, 45.5], maxzoom: 13.88, min_altitude_km: 5 }],
     },
     sources: {

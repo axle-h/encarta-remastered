@@ -224,11 +224,13 @@ describe("collision (§6.7)", () => {
     expect(Math.hypot(p.x - 0, p.z - 5)).toBeCloseTo(R, 5);
   });
 
-  it("cancels a move that leaves the collision coverage when no wall is involved", () => {
+  it("does not stop a move that leaves the collision coverage (VM: open edges are crossed)", () => {
     const coll: Cell = { index: 0, kind: "collision", level: 0, polygons: [square(-2, -2, 2, 2)], segments: [] };
     const m = new WalkMap(map("c.3wm", [coll]));
     expect(collide(m, { x: 0, z: 0 }, 0.5, 0, R)).toEqual({ x: 0.5, z: 0 });
-    expect(collide(m, { x: 1.8, z: 0 }, 0.15, 0, R)).toEqual({ x: 1.8, z: 0 });
+    const out = collide(m, { x: 1.8, z: 0 }, 0.15, 0, R);
+    expect(out.x).toBeCloseTo(1.95, 9);
+    expect(out.z).toBe(0);
   });
 });
 
@@ -435,6 +437,31 @@ describe("captions and the 2D layer (§8.4–§8.5)", () => {
     l.on = false;
     l.layout({ project: () => ({ x: 100, y: 50 }) }, 640, 480);
     expect(l.isDrawn(h, 640, 480)).toBe(false);
+  });
+
+  it("drops captions that touch an edge, and keeps a cone-hidden caption clickable at its last place (VM)", () => {
+    const l = new Layer2D([file]);
+    l.load("t.32d");
+    const h = l.find("_H1")!;
+    h.anchored = true; // 91 × 22 box
+    const at = (x: number, y: number) => l.layout({ project: () => ({ x, y }) }, 616, 420);
+    at(1, 100);
+    expect(l.isDrawn(h, 616, 420)).toBe(true);
+    at(0, 100);
+    expect(l.isDrawn(h, 616, 420)).toBe(false);
+    at(616 - 2 - 91, 100); // right edge 614
+    expect(l.isDrawn(h, 616, 420)).toBe(true);
+    at(616 - 1 - 91, 100); // right edge 615 = W − 1
+    expect(l.isDrawn(h, 616, 420)).toBe(false);
+    expect(l.hitTest(600, 110)).toBeNull();
+    at(200, 420 - 2 - 22); // bottom 418
+    expect(l.isDrawn(h, 616, 420)).toBe(true);
+    at(200, 420 - 1 - 22);
+    expect(l.isDrawn(h, 616, 420)).toBe(false);
+    at(200, 100);
+    l.layout({ project: () => null }, 616, 420);
+    expect(l.isDrawn(h, 616, 420)).toBe(false);
+    expect(l.hitTest(250, 110)).toBe(h);
   });
 });
 

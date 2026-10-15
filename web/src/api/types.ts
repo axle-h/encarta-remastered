@@ -66,6 +66,12 @@ export interface AssocItem {
   /** Sidebar rows only: the sidebar's preview (HTML) and category ("GREAT WORKS OF LITERATURE"), for its teaser. */
   preview_html?: string;
   sidebar_category?: string;
+  /** Archive (yearbook) rows only: the yearbook's year (DATA `year`), for the Archives module. */
+  year?: string | number;
+  /** Virtual tour rows only: `2DVT` or `3DVT` (DATA `type`), which module title the tour gets. */
+  subtype?: string;
+  /** Web link rows only: the stored address. */
+  url?: string;
 }
 
 export interface DataTable {

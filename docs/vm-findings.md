@@ -85,7 +85,8 @@ path as Encarta's `_3DVTContent` development override), see "Unresolved" for ITS
 - Roman Forum, MOVETO to (11.05, -, 2.6) and walking north up stair 1: the walk-map cell 657 enter macro fired
   `USERLEVELCHANGE:QTSREFID=701505293` at the MOVETO, Y followed the steps across the 1stFloor → stair1 switch with no
   visible discontinuity, and the walk ended against a wall at the landing (z = 3.8899). Backed by
-  `fixtures/tours/701505285-stairs-walk.txt`. Ordering of enter macros that switch walk maps: not resolved.
+  `fixtures/tours/701505285-stairs-walk.txt`. Ordering of enter macros that switch walk maps: see "Tours pass 2" below
+  (one switch per crossing, no switch back).
 
 ### §4.2 Site-map marker (checklist "Site map")
 - For the six Acropolis stops, the "you are here" marker in Encarta's site map sits exactly where §4.2 predicts
@@ -114,22 +115,20 @@ path as Encarta's `_3DVTContent` development override), see "Unresolved" for ITS
   (`stops/01-temple-of-athena-nike.png`). The Colosseum shows captions immediately after loading
   (`fixtures/tours/701505918/loading/003299.png`), because its default stop command starts with a dummy MOVETO away and
   back, which re-enters the hotspot cell. So "no captions before the first step" holds only for tours whose default stop
-  is a plain MOVETO to the start pose (Acropolis, Persepolis, Abu Simbel). The "Show Labels and Hot Spots" toggle was not
-  tested.
+  is a plain MOVETO to the start pose (Acropolis, Persepolis, Abu Simbel). The "Show Labels and Hot Spots" item: see
+  "Tours pass 2" below (not in the 2009 UI).
 - **Caption colours.** Normal caption text and frame read back as (198,211,231) on the 16-bit screen, which is 0xC0D1E3
   quantised to RGB 565; black fill; the hovered caption turns text and frame white (255,255,255); the pointer over it
   is a hand cursor. `fixtures/tours/701504257/harness-hotspot-hover.png`. Confirms §8.5.3 colours.
 - **Display pixel format (§5.9).** The green value 0xD3 above can only come from 6-bit green: the VM display is
   **RGB 565**.
-- Caption pixel widths: not measured yet, but every `viewpoints/*.png` shows captions at known camera poses, so widths
-  can be measured offline against the spec's rule.
+- Caption pixel widths: measured, see "Tours pass 2" below.
 
 ### §7.2.6 Flicker (checklist "Flicker")
 - At the Athena Parthenos stop the lit strip seen through the Parthenon doorway changes brightness between frames
   sampled 105 ms apart (mean luminance of the strip jumps among 94-118 with no smooth transitions), while the rest of
   the view is static. Consistent with step changes every 0.1 s within a range of the base colour.
-  `fixtures/tours/701504257/anim-athena-parthenos/`. The 0.4 s cadence and the steady torches of Persepolis/Colosseum
-  were not checked.
+  `fixtures/tours/701504257/anim-athena-parthenos/`. The 0.4 s cadence and the steady torches: see "Tours pass 2" below.
 
 ### §8.4.3 / §3.5 Loading screen (checklist "Loading")
 - While a tour loads, the 616x420 control shows a black screen with a ring icon labelled "LOADING" on the left and a
@@ -147,10 +146,76 @@ path as Encarta's `_3DVTContent` development override), see "Unresolved" for ITS
   `fixtures/tours/<id>/viewpoints/` (44 images including the 7 start poses). Y differs from the commanded Y where
   ground following applied, e.g. Persepolis Gate of Xerxes commanded y 4.106655, settled 4.020147.
 
+### Tours pass 2 (2026-10-15): the §10 open items (tourhost, software device; `fixtures/tours/*/README.txt`)
+- **Flicker (§7.2.6).** `LIGHTS.<id>.COLOR?` returns the current flicker colour, so it was sampled every 5 ms: the 0.1-s
+  `_TORCH1` changes every 100-118 ms (mean 109 ms = 7 ticks of 15.6 ms), the 0.4-s `_TORCH2` every 402-421 ms (26 ticks):
+  the accumulator restarts at 0, so periods round up to whole ticks. Values are `trunc(k × saved)` with k down to 0.4.
+  Persepolis and Colosseum have no `_TORCH` lights (`COLOR?` and `FLICKER?` answer `Failed`) and no flames; two dumps
+  0.3 s apart at every stop of both tours are identical. Abu Simbel `_TORCH36` (stored with a trailing space) and
+  `_TORCH39` answer `Failed` too, so they never flicker; `_TORCH35`/`37` answer their colour and `FLICKER?` 0.4.
+- **Lighting (§7.2.3, §5.4).** With `LIGHTS.OFF` the Parthenon columns (material faceColor 0.29) and walls (0.22) show
+  their texels unchanged (~230 against texture means 225-231): **faceColor is ignored**. Lit, the unlit floor is
+  texel × 55/255 for `AMBIENT` 60 (565 rounding): modulate, no overbright. Abu Simbel (ambient 0): `SCENE.AMBIENT=60,60,60`
+  after loading brightens every surface and turns 1,351 black pixels non-black, so ambient is the base of every lit
+  vertex and faces no light reaches are black at 0.
+- **Water (§7.4.6).** In acr.3wm cells 1145-1148 (`3D.n_00water.WATER?` = 1) the pond changes in 30 % of its pixels
+  between dumps 0.2 s apart, with lights off; at z 3.3, just outside (`WATER?` = 0), 1 pixel. Ripple rate not measured.
+- **Sprites (§7.4.1).** Torch_19 seen from yaws 0-315 in 45° steps is always face-on (a wrong sign would turn it
+  edge-on at 45°). At yaw 0 and pitch −40, `3D.Torch_19.SPRITE=1` and `=0` give identical images (rotation by yaw only,
+  identity at yaw 0, no pitch); at yaw 20 they differ.
+- **Film strips (§7.4.4).** Two torches (Erechtheum Torch_09/10, `16,.07`), dumps every 12 ms: frame changes 72-96 ms
+  apart, mean 80.6 ms (5 ticks, about 12.4 fps, not 14.3), on the same ticks for both torches, which show different
+  frames (random start frame).
+- **Cloud statues (§7.3.4).** With `SCENE.FOGSTART=9.95`/`FOGEND=10` the Bronze Athena is re-rendered at 8.95 units and
+  frozen at 9.05 (= 0.9 × FOGEND): seen from the west at 9.5 it shows the image of the last render (the south view, or
+  after a render at 8.5 from the west, that view, also from the south). Software mode re-renders on each draw (the image
+  changes between 1° steps around the statue). The hardware 5° rule cannot be seen (no 3D device).
+- **LOD (§7.6).** `CAMERA.FOV=6` on newcolumn07 from the south, eye 1.36 above it: the column turns into its darker
+  `lod_` mesh between XZ distance 12.99 and 13.01 (a 3-D distance rule would switch at XZ 12.93).
+- **PVS (§6.6).** The six Acropolis stops before and after `WALKMAP.DELETE.VISIBILITY` match except at Erechtheum (and a
+  few pixels at Bronze Athena): with the PVS, the far Parthenon columns are the `lod_` meshes; without it, the full
+  columns (5.2 units away). The cell's list names `lod_newcolumn*` for most columns and `newcolumn30-39` for others: **over
+  a visibility cell the lists choose base or `lod_` meshes, with no distance swap.** Sprites in no PVS list are drawn:
+  Torch_19 shows from cell 1508, whose list lacks it.
+- **Back faces (§5.9).** `WALKMAP.OFF`, eye below the terrain looking up: the terrain and floors vanish (sky behind),
+  only walls facing the eye show. Back faces are culled.
+- **Cursors (§6.9, §8.5.3).** Read with GetCursorInfo (tourhost `cursor`): the centre cursor for |dx| ≤ 29 and
+  |dy| ≤ 59 px from the control centre, left/right when |dy| ≤ |dx| (also on the exact diagonal), up/down otherwise.
+  Pressing and dragging in the view keeps the zone cursor; `grip.cur` never appeared. Pressed on a caption the hotspot
+  cursor stays while dragged off it, the camera does not move, and releasing elsewhere fires nothing.
+- **Captions (§8.4.2, §8.5).** System font widths captured (GetCharWidth32 on the control DC, face "System",
+  `fixtures/tours/701504257/captions/`); with them the §8.4.2 rule gives all 55 hotspot-box widths in the viewpoint
+  captures, "Titus" (Wm 32) only with the scale as float32 (52, not 53). A caption shows only strictly inside the view:
+  last drawn at left 1, right edge 614 (W − 2) and bottom 418 (H − 2); one that touches or crosses an edge is dropped and
+  cannot be clicked. The cone: with `CAMERA.FOV=100` "Parthenon Frieze" is shown at dot 0.8729 and hidden at 0.8692
+  (threshold 100·π/360 = 0.8727, 29.2°); hidden this way, its last rectangle still gives the hotspot cursor and a click
+  fires `HOTSPOTCLICKED`. At FOV 80 the cone (45.7°) lies just outside the view's corners (45.4°). Icons show upright
+  (TV, arrows); `_L` labels are white bold with a 1-px black rim, aliased.
+- **"Show Labels and Hot Spots".** Not in Encarta 2009's tour UI: the menu bar is Music, Tour Stops, Start Over,
+  Appears in, Credits; the Tour Stops menu lists only stops and hotspots; right-clicking the control shows nothing, and the
+  File/Edit menus have no such item. The strings `To&ur Stops`, `&Show Labels and Hot Spots`, `Tour &Settings` remain in
+  ENCARTAR.DLL.
+- **Floors (§6.5).** Roman Forum stair 1, active map read every ~10 ms (`WALKMAP.[9].OVER?` / `[28].OVER?`, collision
+  cells that exist only in 1stFloor / stair1): walking up, the map switches once on entering 1stFloor cell 614 (enter =
+  load stair1) and stays stair1; walking down, once in stair1 cell 29 and stays 1stFloor. The old map's exit macro does
+  not switch back: the runtime's `settle` rule.
+- **Open edges (§6.7).** Roman Forum 1stFloor, x 11.794: collision cell 9 ends at z 7.744 (`OVER?` TRUE at 7.7, FALSE at
+  7.8), the nearest wall is 0.72 away; walking north crosses it at full speed and goes on. Leaving the coverage does not
+  stop a move.
+- **Loading spinner (§8.4.3).** Dumps every 15 ms during an Acropolis load: the dot steps around the ring 16 times,
+  90-120 ms apart, mean 110 ms (7 ticks: the 0.1-s alarm restarts its clock when it fires); the loading screen lasts
+  2.0 s (345 ms to 2,340 ms).
+- **Hotspot-string junk (§6.2).** Cells whose strings carry junk (acr cell 1055, the Roman Forum stair bands) behaved as
+  their clean scripts say in every walk above; no stray effect was seen.
+- **`LIGHTS.TOGGLE`** answers `Success:-1`, `LIGHTS.ON?` stays TRUE and the view does not change (§7.2.4 confirmed).
+  **`3D.TOGGLEHIDDEN`** flips `VISIBLE?` of every object (1 → 0 → 1), but the first toggle left the Parthenon view
+  unchanged and a second one (after hiding Sky03 and newcolumn05) brought those back and hid the ground: not understood.
+- **Quirk:** after loading the Roman Forum in tourhost, the stop command's `MOVETO=160,…` left yaw `-1.#IND00`; only
+  `CAMERA.HOMEPOV` (then `CAMERA.HEIGHT=.16`) cleared it.
+
 ### Not resolved for tours
-- LOD switch distance, Acropolis water ripple, PVS on/off comparison, back-face culling, cloud statues, sprite yaw sign,
-  filmstrip fps, cursor zones, grip.cur, junk in hotspot strings, maximised (MaxView) mode, rotated site maps,
-  "Show Labels and Hot Spots" toggle. All are now cheap to do with tourhost (`vm/tour.py`).
+- Pitch-limit arithmetic (needs a debugger), gravity mode and the hardware 5° cloud rule (no 3D device), maximised
+  (MaxView) mode, the water ripple rate, `3D.TOGGLEHIDDEN`.
 - **ITS mode in tourhost**: with `script.itsfileurl=<8.3 path>` returning 1, `script.load=load.3sc` still loads nothing
   (no `WORLDLOADED`). Encarta itself loads from the containers, so something else is needed (perhaps
   `SCENE.LOADFILESFROMITS` or a host-provided storage); not needed for the measurements, which used disk mode.
@@ -323,6 +388,30 @@ The scale bar is drawn at the lower right (x 856-1007, y ~706) as alternating se
   water pale grey-blue, no-data countries light grey/white. Bottom bar: a rank chart "Linear by Rank", the indicator
   title and source, buttons Statistics Table / Choose Statistic / Details; hovering a country shows "<country> <value>
   (<year>)". `fixtures/atlas/V14/`.
+- **Hit sides** (2026-10-14, second pass; `fixtures/atlas/sea-click2/`, each click from a freshly opened view, checked
+  unchanged before the click: a click that hits nothing re-centres the map). Menus, with our band polygons at the
+  point (`vm/scratch/ptquery.py`: screen → lat/long by the orthographic globe of radius 3135·6378.2/(2.5·alt) px around
+  the pane centre (433, 473), then our tiles):
+
+  | view | point | menu | notes |
+  |---|---|---|---|
+  | globe 0°, 150°W, 20,000 km, s0 | open Pacific | Pacific Ocean, World | on land: United States, North America, World |
+  | Tectonic (s2), 35°N 60°W, 10,000 | Atlantic, west / east of the ridge | North American Plate, Atlantic Ocean / African Plate, Atlantic Ocean | on land: North American Plate, United States, North America |
+  | 17°S 146.5°E, 400 km, s0 | open water over the reef area | Great Barrier Reef Marine Park, Great Barrier Reef, Coral Sea | park (side 0) over water |
+  | same | 70 km off Queensland | Coral Sea | our Australia and Coral Sea Islands Territory polygons cover it |
+  | 47.5°N 3.2°W, 300 km, s0 | Belle-Île, land inside our Bay of Biscay polygon | Sauzon, Morbihan, Brittany, Belle-Île, France | no Bay of Biscay; Quiberon peninsula alike |
+  | 49.21°N 2.20°W, 300 km, s0 | 0.7, 1.7, 4.8, 8, 11 km west of Jersey (sea) | Jersey (U.K.) up to 4.8 km, Channel Islands up to 11 km, British Isles | as far as our band-7 polygons reach (Jersey's ends between 4.8 and 8 km, Channel Islands' between 11 and 14 km); no water polygon there |
+  | same, 2,000 km | 1.6 … 37 km west | Jersey (U.K.) at 1.6 km only; Northern Europe to 27 km; English Channel at 37 km | |
+  | 47°N 5°E, 8,000 km, s0 vs Time Zones (s13) | 10 sea points 3–6 px off coasts | the same water body and statistical regions in both; Europe never with a water body; "Eastern Europe, Europe" off Klaipėda (no water polygon) | Italy and Greece listed over the sea in s0 only where their drawn labels are (Time Zones draws none) |
+
+  Reading: PDCAltitudeGrid `b4` high nibble is the hit side (mad-styling.md §4.4): 2 (water bodies, reefs) listed
+  only over water; 1 (countries, divisions, continents, islands, regions of pen group 33) left out when a water
+  class is listed; 0 (World, plates, parks, statistical regions, lakes) anywhere. Labels are hit as well. The earlier
+  reading "no land area over the sea" (Brittany) is replaced.
+- **Point label positions** (`fixtures/atlas/labels/outback-s0-alt800.png`, Brittany 300 km): labels sit diagonally
+  off the symbol, text corner at the symbol corner. Isolated places (7 of 7 in the outback) are above right; in
+  Morbihan about 18 of 30 are above left, 5 below right, 5 below left, the rest above right. Lambina (SOUTH AUSTRALIA
+  above it) is below right. The order after above right is not determined.
 - Place search from the map was not exercised beyond the click menu.
 
 ---
@@ -672,7 +761,7 @@ Still different, not changed:
   West Central Europe, France, Europe (no time zone; the title stays "France | Europe"); a click on the Atlantic lists only
   Atlantic Ocean. **Sea clicks** (`fixtures/atlas/sea-click/`): 1-3 km off Brittany only "Bay of Biscay" (and a nearby
   city point) is listed, though France, Brittany and Morbihan polygons cover the point; on Lake Geneva Vaud and Switzerland
-  are listed with the lake.
+  are listed with the lake. (Explained by the hit sides, "mad-styling.md" section above.)
 - **Timeline pop-up dates** (`fixtures/timeline/dates/`, 23 events): see timeline.md §3.2 ("June 16, 1963",
   "120,000 years ago", "2.50 million years ago", "4.60 billion years ago", "8000 BC").
 - **Sidebars `SBA`, `SBP`** (761593235, 761594207): the same purple "sidebar" banner as the other categories.
@@ -684,7 +773,213 @@ Still different, not changed:
   Selected Text, Stop Reading F9, Pause), Menu and Button Sounds (On/Off), Startup Sound (On/Off); Help › Microsoft
   Encarta Help F1, Troubleshooting (Diagnosing Problems, Contacting Technical Support), About Encarta.
 
+### Where the unheard sounds play: second search (2026-10-14; USB audio recording, menu sounds on)
+- Listened to (each action timed against the recording, slices matched with `sndmatch.py`): the dictionary window (word
+  list, tabs, Go, speaker icon), Games & Fun Stuff folders, the video player (pause, stop, scrub; the video's own sound
+  masks the controls), the audio-set player (thumbnails, play, stop), Visual Browser (hover, click, wheel, arrows),
+  Quick Search: Maps dialog, Add to Favorites with New Folder, Map Trek (dialog Next / Back / list, marker, legend),
+  Geography Quiz (start, wrong, right), Options (all five pages, check boxes), Kids: Games and Fun Stuff menu, Video
+  Vault video, search results, article, Look at Pictures, Tools menu. Features-menu flyout items, Kids menu entries and
+  media thumbnails are silent. Controls inside the dictionary window, dialogs' page lists and tab lists play nothing.
+- **Result: none of 578, 579, 682/31972/31978, 702/31909, 31906-31908, 31910/31911, 31912, 31913 was heard.** Every
+  Encarta sound matched was `tick` (31914 group) or `click` (31916 group), in the places the first pass lists. 578 and
+  579 are nearly inaudible (peak 0.03 / 0.08), so they are probably never played. Flash pages (Jewel Game, Dogs'
+  Gone to the Dogs) show "requires a Flash player" and play nothing.
+- **Geography Quiz:** a wrong answer greys the button and drops the offered points (5 → 4) with only the click; a correct
+  answer plays a loud (peak 0.9) 1.9-2.0 s fanfare 0.4 s after the click while the map flies to the next question. Its
+  length and envelope match XP's `C:\WINDOWS\Media\tada.wav` (171,100 bytes, 1.94 s; envelope correlation 0.68), and no
+  `ENCARTAR.DLL` / `ENCSPLSH.DLL` resource is 2 s long, so it is the Windows sound, not Encarta's.
+- A click on a window that a modal dialog blocks plays Windows' 0.4 s "ding" (looks like an unmatched sound; ignore it).
+- Not tried: the Geography Quiz score dialog, Read Aloud, Print / Copy dialogs, Organize Favorites, the Help windows,
+  Kids Read Aloud and its other games (all Flash), `World Languages Interactivity`.
+
 ### Not done in this pass
-- single-panorama `initangle` (Flash viewer); where the unheard sounds play; a listening comparison of the GS renders
+- single-panorama `initangle` (Flash viewer); where the unheard sounds play (searched again, not found; see above); a listening comparison of the GS renders
   with our synth; the Options dialog was read from the captures and the help, not each control exercised; INDEX.md
   entries for the new captures; no new snapshot saved (usb-audio cannot be part of one).
+
+## UI pass 2 (2026-10-14): the *(ours)* rows of parity.md
+
+Captures in `fixtures/ui/r2/` (clipboard texts read with `window.clipboardData.getData` through `vm/agent.py js`).
+Started from `encarta-home`; the Read Aloud part with `--wav` (USB audio) and Encarta restarted after the device
+installed (Encarta decides at start-up that there is no sound card). No snapshot saved. Wording paraphrased.
+
+### Copy source line (`dict-copy-*.txt`, `kids-copy-*.txt`, `copy-dialog-fullarticle.png`; earlier `copy/`)
+- The line is "Microsoft® Encarta® 2009." followed by "© 1993-2008 Microsoft Corporation. All rights reserved." In the
+  HTML flavour the first sentence is bold; the adult article and Kids texts have a space before each ® (an artefact of
+  their HTML), the dictionary's does not. No title, URL or date is added; Kids says "Encarta 2009" too.
+- Placement: selection (adult Ctrl+C, Kids Copy with a selection) → selection, one line break, the line. Whole Kids
+  article (Copy button, no selection) → title, blank line, text, **blank line**, the line. Whole dictionary entry
+  (Copy link, no selection) → entry text, blank line, the line. Adult Edit › Copy › Whole Article Text → text ending
+  with "Contributed By:" and the name, one line break, the line.
+- Dictionary Copy with a selection inside the entry copies **only the selection** (no line). Kids Copy shows no dialog.
+- On the full-article view the adult Copy dialog offers Whole Article Text / Whole Article With Media (the outline view
+  offers Selected Text instead, earlier capture).
+
+### Menus (`readaloud-menu-*.png`, earlier `menubar-*.png`)
+- File: Print… Ctrl+P | Go to ▸ (Back Alt+Left Arrow, Forward Alt+Right Arrow, separator, Home Page Alt+Home) |
+  Options… Ctrl+O | Exit, separators between the groups. Edit: Copy… Ctrl+C | Read Aloud F8 ▸ | Search Encarta Ctrl+S
+  (lens icon) | Find in this Article… Ctrl+F (lens icon). Kids Favorites: Add to Favorites… / Organize Favorites… /
+  separator / "<empty>" (disabled) when there are none.
+- Features menu order: already captured in the first pass (`features-menu.html`); nothing new.
+
+### Games & Fun Stuff (`games-fun-stuff.*`, `games-geography.png`)
+- No menu or Features entry leads to the games. They are on Home › Games & Fun Stuff (home record 701712546): folders
+  Animals & Science, Arts & Culture, Geography, History, Tours, Videos. Geography holds the jigsaw puzzles, Continental
+  Quiz, Geography Quiz, Postcards from Africa, See the Sights (Canada, Europe, U.S.), U.S. State Capitals, then a
+  "Tours & Panoramas" group. Geography Quiz is otherwise only Ctrl+Q.
+
+### Search panel (`search-quote-*.png`, `search-panel-resized-empty-cat.png`; colours from `search-results-*.png`)
+- Geometry at 1024×768: panel from x 646 (1 px #5A555A rule) to the window edge, 378 px including the rule, from the
+  chrome's bottom (y 109) to the bottom of the window; face #D6D3CE in 16-bit colour (= button face #D4D0C8). A
+  splitter on the left edge (grip of dots at mid-height) resizes it: widest 498 px (edge at x 526), narrowest 308 px.
+- Category bars: x 659–1020 (12 px from the rule, 3 px from the edge), 32 px tall every 38 px, vertical gradient white
+  → #E7DFDE, 1 px #ADAEA5 bottom edge, rounded corners; 16 px icon at x 668, label at x 694 (≈ 15 px, #424142), "+" in
+  #848684 at the right. The open category is a white box with a #B5B2B5 border and a white header.
+- Hit rows 56 px tall: 34 px picture at x 671, bold title at x 729 (#292829), snippet under it in plain text; a kind word
+  ("Table", "Picture") follows some titles in plain weight. The first row is highlighted #84C321 with white text; the
+  hovered row #CEF79C with #5A555A text. **In the Articles category the rows show titles only** (no snippet).
+- An empty category shows "No results were found in <category>" and "Check the spelling or try a new search." (bold,
+  no link). Dictionaries (0) and Maps (0) bars stay listed.
+- **Quotations never appears**: searches for zebra, shakespeare, "to be or not to be" and liberty all listed the same six
+  bars, though Best Matches held a quotation ("Suicide: HAMLET To be, or not …", quotation icon). The first pass's
+  "appears when present" was not seen.
+
+### Map Trek (`maptrek-open.png`, `maptrek-closed-go-tooltip.png`, `maptrek-dblclick-word.png`)
+- Window "Map Trek" (Win32 dialog with caption and close box) 456 px wide at (567,45); the HTML body measures
+  (from `maptrek/maptrek-dialog.html`): side margins 17 / 10 px; text box 257×178 at top 46, stop list 150×178 at
+  x 280; list footer 19 px, #595959 with #C5C5C5 text; trek title 8 pt bold #765C26, stop text 8 pt #353535 (a 64 px
+  picture at the left with its caption in 8 pt #6F6F70, text indented 83 px); list items Tahoma 8 pt #353535; buttons
+  17 px tall at top 232 (New Trek 66 px at the left; Back and Next 44 px, 4 px apart, ending at the list's right edge).
+- Hover: an enabled button turns #CEB57B; a list row does not change (hand cursor). A stop without a picture shows the
+  bold place name and text only.
+- Closing the dialog leaves the map at the stop (title "Map Trek" over the map, the treks' markers); nothing reopens it.
+- Double-clicking a word in the stop text opens Encarta Dictionaries on that word (Encarta's general double-click
+  lookup; "expanses" → not found).
+
+### Arrow tooltips (`tip-*.png`)
+- Tool buttons show a tooltip after hovering: box #FFDFA5 (16-bit), 1 px #00205A border, #00205A Tahoma 8 pt text
+  wrapped at about 120 px, and a 14 px #FFB621 strip with a dark blue arrow pointing at the button. Placement is relative
+  to the button: centred below it with the strip on top (↑) when it fits (adult Home "Home"; Kids Back, Copy, Print,
+  search arrow); at the button's lower right with the strip at the left (↖) near the left edge (adult Back, Kids Home);
+  at the lower left with the strip at the right (↗) near the right edge (adult search arrow). Atlas controls use other
+  sides (← to the right of Map Legend and +, ↓ above the tool icons).
+- Texts: Back = "Back to <previous page title>"; adult Home = "Home"; Kids Home: open the Kids home page; Kids Copy /
+  Print: copy / print the article or picture; search arrows: show search results for the words in the box. Disabled
+  buttons (Forward with no history), Features, the ▾ tab, the Back ▾ and Look at Pictures show none.
+
+### Read Aloud (`readaloud-*.png`, `kids-readaloud-*.png`)
+- Without a sound device: "Text Cannot Be Read Aloud" message box (adult and Kids). With USB audio: speech plays (the
+  WAV grows), and **nothing in the page is highlighted** (adult Zebra, Kids Elephants).
+- Submenu states: idle → Whole Article enabled, Selected Text enabled only with a selection, Stop Reading F9 and Pause
+  disabled; reading → Whole Article and Selected Text disabled, Stop Reading and Pause enabled; paused → Pause reads
+  **Continue**. Stop ends it. F8 alone did not start reading from the article page (focus), the menu did.
+
+### Favorites (`kids-favorites-add.png`, earlier `favorites-*.png`)
+- Kids uses the same Add to Favorites dialog as the adult edition: ≈ 307 px wide, body #ADBEE7, "favorites" banner in
+  #EFF3FF over a 1 px #EFF3FF rule, bold #21304A labels "Name:" (text selected, "Article - <title>") and "Create in:"
+  (folder tree), New Folder / OK / Cancel buttons #C6D7EF with a #7396BD border. Storage per Windows user: not observable
+  from the UI beyond the first pass's `.erl` files.
+
+## Data pass (2026-10-15): content-schema §11 and the small formats
+
+Most answers come from the existing article captures (the `id=ModuleColumn` part of each `article.html`, and the
+`Child_s<n>` blocks of the body) compared with `out/content.sqlite`; scripts in `target/agent-data/` (local). The VM
+was used for the Geography Quiz, the atlas media question, the timeline search and the module buttons, started from
+`encarta-home`, no snapshot saved.
+
+### Right-column modules (25 encyclopedia captures, all agree)
+- **Order** (fixed; a module is left out when it has nothing): World Atlas, Quick Facts, Related Articles, Quotations,
+  Web Sites, Primary Sources, Sidebars, one module per virtual tour ("Virtual Tour" for `2DVT`, "3D Ancient Site" for
+  `3DVT`, DATA order), Further Reading, Archives, Visual Browser, then the grey online modules "radio" and "news".
+  Header bars: grey (World Atlas, Quotations, tours), orange (Quick Facts, Related Articles, Web Sites, Visual Browser),
+  light orange (Primary Sources, Sidebars, Further Reading, Archives); list modules print the count, "Web Sites (16)".
+- **World Atlas**: present exactly when the article has a `maps` forward association; the module id and the
+  `MapView/eid=` are that map's (= the article's) `geocode` (France 84, United Kingdom 242, East Timor 7299303,
+  Lillehammer 18674). Moon has a geocode but no `maps` row and no module. The picture is a live render of the place.
+- **Quick Facts**: the article's facts table (a `table` whose DATA has `quickfacts`, or the `factsandfigures` item),
+  13 of 13. Shown: the table's first five entries with their continuation values / sub-entries, the **fifth cut after
+  its first value** (Lincoln "Terms In Office" shows 1861-1865 only; Shakespeare "Milestones" one line; France
+  "Population growth" its first sub-entry "Population growth rate"). The Facts and Figures `quick="1"` marks are not
+  used (France shows "Population growth", which has none). "More" opens the table (`ERSMediaView`).
+- **Related Articles**: the first five top-level nodes of the **DLX** REL tree in stored order, headings included
+  (East Timor "island of Timor", "Southeast Asia" …), 26 of 26. Horse and Lillehammer, whose `STD` trees differ, match
+  only the `DLX` one; Algebra and Mathematics, whose `STC,STE` trees differ, match `DLX`. "More" opens the related view.
+- **Quotations (N)**: N = the forward `quotation` rows (Shakespeare 765, Einstein 61, Lincoln 38); the box shows the
+  first row's title ("Philosophy: For there was never yet philosopher That could…") between quote marks, credit the
+  article's person; "Show All" opens `display=quotationlist`.
+- **Web Sites (N)**: every forward `weblink` row, sorted by title (22 of 22); each row: icon, title, description
+  (the caption), address; three rows, then (+)/"Show All".
+- **Primary Sources (N)** and **Sidebars (N)**: the forward `sidebar` rows split by DATA `type`: `SBD SBH SBI SBL SBO`
+  (case-sensitive: Shakespeare's eight lower-case `sbl` excerpts are under Sidebars) are Primary Sources, every other
+  type (`SBC SBS SBX SBZ SPC CUS SHE SBG ZPA sbl` seen) is Sidebars. Both sorted by title, three rows shown.
+- **Sort order** of these lists: case ignored, apostrophes and hyphens ignored (Windows word sort: "American Memory" <
+  "America's Story", "Brazilian Embassy" < "Brazil's Site", "Einstein: Image" < "Einstein-Haus"), punctuation before
+  letters ("Brazil [Foreign…" < "Brazil.com" < "Brazil: Consular"), inner markup ignored ("From the Northern Ireland…" <
+  "From *The School for Scandal*"), but a title that **starts** with markup sorts first: United Kingdom's Primary
+  Sources open with "*God Save the Queen*", whose DATA title is `<title>⏎\t\t<it>God Save the Queen</it>⏎\t</title>`,
+  i.e. the sort key is the stored text including its leading white space.
+- **Further Reading (N)**: the forward `furtherread` rows in DATA order (22 of 22; not by `sequence`), five shown;
+  "Show All" opens `display=furtherread`.
+- **Archives (N)**: the forward `archive` rows by DATA `year`, then title, each "1938: France"; five shown.
+- **Virtual Tour / 3D Ancient Site**: the tour's title, its `picon` banner (244×68) and "Take the Tour"; the module
+  carries the tour's section number (`secprefix="III.A."`).
+- Absent: Visual Browser only on F 761551508, which has no forward associations at all. "radio": the article's
+  `livemedia` Radio row ("Listen to radio from France"); "news": country articles (MSNBC regional news); both are
+  links to encartaupdate.msn.com.
+- **Buttons** (`vm/agent.py js`, France): Web Sites, Primary Sources, Sidebars and Archives "Show All" call
+  `ExpandArtMod(box, 3|5, …)`: the box grows in place to its full height (Sidebars 100 → 241 px) and the button reads
+  "Collapse". Further Reading "Show All" and Quotations "Show All" navigate instead.
+
+### Placement residue (content-schema §2)
+- The body DOM has **empty item slots**: `<DIV id=Child_s<n> parsec="n"></DIV>` where a placed item's block would be,
+  42 in the corpus. In the four residue sections there is exactly one, at the paragraph that `⌊free/items⌋` spacing
+  needs to be "used": Moon §2 before p28, United Kingdom §1 before p131, Mathematics §1 before p2, East Timor §13
+  before p53. Treating that slot as used (as a timeline-stream slot is) makes all ten residue items land where the VM
+  has them; the other empty slots fall at section ends or in sections without items.
+- What the reader laid out there is not in the data we read: none of the four sections has a forward row, reverse row,
+  `par` row, outline entry or paragraph markup that the others lack. It needs the debugger (which record the native
+  layout puts into that slot).
+
+### Section headings
+- The heading look follows the **depth** only: classes `l1sectnumber`/`l1title` at the top level whatever the type
+  (type 4 United States History, 5 Zebra, 6 Musical Rhythm: all "II. TITLE"), `l2…` at depth 2 (types 5, 6, 7), `l3…`,
+  `l4…`. The titles are stored in their display case (top-level titles upper case in the data).
+
+### DATAF `pn` (data only)
+- `pn` occurs only together with `paragraphid` (700,635 article entries and a few of other groups) and never
+  decreases with the paragraph's reading order inside one article (3,000 of 3,000 articles). It is a **page number**:
+  ten sections to a page in reading order (`pn = ⌊section number / 10⌋ + 1`, exact for 3,702 of 3,942 sectioned
+  articles, the rest off by one at a page boundary); all 16,314 articles without sections have `pn = 1`. The 2009 reader
+  has no pages; index leaves open at the paragraph (`jump=p<paragraphid>`, UI pass).
+
+### Editions `STE`/`STC`
+- Premium shows the `DLX` trees (Related Articles above). `ENCARTA.EXE` and `ENCARTAU.DLL` contain the strings `DLX`
+  and `STD` but neither `STE` nor `STC`: this disc's program never selects those trees. Their meaning (student
+  editions?) stays a guess and does not matter for this disc.
+
+### Geography Quiz: `D*.TXT` line 3 (`fixtures/geoquiz/globetrotter-choices.png`, `explorer-choices.png`)
+- 17 Globetrotter (line 3 = 2 2 2) and 13 Explorer (1 1 1) questions, answers found by clicking until the question
+  advanced, each button mapped to its pool row's region (`group`): every Globetrotter question had **exactly two**
+  wrong answers from the answer's region (Canada: one, its region has only Mexico besides), every Explorer question
+  **exactly one** (Russia: none, alone in its region; the continent question trivially; the last question's answer
+  was not confirmed and is left out); the other wrong answers were never from the answer's region.
+  With the earlier Navigator (0) and World Class (4, all East Asia) shots: line 3 is the number of the four wrong
+  answers drawn from the answer's own region, the rest from other regions. (Continents all share region 39070.)
+
+### Atlas media (P2MTBL photo themes)
+- The 2009 atlas has no media layer: the map styles (Comprehensive … The Moon), the Map Customizer (places, borders,
+  labels, transportation, physical and other features, reference lines, hill shading, place-name language) and the
+  pushpin palette (user symbols) offer no photos or sounds, and a place's click-menu submenu is only Map / Read Article
+  (France, which has a "photo:people" and a music link). So the photo theme labels are not shown anywhere.
+  `fixtures/atlas/media/`.
+
+### Timeline search (`fixtures/timeline/search-*.png`)
+- Find Topic or Year › "Aachen" lists event titles ("Charlemagne Builds the Palatine Chapel at Aachen", twice);
+  "charities" finds the `charity` events (Mother Teresa, Salvation Army); "Aix-la-Chapelle" is not found. The term
+  entry's offset A (timeline.md §5) is not visible in the UI.
+
+### Not settled
+- MSWORLD.SDB column B and the qualifier list: no view shows them (statistics hover, table, Details checked earlier).
+- TIMELINE.DAT descriptor field 5 and term offset A; P2MTBL header words; LEX header words: internal, no UI.
+- MindMaze: not reachable in 2009 (earlier pass), so nothing to observe.

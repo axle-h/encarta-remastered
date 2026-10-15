@@ -4,7 +4,7 @@
  * points first, then lines, then areas, the country last. Every feature's MVT id is its entity id.
  */
 import type { StyleSpecification } from "maplibre-gl";
-import { inZoom, isHoverLayer, layerClasses } from "./layers";
+import { HIT_SIDE_LAND, HIT_SIDE_WATER, inZoom, isHoverLayer, layerClasses } from "./layers";
 
 export interface QueriedFeature {
   id?: string | number;
@@ -41,15 +41,21 @@ function areaRank(className: string): number {
 
 /**
  * The hit list: named features under the cursor whose class is in the style's hit list at this
- * zoom (`allowed`, from layers.ts `hitRanges`: PDCAltitudeGrid's interactive flag), once per entity.
+ * zoom (`allowed`, from layers.ts `hitClassesAt`: PDCAltitudeGrid's interactive flag and, as a map,
+ * each class's hit side there), once per entity. Hit sides (mad-styling.md §4.4, VM): a water class
+ * (Bay of Biscay) is listed only over water, i.e. on the water part of its split polygon; when one
+ * is listed, land classes (France, Brittany, Europe) are left out. Elsewhere land classes are listed
+ * over the sea too (Jersey a few km offshore), and side-0 classes (parks, regions, World) anywhere.
  */
 export function rankHits(
   features: readonly QueriedFeature[],
   iconOf?: (f: QueriedFeature) => string | undefined,
-  allowed?: ReadonlySet<number>,
+  allowed?: ReadonlySet<number> | ReadonlyMap<number, number>,
 ): HitPlace[] {
   const seen = new Map<number, HitPlace>();
   const order: HitPlace[] = [];
+  const side = new Map<HitPlace, number>();
+  let overWater = false;
   for (const f of features) {
     const p = f.properties ?? {};
     const entity = typeof f.id === "number" ? f.id : Number(f.id);
@@ -57,8 +63,11 @@ export function rankHits(
     if (!Number.isFinite(entity) || !name || p.anonymous === true || p.anonymous === 1) continue;
     if (allowed && !(typeof p.class === "number" && allowed.has(p.class))) continue;
     const kind = kindOf(f);
-    // Water parts of split areas: Encarta lists no land area over the sea (Brittany coast, VM).
-    if (kind === "area" && p.water === true) continue;
+    const s = allowed instanceof Map && typeof p.class === "number" ? (allowed.get(p.class) ?? 0) : 0;
+    if (s === HIT_SIDE_WATER && f.sourceLayer === "areas") {
+      if (p.water !== true) continue;
+      overWater = true;
+    }
     const prev = seen.get(entity);
     if (prev) {
       // A label anchor and its area are one place; a point beats both.
@@ -75,10 +84,12 @@ export function rankHits(
       icon: iconOf?.(f),
     };
     seen.set(entity, hit);
+    side.set(hit, s);
     order.push(hit);
   }
   const kindRank = { point: 0, line: 1, area: 2 } as const;
   return order
+    .filter((h) => !(overWater && side.get(h) === HIT_SIDE_LAND))
     .map((h, i) => ({ h, i }))
     .sort((a, b) => kindRank[a.h.kind] - kindRank[b.h.kind] || (a.h.kind === "area" ? areaRank(a.h.className) - areaRank(b.h.className) : 0) || a.i - b.i)
     .map(({ h }) => h);

@@ -1,8 +1,9 @@
 /**
  * Wall collision in the XZ plane (tours-3d.md §6.7): a circle of radius R moving against the wall
  * segments of the collision cells the move passes over, with one slide along the first wall hit, a
- * second sweep for corners, and a final push-out from walls and wall endpoints. A move whose
- * extended end leaves the collision-cell coverage is cancelled when no wall is involved.
+ * second sweep for corners, and a final push-out from walls and wall endpoints. Leaving the
+ * collision-cell coverage does not stop a move (VM: an open edge 0.72 from any wall is crossed at
+ * full speed); `gather` still reports the gap.
  */
 import type { Segment, WalkMap } from "./walkmap";
 
@@ -107,8 +108,8 @@ export function gather(map: WalkMap, px: number, pz: number, dx: number, dz: num
 export function collide(map: WalkMap, from: Point2, dx: number, dz: number, R: number): Point2 {
   const len = Math.hypot(dx, dz);
   if (len < 1e-12) return { ...from };
-  const { segs, gap } = gather(map, from.x, from.z, dx, dz, R);
-  if (segs.length === 0) return gap ? { ...from } : { x: from.x + dx, z: from.z + dz };
+  const { segs } = gather(map, from.x, from.z, dx, dz, R);
+  if (segs.length === 0) return { x: from.x + dx, z: from.z + dz };
   return slideMove(from, dx, dz, segs, R);
 }
 

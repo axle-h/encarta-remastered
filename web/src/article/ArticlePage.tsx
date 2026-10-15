@@ -8,14 +8,15 @@ import { Icon, mediaIcon } from "../components/Icons";
 import { useDocumentTitle } from "../components/useDocumentTitle";
 import type { SectionBlock } from "../content/model";
 import { useMediaViewer } from "../media/MediaViewer";
-import { fileUrl, mediaClass, uniqueByRef } from "../media/pick";
+import { fileUrl, mediaClass } from "../media/pick";
 import { ArticleBody, type BodyContext } from "./ArticleBody";
 import { FindBar } from "./FindBar";
 import { mediaFirst, sectionPathOf } from "./layout";
 import { useArticleModel } from "./useArticleModel";
 import { Pronunciation } from "./Pronunciation";
 import { SequenceContext } from "./sequence";
-import { AtlasPanel, LinksPanel, QuickFacts, RelatedPanel } from "./SidePanels";
+import { ArchivesModule, AtlasPanel, ListModule, QuickFacts, QuotationsModule, RelatedPanel, TourModule, WebSitesModule } from "./SidePanels";
+import { MODULE_ROWS, moduleLists } from "./modules";
 import { KidsArticleView } from "../kids/KidsArticle";
 import { FIND_EVENT } from "../app/commands";
 
@@ -116,11 +117,9 @@ function ArticleView({ article: a, kids }: { article: Article; kids: boolean }) 
     layout: m.layout,
   };
 
-  const maps = m.media.filter((x) => x.group === "maps");
-  const further = m.media.filter((x) => x.group === "furtherread");
   const experts = m.media.filter((x) => x.group === "expert");
-  // VM: the right column's "Web Sites" module (DATA `weblink` associations).
-  const webSites = uniqueByRef(m.media.filter((x) => x.group === "weblink"));
+  // The right column's modules (content-schema §11, VM): which associations, in which order.
+  const mods = moduleLists(m.media);
   const hasSections = m.sections.length > 0;
 
   return (
@@ -179,13 +178,22 @@ function ArticleView({ article: a, kids }: { article: Article; kids: boolean }) 
             {experts.length > 0 && <Contributors items={experts} />}
           </div>
           <aside className="art-side">
-            {maps[0] && <AtlasPanel map={maps[0]} />}
+            {mods.map && <AtlasPanel map={mods.map} />}
             {m.right.map((t) => (
               <QuickFacts key={t.ref_id} table={t} sequence={m.sequence} kids={kids} />
             ))}
             {a.related && a.related.length > 0 && <RelatedPanel tree={a.related} kids={kids} />}
-            {further.length > 0 && <LinksPanel title="Further Reading" items={further} kids={kids} />}
-            {webSites.length > 0 && <LinksPanel title="Web Sites" items={webSites} kids={kids} limit={8} />}
+            {mods.quotations.length > 0 && <QuotationsModule items={mods.quotations} credit={a.title} kids={kids} />}
+            {mods.webSites.length > 0 && <WebSitesModule items={mods.webSites} kids={kids} />}
+            {mods.primarySources.length > 0 && <ListModule title="Primary Sources" items={mods.primarySources} kids={kids} />}
+            {mods.sidebars.length > 0 && <ListModule title="Sidebars" items={mods.sidebars} kids={kids} />}
+            {mods.tours.map((t) => (
+              <TourModule key={t.ref_id} tour={t} kids={kids} />
+            ))}
+            {mods.furtherReading.length > 0 && (
+              <ListModule title="Further Reading" items={mods.furtherReading} kids={kids} rows={MODULE_ROWS.furtherReading} />
+            )}
+            {mods.archives.length > 0 && <ArchivesModule items={mods.archives} kids={kids} />}
           </aside>
         </div>
       </div>

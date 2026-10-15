@@ -184,7 +184,9 @@ Each 16-byte term entry is:
 ## 6. Unknowns (need decompiler analysis or VM observation)
 
 1. Descriptor field 5 (always 1).
-2. Term entry field 0 ("offset A"): which string pool it addresses.
+2. Term entry field 0 ("offset A"): which string pool it addresses. Not visible in the UI (VM 2026-10-15: the
+   timeline search lists event titles; "charities" finds the `charity` events, so the strings may be the searchable
+   word forms of each term, e.g. A advances by 9 characters for `charity`); decoding `$WWTimelineWW` would tell.
 3. ~~Inferred labels~~: confirmed in the VM (§3.2): 0x01 = period bar, 0x02/0x08 = circa ("?"), kind 3 =
    essay, importance 1 = largest title. Still open: importance 0 on 4 records, and how importance maps
    to zoom levels.

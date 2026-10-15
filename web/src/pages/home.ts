@@ -11,6 +11,12 @@ import type { Item } from "../api/types";
  * 701712540 and 701750687 are the Standard edition's variants.
  */
 export const HOME_ID = 701712539;
+/**
+ * Home › Games & Fun Stuff. In the VM it is the only way to the games (folders Animals & Science,
+ * Arts & Culture, Geography, History, Tours, Videos; Geography Quiz sits under Geography); no menu
+ * lists them. Our extra game pages (`/games`) are linked from the bottom of this page.
+ */
+export const GAMES_HOME_ID = 701712546;
 /** The Encarta Kids home screen. */
 export const KIDS_HOME_ID = 701639831;
 

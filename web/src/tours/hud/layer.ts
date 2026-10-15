@@ -28,7 +28,11 @@ export interface Element2D {
   frameColor: string;
   /** Anchored and outside the view cone this frame: not drawn. */
   coneHidden: boolean;
-  /** Drawn unclipped this frame (captions only count for hit tests then). */
+  /**
+   * The caption's rectangle lies strictly inside the viewport. Captions only count for hit tests
+   * then. A cone-hidden caption keeps its last rectangle and this flag, so it stays clickable
+   * there although it is not drawn (VM).
+   */
   drawnUnclipped: boolean;
   /** Bumped whenever the caption surface must be rasterised again. */
   rasterVersion: number;
@@ -168,7 +172,8 @@ export class Layer2D {
           el.rect = [p.x, p.y, p.x + w, p.y + h];
         }
       }
-      el.drawnUnclipped = this.on && el.visible && !el.coneHidden && !el.sky && !rejected(el.rect, viewW, viewH) && !straddles(el.rect, viewW, viewH);
+      // Out of the cone: the stale rectangle and its flag stay (VM: still clickable there).
+      if (!el.coneHidden) el.drawnUnclipped = !el.sky && !rejected(el.rect, viewW, viewH) && !straddles(el.rect, viewW, viewH);
     }
   }
 
@@ -186,7 +191,7 @@ export class Layer2D {
     for (let i = this.elements.length - 1; i >= 0; i--) {
       const el = this.elements[i];
       if (!el || el.def.primitive !== 6 || !el.visible || el.sky) continue;
-      if (el.def.isLabel && !el.drawnUnclipped) continue;
+      if (el.def.isLabel && !el.drawnUnclipped) continue; // layer on and visible are checked above
       const [l, t, r, b] = el.rect;
       if (x >= l && x <= r && y >= t && y <= b) return el;
     }
@@ -257,8 +262,11 @@ export function rejected(r: readonly number[], w: number, _h: number): boolean {
   return rr <= 0 || b <= 0 || l >= w - 1 || t >= w - 1;
 }
 
-/** A quad crossing any viewport edge. */
+/**
+ * A caption not strictly inside the viewport (VM: drawn only with left > 0, top > 0,
+ * right < W − 1 and bottom < H − 1; a caption touching or crossing an edge is dropped whole).
+ */
 export function straddles(r: readonly number[], w: number, h: number): boolean {
   const [l = 0, t = 0, rr = 0, b = 0] = r;
-  return l < 0 || t < 0 || rr > w || b > h;
+  return l <= 0 || t <= 0 || rr >= w - 1 || b >= h - 1;
 }

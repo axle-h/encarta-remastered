@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { query } from "./api/client";
 import type { AssocItem, DataTable, Item, TimelineEvent } from "./api/types";
 import { clusterMembers, firstParagraph, gridItems, mediaFirst, mediaInOrder, mediaSequence, placementOf, sectionPathOf } from "./article/layout";
-import { quickEntries } from "./article/SidePanels";
+import { archiveLabel, byTitle, moduleLists, quickFactGroups, tourModuleTitle } from "./article/modules";
 import { appUrlHref, itemHref, rewriteHref } from "./content/links";
 import { linkPrefix, linkSuffix, plainText, walkSections, type Block } from "./content/model";
 import { parseVtt } from "./media/MidiPlayer";
@@ -236,24 +236,69 @@ describe("home screens", () => {
 });
 
 describe("quick facts", () => {
-  it("uses a facts table's entries as they are", () => {
-    const e = quickEntries({ entries: [{ name: ["Class"], value: ["Mammalia"] }] });
-    expect(e).toHaveLength(1);
+  const text = (g: { name?: unknown[]; value?: unknown[] }[]) => g.map((r) => [r.name ? plainText(r.name as never) : "", r.value ? plainText(r.value as never) : ""].join("="));
+
+  it("shows a biography's first five entries, the fifth cut after its first value (VM, Lincoln)", () => {
+    const e = (name: string, value: string) => ({ name: name ? [name] : [], value: [value] });
+    const g = quickFactGroups({
+      entries: [e("Birth", "1809"), e("Death", "1865"), e("Home State", "Illinois"), e("Known for", "a"), e("", "b"), e("Terms", "1861"), e("", "1865"), e("Party", "R")],
+    });
+    expect(g.map(text)).toEqual([["Birth=1809"], ["Death=1865"], ["Home State=Illinois"], ["Known for=a", "=b"], ["Terms=1861"]]);
   });
 
-  it("takes the quick entries of a Facts and Figures table with their continuation values", () => {
-    const e = quickEntries({
+  it("counts a Facts and Figures table's entries over its sections, ignoring `quick` (VM, France)", () => {
+    const g = quickFactGroups({
       sections: [
+        { entries: [{ name: ["Official name"], value: ["X"], quick: true }, { name: ["Capital"], value: ["Paris"], quick: true }] },
         {
           entries: [
-            { name: ["Capital"], value: ["X"], quick: true },
             { name: ["Area"], value: ["1 km"], quick: true, entries: [{ name: [], value: ["0.4 mi"] }] },
-            { name: ["Other"], value: ["no"] },
+            { name: ["Population"], value: ["64"], quick: true },
+            { name: ["Population growth"], entries: [{ name: ["rate"], value: ["0.58"] }, { name: ["2025"], value: ["68"] }] },
+            { name: ["Density"], value: ["100"], quick: true },
           ],
         },
       ],
     });
-    expect(e.map((x) => plainText(x.value))).toEqual(["X", "1 km", "0.4 mi"]);
+    expect(g.map(text)).toEqual([["Official name=X"], ["Capital=Paris"], ["Area=1 km", "=0.4 mi"], ["Population=64"], ["Population growth=", "rate=0.58"]]);
+  });
+});
+
+describe("right-column modules", () => {
+  const a = (ref_id: number, group: string, title: string, extra: Partial<AssocItem> = {}): AssocItem => ({ ref_id, group, title, ...extra });
+
+  it("sorts like the reader: case, apostrophes and hyphens ignored, punctuation first, leading markup first", () => {
+    const titles = ["Brazil's Site", "Brazilian Embassy", "Brazil: Consular", "Brazil.com", "Brazil [Visible Earth]"];
+    expect(byTitle(titles.map((t, i) => a(i, "weblink", t))).map((x) => x.title)).toEqual([
+      "Brazil [Visible Earth]",
+      "Brazil.com",
+      "Brazil: Consular",
+      "Brazilian Embassy",
+      "Brazil's Site",
+    ]);
+    const items = [a(1, "sidebar", "Act of Union"), a(2, "sidebar", "God Save the Queen", { title_html: "<em>God Save the Queen</em>" }), a(3, "sidebar", "From the North"), a(4, "sidebar", "From The School", { title_html: "From <em>The School</em>" })];
+    expect(byTitle(items).map((x) => x.ref_id)).toEqual([2, 1, 3, 4]);
+  });
+
+  it("splits sidebars into Primary Sources and Sidebars and orders every list", () => {
+    const m = moduleLists([
+      a(1, "maps", "France"),
+      a(2, "sidebar", "Vergniaud", { sidebar_category: "HISTORIC SPEECHES" }),
+      a(3, "sidebar", "Customs of France", { sidebar_category: "SIDEBAR" }),
+      a(4, "sidebar", "Dreyfus", { sidebar_category: "HISTORIC HEADLINES" }),
+      a(5, "archive", "France", { year: "1939" }),
+      a(6, "archive", "France", { year: "1938" }),
+      a(7, "furtherread", "Paris"),
+      a(8, "furtherread", "For younger readers"),
+      a(9, "virttour", "Paris", { subtype: "2DVT" }),
+      a(10, "virttour", "Abu Simbel", { subtype: "3DVT" }),
+    ]);
+    expect(m.map?.ref_id).toBe(1);
+    expect(m.primarySources.map((x) => x.ref_id)).toEqual([4, 2]);
+    expect(m.sidebars.map((x) => x.ref_id)).toEqual([3]);
+    expect(m.archives.map(archiveLabel)).toEqual(["1938: France", "1939: France"]);
+    expect(m.furtherReading.map((x) => x.ref_id)).toEqual([7, 8]);
+    expect(m.tours.map(tourModuleTitle)).toEqual(["Virtual Tour", "3D Ancient Site"]);
   });
 });
 

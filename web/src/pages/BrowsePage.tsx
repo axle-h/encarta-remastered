@@ -3,7 +3,7 @@ import { api } from "../api/client";
 import { useApi } from "../api/useApi";
 import { useDocumentTitle } from "../components/useDocumentTitle";
 import { fileUrl } from "../media/pick";
-import { background, homeLinkHref, homeSections } from "./home";
+import { GAMES_HOME_ID, background, homeLinkHref, homeSections } from "./home";
 import { useThemeImage } from "./HomePage";
 import type { AssocItem, Item } from "../api/types";
 
@@ -66,6 +66,19 @@ export function BrowseContent({ item, kids, bg, color }: { item: Item; kids: boo
             </ul>
           </section>
         ))}
+        {!kids && item.ref_id === GAMES_HOME_ID && (
+          <section className="browse-section">
+            <h2 className="browse-sep">More games</h2>
+            <ul className="browse-items">
+              <li>
+                <Link to="/games" className="browse-tile">
+                  <span className="browse-noimg" />
+                  <span>Quizzes, match games and charts</span>
+                </Link>
+              </li>
+            </ul>
+          </section>
+        )}
       </div>
     </div>
   );

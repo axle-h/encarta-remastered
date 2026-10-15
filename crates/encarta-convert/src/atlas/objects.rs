@@ -115,6 +115,11 @@ impl Objects {
 
 }
 
+/// Hit side 2, "water", of an interactive rule (PDCAltitudeGrid `b4` high nibble, mad-styling.md
+/// §4.4): listed only where the point is over water. 0 is anywhere; 1, "land", is left out when a
+/// water hit is listed too.
+pub const HIT_SIDE_WATER: u8 = 2;
+
 /// How each class is used by the display rules of all MapStyles (mad-styling.md §4).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ClassUse {
@@ -133,8 +138,12 @@ pub struct ClassUse {
     /// the class's polygons are split into parts over water and land.
     pub masked_fill: u32,
     /// Area rules whose fill may draw over water in their style's raster (its water pixel class
-    /// is in the pen's mask). Without any, the water parts of a split class are dropped.
+    /// is in the pen's mask).
     pub fill_water: u32,
+    /// Interactive Earth rules whose hit side (`b4` high nibble, mad-styling.md §4.4) is 2, "water":
+    /// the class is listed only where the point is over water, so its polygons are split into
+    /// water and land parts.
+    pub water_hits: u32,
 }
 
 impl ClassUse {
@@ -145,10 +154,10 @@ impl ClassUse {
     pub fn needs_geometry(&self) -> bool {
         self.geometry() || self.interactive > 0
     }
-    /// Water parts of a split area class are drawn by some style (never hit-tested: the click
-    /// menu lists no land class over the sea, atlas-output.md "Draw-over masks").
+    /// Water parts of a split area class are drawn by some style or hit-tested (the click menu
+    /// lists land classes over the sea unless a water class is hit there too, mad-styling.md §4.4).
     pub fn needs_water_parts(&self) -> bool {
-        self.fill_water > 0
+        self.fill_water > 0 || self.interactive > 0
     }
     pub fn anything(&self) -> bool {
         self.needs_geometry() || self.label > 0
@@ -193,6 +202,9 @@ impl Classes {
                 }
                 if r.b4 & 0x0F != 0 {
                     u.interactive += 1;
+                    if r.b4 >> 4 == HIT_SIDE_WATER && surface.is_some() {
+                        u.water_hits += 1;
+                    }
                 }
                 let geometry = r.b2 & 0x0F != 0;
                 match classes[r.class as usize].kind {
@@ -226,18 +238,11 @@ impl Classes {
         self.classes[row].name.starts_with("MOON")
     }
 
-    /// Area classes that the click menu lists over the sea too: water bodies (water pen groups
-    /// 31/42/43 or draw group 120), the World polygon (pen group 36), tectonic plates (136) and
-    /// reefs. The VM lists Bay of Biscay but not France, Brittany or Morbihan off the Breton coast.
-    fn hit_over_sea(&self, row: usize) -> bool {
-        let c = &self.classes[row];
-        matches!(c.pen_group, 31 | 36 | 42 | 43 | 136) || c.group == 120 || c.name == "Reef"
-    }
-
-    /// Interactive Earth area classes hit-tested only over land: their polygons are split into
-    /// water and land parts even when no fill is masked, so that hit layers can skip the water parts.
-    pub fn land_hits(&self, row: usize) -> bool {
-        self.kinds[row] == GeometryKind::Area && self.uses[row].interactive > 0 && !self.is_moon(row) && !self.hit_over_sea(row)
+    /// Interactive Earth area classes that the click menu lists only over water (hit side 2 in
+    /// some style): their polygons are split into water and land parts, so that the client can
+    /// skip the land parts.
+    pub fn water_hits(&self, row: usize) -> bool {
+        self.kinds[row] == GeometryKind::Area && self.uses[row].water_hits > 0 && !self.is_moon(row)
     }
 }
 
@@ -262,7 +267,7 @@ impl Classes {
             .enumerate()
             .map(|(i, &kind)| FeatureClass { id: i as u16, kind, pen_group: 0, flag: 0, scale: 0, reserved: 0, group: 0, priority: 50, name: format!("class {i}") })
             .collect();
-        Classes { classes, kinds: kinds.to_vec(), uses: vec![ClassUse { geometry_default: 1, geometry_optional: 0, label: 1, interactive: 1, outline: 1, masked: 1, masked_fill: 1, fill_water: 1 }; kinds.len()] }
+        Classes { classes, kinds: kinds.to_vec(), uses: vec![ClassUse { geometry_default: 1, geometry_optional: 0, label: 1, interactive: 1, outline: 1, masked: 1, masked_fill: 1, fill_water: 1, water_hits: 0 }; kinds.len()] }
     }
 }
 

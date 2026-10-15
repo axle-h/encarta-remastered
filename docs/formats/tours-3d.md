@@ -647,9 +647,9 @@ the face's normal index list) and UV (from the vertex index). Faces with ≥3 ve
 engine stores vertices in "lit vertex" form: position, a colour (initially opaque white), a specular colour
 (initially black) and UV. It computes vertex colours itself from the `.3lt` light data (see §7)
 and does not use D3D's lighting. As a result, how faceColor, specular and power affect the final colour is
-decided by the engine's lighting code, not by D3D. **Recommendation:** treat the texture as the base colour,
-take the colour from the lighting section, and do not multiply by faceColor until this is confirmed in the
-VM. The material's specular value probably drives the `SCENE.SPECULAR`/`HIGHSPECULAR` behaviour, which also
+decided by the engine's lighting code, not by D3D. **(VM)** faceColor is ignored: with `LIGHTS.OFF` surfaces whose
+material faceColor is 0.22 or 0.29 show their texels unchanged. Treat the texture as the base colour and take the
+colour from the lighting section. The material's specular value probably drives the `SCENE.SPECULAR`/`HIGHSPECULAR` behaviour, which also
 belongs to the lighting section.
 
 Polygon material selection:
@@ -797,14 +797,15 @@ For each tour, write one `.glb`:
 - extras carrying `lod_` pairs, the world bounding box and world size, and the original texture name together with the resolved file.
 
 ### 5.9 VM confirmation checklist (geometry/textures)
-- [ ] Back-face culling: are single-sided faces (e.g. the back of a wall) invisible in the original? The engine
-      transforms vertices itself and submits screen-space vertices, so the culling rule is the engine's own.
-- [ ] Does faceColor (0.5 grey on most materials) darken the texture, or is it ignored?
-- [ ] The LOD switch distance (13.0 XZ units expected): the distance at which acr/rom/per columns visibly change to `lod_` meshes.
+- [x] Back-face culling: single-sided faces are invisible from behind (VM: from below the Acropolis terrain with the
+      walk map off, terrain and floors vanish and only walls facing the eye show).
+- [x] faceColor (0.5 grey on most materials) is ignored (VM, §5.4).
+- [x] The LOD switch distance: 13.0 XZ units (VM, §7.6).
 - [ ] GIF textures with transparency: shown opaque? (No tour GIF texture was checked for a transparent index.)
 - [x] Display pixel format of the reference VM: RGB 565 (VM: caption colour 0xC0D1E3 reads back with green 0xD3, which needs 6-bit green). [ ] Which key test the engine uses on that surface for the few near-magenta texels.
 - [ ] per's untextured `roooof.jpg` surface: what does it look like (white, or material colour)?
-- [ ] How the missing `grip.cur` behaves (cursor 6 falls back to the default cursor?).
+- [x] How the missing `grip.cur` behaves: it never shows (VM: no grip cursor while pressing or dragging in the view
+      or on a caption, §6.9).
 
 ### 5.10 Unknowns
 - How material colours, specular and power combine with `.3lt` lighting (§7).
@@ -881,7 +882,8 @@ CELL :=
   **Authoring junk:** 701 of the 4,850 strings are non-empty and do not end in `;` (816 strings are empty).
   Most of these carry uninitialised buffer bytes after the authored text (e.g. `RUN(HIDEALL);\tè\n…ýýýý`).
   The original passes the whole buffer to the interpreter, so the junk becomes malformed statements that fail
-  silently. **[VM]** Confirm the junk has no visible effect.
+  silently. **(VM)** No visible effect: cells with junk (acr cell 1055, the Roman Forum stair bands) behave as their
+  clean scripts say.
   *Correction (implementation):* "cut each string after its last `;`" is not quite right, for two reasons
   found in the data. (a) Junk can contain `;` bytes and printable characters, e.g. Roman Forum `stair2.3wm`
   cell 15 `WALKMAP.LOAD(stair1.3wm););\x06è£‹?…\n;`, so the last `;` can lie inside the junk. (b) Four strings
@@ -1017,8 +1019,11 @@ After every camera move (end of the step move, `MOVETO`, POS changes), FUN_10015
    * No cell: run the current cell's exit macro and clear current.
 3. Loading a walk map initialises "current" to the hotspot cell under the camera **without** running its enter macro.
 
-**[VM]** Ordering when an enter macro itself switches the walk map (the decompilation of this tail is unclear).
-Check whether the exit macro of the cell that triggered the switch fires on the next step.
+**(VM)** When an enter macro switches the walk map, the old map's exit macro does **not** switch back on the next step.
+Crossing the Roman Forum stair-1 band (three strips; the middle strip's enter loads the other map and its exit reloads
+its own) switches the active map exactly once in each direction, in the middle strip, and it stays switched. A port
+treats a switch to a cached map like a first load: the new map's current cell is the one under the eye, without
+running its enter macro, and the change of map is taken as seen.
 
 ### 6.6 Visibility cells (precomputed potentially-visible set)
 
@@ -1034,7 +1039,14 @@ Visible fractions are small: on average 1–22% of a tour's faces per cell, and 
 cell 1288 of `acr.3wm`). A modern renderer can ignore the PVS for performance, but **parity requires honouring
 it**: faces that are culled in a cell (for example geometry behind the camera that the authors excluded) would
 otherwise become visible. Suggested target: per-cell lists of (mesh, face ranges), or per-mesh draw ranges after
-regrouping triangles by face. **[VM]** Compare a few viewpoints with PVS on and off (`WALKMAP.DELETE.VISIBILITY` turns it off).
+regrouping triangles by face.
+
+**(VM)** At the six Acropolis stops the view with the PVS and after `WALKMAP.DELETE.VISIBILITY` is the same, except
+for **LOD**: the lists name base or `lod_` meshes per cell (the authoring tool chose), and over a visibility cell
+exactly the listed faces draw, `lod_` meshes included, with **no distance swap**. At the Erechtheum stop the far
+Parthenon columns are `lod_` meshes with the PVS and full columns without it, although they are 5.2 units away. The
+§7.6 distance swap applies only when the eye is over no visibility cell. **Sprites** in no PVS list are drawn
+(Torch_19 from cell 1508, whose list lacks it), so the always-drawn list holds at least the sprites.
 
 ### 6.7 Collision (walls) and walkable region
 
@@ -1046,8 +1058,8 @@ Movement happens only in XZ. The per-step pipeline is in §6.9. Collision is res
    offset lines, one on each side.
    If the line crosses grid points with no collision cell, a flag is raised. **Collision-cell polygons cover the
    walkable area**: 85–100% of ground and hotspot cell centroids lie inside a collision polygon in every map
-   (Acropolis 905/1055 is the lowest). This flag makes a move that **leaves the covered region** be cancelled,
-   but only when no wall segment is involved (see the [VM] item below).
+   (Acropolis 905/1055 is the lowest). **(VM)** The flag does not stop a move that leaves the covered region (see
+   below).
 2. **Filter** (FUN_10025520): keep segments whose distance from the path is less than |step| + R.
 3. **Sweep and slide** (FUN_100239b0, FUN_100222e0, FUN_100227a0): find the earliest intersection of the move
    segment with any inflated wall line. On a hit, the remaining motion is projected onto the wall direction: the
@@ -1063,12 +1075,13 @@ Movement happens only in XZ. The per-step pipeline is in §6.9. Collision is res
    through sloped or stepped *ground* planes (§6.8).
 
 Simplified, parity-oriented model for the web runtime: a circle of radius R moving in XZ against the union of
-all wall segments of the active map; slide along walls; push out of segments and endpoints; reject moves whose
-end point (extended by R in the move direction) leaves the union of collision-cell polygons.
+all wall segments of the active map; slide along walls; push out of segments and endpoints. Moves that leave the
+collision-cell polygons are not rejected (VM).
 **(VM)** Walking at yaw 93.4 into the Propylaea side wall, X stopped at the wall (constant to 6 decimals) while Z
 kept changing at 0.0124 units/s ≈ 0.2·sin 3.4°: the move is **projected onto the wall and the tangential part
-kept**, with no bounce or jitter; at a corner the camera stopped completely. **[VM]** Open edges with no wall
-segment (does leaving the collision coverage block the move?) were not tested.
+kept**, with no bounce or jitter; at a corner the camera stopped completely. **(VM)** Open edges: walking out of
+the collision coverage where no wall is near (Roman Forum 1stFloor, cell 9 ends at z 7.744, nearest wall 0.72 away)
+goes on at full speed. Leaving the coverage does not block a move.
 
 ### 6.8 Ground following and gravity
 
@@ -1145,8 +1158,9 @@ nominal step per tick and at most five.
 **Cursors** (when `SCENE.CURSORS=TRUE`): over a 2D hotspot item the cursor is index 5 (`vthot360.cur`).
 Otherwise the zone of the pointer relative to the view centre (FUN_10016ca0) picks the cursor:
 inside |dx| < 30 px and |dy| < 60 px → 0 (`sv.cur`). Outside, if |dy| ≤ |dx|: right → 1 (`svright`), left → 3
-(`svleft`); otherwise up → 2 (`svup`), down → 4 (`svdown`). Index 6 (`grip.cur`) is loaded but only used in
-other UI paths (2D dragging) **[VM]**. Each cursor shows the direction a drag from that point would move the camera.
+(`svleft`); otherwise up → 2 (`svup`), down → 4 (`svdown`). **(VM)** Exactly so: dx 29 is the centre, 30 is right;
+dy 59 is the centre, 60 is down; (100,100) is right and (99,100) down. Index 6 (`grip.cur`) never shows: pressing and
+dragging in the view keeps the zone cursor, and a press on a caption keeps the hotspot cursor even when dragged off it. Each cursor shows the direction a drag from that point would move the camera.
 
 ### 6.10 Script-visible camera/scene/walkmap properties and defaults
 
@@ -1214,12 +1228,12 @@ as in §6.5, PVS as in §6.6.
 - [x] Walk speed, turn speed and pitch rate for one tour against the numbers in §6.9.
 - [x] Pitch sign (positive = up) and the 45° limit; Home levels the view.
 - [x] Software (snap) vs hardware (gravity) mode in Encarta: software/snap (no D3D device in the VM). Hardware gravity and the maximised view remain unobserved.
-- [x] Wall sliding and corners. [ ] Open edges (does leaving collision coverage block the move?).
-- [ ] Hotspot enter/exit order when a macro switches walk maps (floor transitions at Beaumaris/Colosseum stairs; `UserLevelChange` events reaching the host).
-- [ ] PVS: the scene looks the same with `WALKMAP.DELETE.VISIBILITY` (no missing or extra faces at a few viewpoints).
-- [ ] Trailing junk in hotspot strings causes no visible effect.
+- [x] Wall sliding and corners. [x] Open edges: leaving the collision coverage does not block the move (§6.7).
+- [x] Hotspot enter/exit order when a macro switches walk maps: one switch per crossing, no switch back (§6.5).
+- [x] PVS: the same with `WALKMAP.DELETE.VISIBILITY` except the per-cell LOD choice; unlisted sprites draw (§6.6).
+- [x] Trailing junk in hotspot strings causes no visible effect.
 - [x] `SCENE.HALFREZDRIVING` from the host returns "Failed". [ ] Whether half-res driving is ever active.
-- [ ] Cursor zones (30×60 px centre box, diagonals) and when `grip.cur` appears; right-button behaviour (WM_RBUTTONDOWN/UP are handled, effect not analysed).
+- [x] Cursor zones (30×60 px centre box, diagonals); `grip.cur` never appears (§6.9). [ ] Right-button behaviour (WM_RBUTTONDOWN/UP are handled, effect not analysed).
 - [x] FOV is horizontal (VM). [ ] The default FOV, and whether NEAR/FAR reach the projection.
 
 ### 6.14 Remaining unknowns
@@ -1386,8 +1400,9 @@ else:
 * Afterwards the v3 **PaintRecords** are applied. Each forces the colour of one face corner to the
   record's colour. In the shipped data these are the 145 acr records (e.g. object `Box08ff`) and
   3,291 Azuchi records (e.g. `intpanel23`, `intpanel19`).
-* The resulting colour modulates the texture (Gouraud × texture) **[VM: confirm MODULATE and that
-  there is no 2× overbright]**.
+* The resulting colour modulates the texture (Gouraud × texture). **(VM)** Confirmed, with no overbright and
+  without the material faceColor: an unlit Acropolis floor shows texel × 60/255 (`AMBIENT` 60), and with `LIGHTS.OFF`
+  texels are unchanged.
 * Specular (HW mode only, a second colour per vertex) is computed only when the scene specular colour
   is non-zero. Every tour sets `SCENE.SPECULAR=0`, so specular is always zero. A port may skip it.
 * Port recommendation: bake the static lights into a glTF `COLOR_0` at convert time with the formula
@@ -1417,7 +1432,8 @@ else:
   record that exists at that moment**, and marks lights dirty. It is ignored if no model is loaded,
   so it must follow `3D.LOAD`, which every tour's load.3sc does. This base colour is the starting
   value of every lit vertex in §7.2.3. Shipped values: acr 60,60,60; rom 20,20,24; bea 32,32,32;
-  per 20,20,20; col 32,32,32; abu **0,0,0**; azuchi 32,32,32.
+  per 20,20,20; col 32,32,32; abu **0,0,0**; azuchi 32,32,32. **(VM)** In Abu Simbel faces no light reaches are black;
+  `SCENE.AMBIENT=60,60,60` after loading brightens every surface.
 * `SCENE.SPECULAR=0` disables specular. `HIGHSPECULAR` is a separate flag (unused).
 * Fog: `SCENE.DELETEALL` resets the fog colour to 0x4B96E6, fog start to 0, fog end to **20.0**, and
   fog to off. `FOGEND=` sets the end distance, and fog is enabled only if the value is > 0.01. No
@@ -1451,9 +1467,11 @@ else:
   missing), Azuchi 4/7.
 
 **(VM)** At the Athena Parthenos stop the lit strip seen through the Parthenon doorway changes brightness between
-frames sampled 105 ms apart, in jumps with no smooth transitions, while the rest of the view is static: step
-changes about every 0.1 s. **[VM]** The 0.4 s cadence, and that Persepolis and Colosseum torches do *not* flicker,
-were not checked.
+frames sampled 105 ms apart, in jumps with no smooth transitions, while the rest of the view is static. `LIGHTS.<id>.COLOR?`
+returns the current colour: sampled every 5 ms, a 0.1-s light changes every 100–118 ms (mean 109 ms) and a 0.4-s light
+every 402–421 ms, i.e. after 7 and 26 ticks of 15.6 ms. The accumulator restarts at 0 when it fires, so a period
+rounds up to whole ticks. Persepolis and Colosseum have no `_TORCH` lights (`COLOR?` answers `Failed`) and their views
+are static; Abu Simbel `_TORCH36`/`_TORCH39` answer `Failed` as well.
 
 ---
 
@@ -1569,7 +1587,9 @@ Before each re-render (FUN_10019AB0):
    on every draw.
 3. Skip if the object centre is behind the eye: dot(normalise(centre − eye), normalise(lookAt − eye)) < 0.
 4. After the first render, also skip if the 3-D distance eye→centre ≥ 0.9 × FOGEND (default 20, so
-   **18 units**). The stale image remains visible.
+   **18 units**). The stale image remains visible. **(VM)** With `FOGEND=10` the Bronze Athena re-renders at 8.95 units
+   and is frozen at 9.05, showing the view of its last render from any side; in software mode it re-renders on every
+   draw (the image changes between 1° steps). Step 2 needs a 3D device and was not seen.
 5. In hardware mode the image is drawn into a system-memory copy and then blitted to the video texture.
 
 #### 7.3.5 Cloud lifetime
@@ -1596,8 +1616,9 @@ no-op anyway, because Box23a does not exist. `?` after the property name returns
   parallel to the view plane in yaw. Pitch is ignored, so it does not tilt up or down.
   Sprites are authored facing ±Z (all shipped placeholders and torch quads lie in a z = const plane).
 * Used for: statue placeholders (with clouds), torch flames (`Torch_*`, `Flame*`, `n_00FLAME15`,
-  with FILMSTRIP), and in Abu Simbel 69 sprite statements. **[VM: confirm rotation sign and that
-  sprites do not pitch.]**
+  with FILMSTRIP), and in Abu Simbel 69 sprite statements. **(VM)** A torch is face-on from every yaw (45° steps; the
+  opposite sign would turn it edge-on at 45°), and at yaw 0, pitch −40, `SPRITE=1` and `SPRITE=0` render identically:
+  rotation by the camera yaw only, no pitch.
 
 #### 7.4.2 `NOILLUMINATION=1`
 
@@ -1609,7 +1630,9 @@ For a port: use an unlit material.
 
 * `VISIBLE` is a per-object draw flag (default visible).
 * `3D.UNHIDEALL` sets every object visible.
-* `3D.TOGGLEHIDDEN` inverts every object's flag. **[VM: confirm the inversion.]**
+* `3D.TOGGLEHIDDEN` inverts every object's flag. **(VM)** `VISIBLE?` flips 1 → 0 → 1 on every object, but the
+  drawn result was not understood: a first toggle left the Parthenon view unchanged; a second one, after two objects
+  had been hidden, showed those again and hid the ground. No shipped script uses it.
 
 #### 7.4.4 `FILMSTRIP=framewidth,wait,path` (setter 0x1003B430, per-frame step in the object draw 0x1003ADC0)
 
@@ -1622,7 +1645,9 @@ For a port: use an unlit material.
   5. A timer starts.
 * Every draw: add elapsed seconds to an accumulator. When it reaches `wait`, reset it, advance the
   frame (1…N, wrapping N → 1), and set U = savedU/N + (frame−1)/N. V is unchanged.
-  Torches use `16,.07`, which gives about 14.3 frames per second, each torch starting at a random phase.
+  Torches use `16,.07`, each torch starting at a random phase. **(VM)** The accumulator restarts at 0, so `wait`
+  rounds up to whole ticks: frames change every 5 ticks (72–96 ms, mean 81 ms, about 12.4 fps at 64 ticks/s, not 14.3),
+  on the same ticks for every torch, which show different frames.
 * `framewidth = 0` turns the strip off and restores the saved U × N.
 * The strip is horizontal: frames are side by side along U.
 
@@ -1666,7 +1691,8 @@ Turning water **on** for an object makes its first face's texture a 2-D ripple s
   `n_00water` (mesh 1014) is a single quad with material `A_00water`. So the ripple shows while the
   visitor stands in that area. Walking from one of these cells into a neighbouring one runs the exit
   (water off, original restored) and then the enter (water on, height fields from zero), so the ripple
-  restarts. Implementing the effect is needed for parity.
+  restarts. Implementing the effect is needed for parity. **(VM)** In those cells `3D.n_00water.WATER?` is 1 and the pond
+  ripples; just outside it is 0 and the pond is still.
 
 #### 7.4.7 Other properties (not used by any shipped script)
 
@@ -1702,7 +1728,8 @@ Turning water **on** for an object makes its first face's texture a 2-D ripple s
   command changes it.
 * Shipped LOD meshes: acr 116 (all with partners), rom 320 (all), per 64 (63 with partners; one
   orphan never draws), others 0.
-* **[VM: confirm the 13-unit switch (watch `newcolumn*` in the Acropolis pop).]**
+* **(VM)** newcolumn07 turns into its `lod_` mesh between XZ distance 12.99 and 13.01 (eye 1.36 units above it, so the
+  rule is horizontal). Over a visibility cell there is no distance swap: the PVS lists decide (§6.6).
 
 ---
 
@@ -1765,22 +1792,22 @@ From `crosscheck.py`, comparing the names case-insensitively:
 
 ### 7.10 VM confirmation checklist (this area)
 
-- [x] Torch flicker is a step change of brightness about every 0.1 s (Acropolis). [ ] The 0.4 s cadence and
-      the 0.4–1.0 range of the base colour.
-- [ ] Persepolis and Colosseum torches do not flicker, and Abu Simbel `_TORCH36`/`_TORCH39` stay steady.
-- [ ] Lit colour × texture: modulate with no overbright. Abu Simbel's ambient 0,0,0 makes unlit
+- [x] Torch flicker is a step change of brightness every 7 ticks for 0.1 s and 26 ticks for 0.4 s, within 0.4–1.0
+      of the base colour (§7.2.6).
+- [x] Persepolis and Colosseum torches do not flicker, and Abu Simbel `_TORCH36`/`_TORCH39` stay steady.
+- [x] Lit colour × texture: modulate with no overbright, faceColor ignored. Abu Simbel's ambient 0,0,0 makes unlit
       areas black.
 - [x] Cloud statues: upright, not mirrored, correct side (Bronze Athena and the Propylaea view of it, §7.3.3).
       The Persepolis Gate of Xerxes bulls, once listed here as showing "another side", are not clouds: they are
       textured meshes (`bullf12.jpg` …) and were wrong because of the V flip (§5.6).
-      [ ] The image updates in steps of about 5° in HW mode and continuously in SW mode. The image freezes
-      beyond about 18 units. Turning around a caryatid (none is in view at a Tour Stop).
-- [ ] Sprite billboards rotate with camera yaw only. Check the sign by walking around a torch.
-- [ ] Flame filmstrips: about 14 fps with random phase per torch.
-- [ ] LOD pop at 13 units horizontal distance (Acropolis `newcolumn*`, Roman Forum `colbaseouter*`).
-- [ ] The water ripple on `n_00water` appears in Acropolis while standing in `acr.3wm` cells 1145–1148
-      (in front of the Athena Parthenos) and stops on leaving; it appears nowhere else.
-- [ ] `LIGHTS.TOGGLE` (if sent from a debug console) does nothing.
+      [x] The image updates continuously in SW mode and freezes beyond 0.9 × FOGEND (§7.3.4). [ ] The 5° steps of
+      HW mode (no 3D device).
+- [x] Sprite billboards rotate with camera yaw only, same sign as the camera (§7.4.1).
+- [x] Flame filmstrips: every 5 ticks (about 12.4 fps), random phase per torch (§7.4.4).
+- [x] LOD pop at 13 units horizontal distance (Acropolis `newcolumn07`, §7.6).
+- [x] The water ripple on `n_00water` appears in Acropolis while standing in `acr.3wm` cells 1145–1148
+      (in front of the Athena Parthenos) and stops on leaving. [ ] Its step rate.
+- [x] `LIGHTS.TOGGLE` does nothing (VM: replies `Success:-1`, `LIGHTS.ON?` stays TRUE, the view is unchanged).
 
 ### 7.11 Remaining unknowns
 
@@ -1788,7 +1815,7 @@ From `crosscheck.py`, comparing the names case-insensitively:
   centre). This depends on §5. Object centre = mean of its per-face centres.
 * Water step throttling above 40 fps and drop interval (uses the measured frame rate). Irrelevant
   for the shipped content.
-* Whether `TOGGLEHIDDEN` inverts the flag (the decompiler hides the argument).
+* What `TOGGLEHIDDEN` does to drawing (VM: it flips `VISIBLE?`, but the views did not follow; §7.4.3).
 * Which texture records are colour-keyed (magenta transparency). This belongs to §5.5, but clouds rely on magenta being the transparent key.
 * `LODDISTANCE` semantics (only used in the picking pass).
 
@@ -1988,10 +2015,11 @@ Confirmed against the files: the authoring tool saved `ERS Label` boxes 89 px wi
 character, the XP System font average) and does not match Tahoma (~50/~60 px).
 The quad's right edge is set to `left + w`, bottom to `top + 22`.
 
-Implementation advice: for exact parity, measure with the XP System font metrics (character
-width table to be captured from the VM) and apply the formula. A practical fallback is
-`w = tahoma13_width + 21 (icon) + ~8`, but long hotspot titles then differ by several pixels and
-text may be clipped differently; the original clips text that overflows `w`.
+**(VM)** The System font advance widths (GetCharWidth32 on the control's window DC, face "System", 0x20–0xFF)
+were captured; with them the formula gives all 55 hotspot-box widths seen in the VM captures. The scale is a
+float32: `trunc((Wm − 82) × 0.26f)` with `0.26f` = 0.25999999, so "Titus" (Wm 32) is 52 px wide, not 53. Labels
+(`_L`) are white bold text with a 1-px black rim, drawn aliased. Icons show upright (TV, four-way arrows).
+The original clips text that overflows `w`.
 
 #### 8.4.3 Film strips (`NEXTFRAME`)
 
@@ -2019,7 +2047,9 @@ Ancient Site" text on the right, for about **2 s** (Colosseum: 0.67 s to 2.65 s 
 took 1.6–2.3 s). The per-tour spread is not explained by the data: against the texture count (one texture
 per tick, §5.4), the `.x` size, the texture pixels or bytes, the seven single loads (0.1 s resolution, disk mode,
 not Encarta's ITS mode) leave residuals of 0.2–0.3 s for any one factor and still 0.19 s (Persepolis) for a
-three-parameter fit, so a port keeps one minimum of about 2 s. **[VM]** The spinner cadence was not resolved (the load is too short to sample 16 frames).
+three-parameter fit, so a port keeps one minimum of about 2 s. **(VM)** Spinner: dumps every 15 ms during an Acropolis
+load show the dot step 16 times, 90–120 ms apart, mean 110 ms: the 0.1-s alarm fires after 7 ticks (§3.5 restarts the
+clock at each firing), about 9 frames per second.
 
 #### 8.4.4 2D sky backdrop (unused by the tours)
 
@@ -2040,7 +2070,8 @@ in front of the scene. Images: wrap addressing, normal filtering, colour key if 
 Clipping against the viewport (width W, height H, in pixels): a quad is rejected if its right
 edge ≤ 0, bottom ≤ 0, left ≥ W−1 or top ≥ W−1 (sic: the top edge is compared with the width).
 Images that straddle an edge are clipped (texture coordinates interpolated). **Captions that
-straddle any edge are not drawn at all.**
+straddle any edge are not drawn at all.** **(VM)** A caption is drawn only strictly inside the view: left > 0,
+top > 0, right < W − 1 and bottom < H − 1 (last drawn at left 1, right 614 and bottom 418 in the 616×420 control).
 
 #### 8.5.2 Anchored elements
 
@@ -2050,7 +2081,9 @@ For each visible anchored element, every frame:
    The element is shown only if `dot(d, f) > FOV_deg × π/180 × 0.5`. Note the original compares a
    cosine with an angle in radians; for the tours' FOV of 80° the threshold is 0.698, i.e. the
    anchor must be within **≈45.7°** of the view axis. There is **no distance limit, no use of the
-   anchor yaw, and no occlusion test**: captions show through walls.
+   anchor yaw, and no occlusion test**: captions show through walls. **(VM)** Confirmed with `CAMERA.FOV=100`
+   (threshold 0.8727, 29.2°): a caption is shown at dot 0.8729 and hidden at 0.8692. At FOV 80 the 45.7° cone lies
+   just outside the view's corners (45.4°), so only the edge rule of §8.5.1 is visible.
 2. If shown: transform the anchor into camera space and project
    `sx = trunc(K·x/z + cx)`, `sy = trunc(cy − K·y/z)` (K = projection scale in pixels, cx, cy =
    viewport centre; same projection as the 3D renderer). Translate the whole quad so that its
@@ -2062,8 +2095,9 @@ For each visible anchored element, every frame:
 Hit test: walk the elements from **last to first**; the first one with primitive 6, visible, layer
 ON, and mouse inside [left, right] × [top, bottom] (inclusive) wins. Captions only count when they
 were drawn unclipped this frame. Invisible elements are not hit; an anchored element that failed
-the cone test but is still flagged visible keeps its stale rectangle and **can still be hit**
-(needs VM check).
+the cone test but is still flagged visible keeps its stale rectangle and **can still be hit**. **(VM)** Confirmed:
+hidden by the cone, a caption's last rectangle gives the hotspot cursor and a click fires `HOTSPOTCLICKED`. A
+caption dropped at an edge cannot be hit.
 
 Each input update (mouse position, button state) produces up to four events, run in this order:
 
@@ -2104,7 +2138,9 @@ the normal navigation cursor logic applies (slots 0–4, §6).
   stop's command after loading (§2.2 step 4): where that command first moves far away and back (Colosseum, and
   every multi-floor tour), the start cell is entered again and its captions show at once. So "no labels until
   the first step" holds only where the default stop is a plain MOVETO to the start pose (Acropolis, Persepolis,
-  Abu Simbel). **[VM]** The "Show Labels and Hot Spots" toggle was not tested.
+  Abu Simbel). **(VM)** Encarta 2009 has no "Show Labels and Hot Spots" item: the tour menu bar is Music, Tour Stops,
+  Start Over, Appears in, Credits, the control has no context menu, and the File and Edit menus lack it. Only the
+  strings (`&Show Labels and Hot Spots`, `Tour &Settings`) remain in ENCARTAR.DLL.
 * Block macros: `.3sc` lines between `BEGIN(NAME);` and `END(NAME);` are concatenated with no
   separator (tabs removed, comment lines skipped), so statements without a trailing `;` run into
   the next one. In Acropolis `HIDEALL` this garbles `3d.n_00water.WATER=0` + `3d.Box23a.VISIBLE=0`
@@ -2137,16 +2173,16 @@ lh.32d 17386, 10104, 11631, 11250, 10093, 21994, 15037 B). Prototype:
 
 ### 8.8 Needs dynamic confirmation in the XP VM
 
-- [x] Captions appear per walk-map hotspot cell and, on load, only when the default stop command re-enters a cell (§8.6). [ ] The host's "Show Labels and Hot Spots" toggle.
-- [ ] Caption widths for a sample of real titles (screenshot pixel widths) to confirm the System-font measuring bug and the 0.26/82 correction; capture System font character widths (GetCharWidth32 for 0x20–0xFF on the VM's window DC).
-- [x] Hotspot box colours (VM: black fill, text and frame 0xC0D1E3, read back as (198,211,231) on the RGB 565 screen; white on hover; hand cursor). [ ] Outline thickness and exact pixel look of `_L` captions; icon at x 0–20.
-- [ ] Icon strip orientation on screen (upright TV/globe/clapper) and which triple each hotspot shows.
-- [ ] Cone test: captions disappear at ≈45.7° off-axis (FOV 80) and show through walls; no distance fade.
-- [ ] Captions partly off the viewport edge disappear entirely; images are clipped.
-- [ ] Can a hidden (out-of-cone) hotspot still be clicked at its last position?
-- [ ] MOUSEUP fires only when released over the same hotspot; cursor `vthot360.cur` over hotspots and during a press.
+- [x] Captions appear per walk-map hotspot cell and, on load, only when the default stop command re-enters a cell (§8.6). [x] The "Show Labels and Hot Spots" item does not exist in Encarta 2009 (§8.6).
+- [x] Caption widths: System font widths captured, the formula matches all 55 boxes in the captures (§8.4.2).
+- [x] Hotspot box colours (VM: black fill, text and frame 0xC0D1E3, read back as (198,211,231) on the RGB 565 screen; white on hover; hand cursor). [x] `_L` captions: white bold, 1-px black rim, aliased; icon at x 0–20.
+- [x] Icon strip orientation on screen: upright (TV, arrows), the icon each `ICON=` names.
+- [x] Cone test (confirmed at FOV 100, §8.5.2); captions show through walls.
+- [x] Captions touching or crossing the viewport edge disappear entirely (§8.5.1).
+- [x] A hidden (out-of-cone) hotspot can still be clicked at its last position (§8.5.3).
+- [x] MOUSEUP fires only when released over the same hotspot; the hotspot cursor shows over hotspots and stays during a press.
 - [x] Event string case received by the host: upper-cased (VM).
-- [x] Loading-screen layout and control size (616×420, VM). [ ] Loading spinner cadence (16 frames, 0.1 s).
+- [x] Loading-screen layout and control size (616×420, VM). [x] Loading spinner cadence: 7 ticks (110 ms) per frame (§8.4.3).
 
 
 
@@ -2210,29 +2246,32 @@ Resolved:
 - [x] **Site map** for an unrotated map (§4.2).
 - [x] **Loading.** Control size 616×420, loading-screen layout, about 2 s on screen (§8.4.3).
 - [x] **Leftovers.** `SCENE.HALFREZDRIVING` returns `Failed`; `Do()` replies (§2.2); spaces in values are lost (§3.2); the MOVETO-to-the-same-position NaN quirk (§6.10).
-- [x] **Flicker** steps about every 0.1 s (Acropolis) (§7.2.6).
 - [x] **Texture orientation.** Surfaces are bottom-up for every image format: `v' = 1 − v` in glTF (§5.6), checked at all 40 Tour Stops.
 - [x] **Cloud statue orientation.** Upright, not mirrored, correct side (§7.3.3).
+- [x] **Site map** with the rotated frames of Persepolis and Azuchi (§4.2): marker within 1 px and wedge within 2° at all 8 stops, floor images per stop confirmed. The marker blinks dark/light blue every 0.715 s (§4.2).
+- [x] **Floors.** An enter macro that switches walk maps switches once; the old map's exit macro does not switch back (§6.5).
+- [x] **Flicker.** Steps after 7 ticks (0.1 s) and 26 ticks (0.4 s): the accumulator restarts at 0; Persepolis and Colosseum torches and Abu Simbel `_TORCH36`/`39` are steady (§7.2.6).
+- [x] **Lighting.** faceColor is ignored; texel × lit colour with no overbright; Abu Simbel's ambient 0 leaves unlit faces black (§7.2.3, §7.2.5, §5.4).
+- [x] **Point-cloud statues.** Re-rendered on every draw in software mode; frozen at 0.9 × FOGEND (§7.3.4). Orientation is resolved (§7.3.3).
+- [x] **Sprite billboards.** Rotation by the camera yaw only, same sign; flame strips step every 5 ticks (about 12.4 fps) from a random frame (§7.4.1, §7.4.4).
+- [x] **Captions.** System font widths captured and the width rule confirmed (float32 scale); `_L` outline 1 px; icons upright; the cone (at FOV 100); dropped unless strictly inside the view; a cone-hidden caption stays clickable; no "Show Labels and Hot Spots" item in Encarta 2009 (§8.4.2, §8.5, §8.6).
+- [x] **LOD.** The pop at 13.0 XZ units; none over a visibility cell, where the PVS lists choose (§7.6, §6.6).
+- [x] **Water ripple** on `n_00water` in cells 1145–1148 only (§7.4.6). Its step rate is not measured.
+- [x] **PVS.** Same view with `WALKMAP.DELETE.VISIBILITY` apart from the per-cell LOD choice; sprites in no list are drawn (§6.6).
+- [x] **Back-face culling.** Back faces are culled (§5.9).
+- [x] **Cursor zones** as specified; `grip.cur` never appears (§6.9).
+- [x] **Open edges.** Leaving the collision coverage does not block a move (§6.7).
+- [x] **Loading spinner cadence** (7 ticks per frame, §8.4.3). Junk in hotspot strings has no visible effect (§6.2).
 
 Still open:
 
-- [ ] **Floors.** Ordering of enter macros that switch walk maps (§6.4, §6.5); the `UserLevelChange` events and smooth stairs were confirmed.
-- [ ] **Flicker.** The 0.4 s cadence; Persepolis and Colosseum torches steady (§7.2.6).
-- [ ] **Lighting.** Whether faceColor darkens the texture; Abu Simbel's ambient 0 (§7.2.3, §5.4).
-- [ ] **Point-cloud statues.** Update steps, freeze beyond about 18 units (§7.3). Orientation is resolved (§7.3.3).
-- [ ] **Sprite billboards.** Yaw-only rotation and its sign. Flame filmstrip fps (about 14 expected) and random phase (§7.4).
-- [ ] **Captions.** Pixel widths (System-font measuring bug), `_L` outline look, icon orientation, the ≈45.7° cone, edge clipping, the "Show Labels and Hot Spots" toggle (§8.4, §8.5, §8.6).
-- [x] **Site map** with the rotated frames of Persepolis and Azuchi (§4.2): marker within 1 px and wedge within 2° at all 8 stops, floor images per stop confirmed. The marker blinks dark/light blue every 0.715 s (§4.2).
 - [ ] **Pitch limit arithmetic.** How the look-vector value tested against 45° is computed: from 21.000036 the fourth
   6° step was accepted at 44.998962, an error of −0.001074° that float32 look-vector arithmetic does not produce (§6.9).
-- [ ] **LOD.** The pop at 13 XZ units (Acropolis `newcolumn*`) (§7.6).
-- [ ] **Water ripple** on `n_00water` (§7.4.6).
-- [ ] **PVS.** The scene looks identical with `WALKMAP.DELETE.VISIBILITY` at a few viewpoints; the always-drawn sprite list (§6.6).
-- [ ] **Back-face culling.** Single-sided walls seen from behind (§5.9).
-- [ ] **Cursor zones** (30×60 px centre box, diagonals) and when `grip.cur` would appear (§6.9).
-- [ ] **Gravity mode** on a hardware device, and the maximised (MaxView) window (§6.8).
-- [ ] **Open edges** with no wall segment (§6.7).
-- [ ] **Loading spinner cadence** (§8.4.3). Junk in hotspot strings (§6.2). ITS-mode loading in the harness.
+  Needs a debugger.
+- [ ] **Gravity mode** on a hardware device, the hardware 5° cloud re-render step, and the maximised (MaxView) window
+  (§6.8, §7.3.4): no 3D device in the VM.
+- [ ] **Water ripple step rate** (§7.4.6) and **`3D.TOGGLEHIDDEN`**'s effect on drawing (§7.4.3).
+- [ ] **ITS-mode loading** in the harness.
 
 How to capture: a debugger breakpoint on the control's `Do` method (`FUN_1000d0f0`) and on the event fire
 (`FUN_1000e720`) logs every command and event. Alternatively, the control's own `STARTMACROLOG` writes

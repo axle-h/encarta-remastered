@@ -29,11 +29,12 @@ Server (`GET /api/games/geoquiz/{level}`):
 - Questions per place type = `type_mix × 20`, largest remainders first; a pool too small for its share is filled from
   the other types. Places come from the gazetteer's `quiz_place` (all 1,372 resolve). The one D4 "country" that is a
   city (Vadodara, msworld.md §2) is asked as a place.
-- **Choices (hypothesis).** `D*.TXT` line 3 (0 0 0 / 1 1 1 / 2 2 2 / 4 4 4 per type) is read as *how many of the four
-  wrong answers come from the place's own region* (the pool's `group` column); the rest come from anywhere in the
-  level's pool of that type. Both VM shots fit: Navigator Pakistan was offered with South Africa, Australia,
-  New Zealand, Portugal (no regional share); World Class Hiroshima with Guangzhou, Beijing, Shanghai, Kōbe (all East
-  Asia). Names are distinct; a tiny pool gives fewer buttons rather than repeats.
+- **Choices (VM, msworld.md §2).** `D*.TXT` line 3 (0 0 0 / 1 1 1 / 2 2 2 / 4 4 4 per type) is *how many of the four
+  wrong answers come from the place's own region* (the pool's `group` column); the rest come from other regions of
+  the level's pool of that type (from anywhere once those run out, e.g. continents, which share one region). Measured
+  on 17 Globetrotter and 12 Explorer questions (exactly two / one from the region, fewer only when the region has no
+  more places) plus the Navigator and World Class shots. Names are distinct; a tiny pool gives fewer buttons rather
+  than repeats.
 - Pool region quirks are kept as data (e.g. D1 files the United Kingdom under Oceania).
 
 Client: the quiz runs on the shared `<Atlas quizMode initialStyle="atlas-quiz" />` (Encarta's quiz style: satellite,

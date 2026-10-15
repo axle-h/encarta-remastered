@@ -2,7 +2,7 @@
 
 Status:
 - `MSWORLD.SDB`: **fully parsed**; two numeric item columns are not yet understood.
-- `D1–D4.TXT`, `D1–D4PLACES.TXT`: **fully parsed**; one settings line is not yet understood.
+- `D1–D4.TXT`, `D1–D4PLACES.TXT`: **fully parsed**; every line understood (line 3 confirmed in the VM).
 - `$WW$CTCATALOG` leaf records (MSWORLD.ITR and TIMELINE.EIT): **fully decoded**. Every entry parses, and the DATA stream is consumed exactly.
 - `dfg/*.dfg` flags: standard BMPs (`atlas-and-3d.md` §2); no decoding needed.
 
@@ -59,8 +59,10 @@ Within a section, data lines are tab-separated.
 
 ## 2. Geography Quiz: `D1–D4.TXT` and `D1–D4PLACES.TXT`
 
-**Hypothesis (games):** line 3 (0/1/2/4 per place type) is how many of the 4 wrong answers come from the place's own
-region. Both VM shots fit (Navigator mixes regions; World Class offered only East Asian cities). Unconfirmed.
+**Line 3 (confirmed in the VM, 2026-10-15):** one number per place type: how many of the 4 wrong answers come from
+the answer's own region (the pool's `group`); the other wrong answers come from other regions. 17 Globetrotter
+questions (2 2 2) had exactly two, 12 Explorer questions (1 1 1) exactly one, fewer only when the region has no more
+places (Canada with Mexico; Russia alone); Navigator (0) mixed regions, World Class (4) gave all East Asian cities.
 
 `EE/ENCARTA/`. ASCII, tab-separated, CRLF. `n` is the difficulty, 1 (easiest) to 4.
 
@@ -68,18 +70,18 @@ region. Both VM shots fit (Navigator mixes regions; World Class offered only Eas
 ```
 20                     questions per game
 5  4  3  2  0          points for a correct answer at attempt 1, 2, 3, 4, and after that
-0  0  0                unknown (D1 0 0 0, D2 1 1 1, D3 2 2 2, D4 4 4 4)
+0  0  0                wrong answers from the answer's own region, per place type (D1 0, D2 1, D3 2, D4 4)
 .70  .20  .10          share of questions of place type 0, 1, 2 (sums to 1)
 ```
-| file | points | line 3 | mix |
+| file | points | same-region wrong answers | mix |
 |---|---|---|---|
 | D1 | 5 4 3 2 0 | 0 0 0 | .70 .20 .10 |
 | D2 | 10 7 4 2 0 | 1 1 1 | .60 .35 .05 |
 | D3 | 15 10 5 2 0 | 2 2 2 | .50 .50 0 |
 | D4 | 25 20 10 5 0 | 4 4 4 | .40 .60 0 |
 
-Line 3 is one value per place type and grows with difficulty. It could be a zoom-level offset or a number of hints;
-this is **unknown (VM observation)**. The mix maps by position to the place types below.
+Line 3 is one value per place type and grows with difficulty: the number of the four wrong answers taken from the
+answer's region (see above). The mix maps by position to the place types below.
 For example, D3 and D4 ask no continent questions.
 
 ### `DnPLACES.TXT` (74 / 203 / 406 / 689 rows): question pool

@@ -2,13 +2,16 @@ import { useEffect, useId, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "../components/Icons";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { ArrowTip } from "../components/ArrowTip";
 import { MenuButton, type MenuEntry } from "../components/Menu";
 import { OptionsDialog } from "./OptionsDialog";
 import { COPY_CHOICES, PRINT_CHOICES, ScopeDialog } from "./ScopeDialog";
 import { FeaturesMenu } from "./FeaturesMenu";
 import { useShortcuts } from "./shortcuts";
 import { SearchBox } from "../components/SearchBox";
-import { COPY_EVENT, OPTIONS_EVENT, PRINT_EVENT, copyScope, copySelection, openFind, printPage, printWith, selectedText, type ArticleScope } from "./commands";
+import { COPY_EVENT, OPTIONS_EVENT, PRINT_EVENT, copyScope, copySelection, installCopySourceLine, openFind, printPage, printWith, selectedText, type ArticleScope } from "./commands";
+import { canReadAloud, isReading, readAloud, readAloudSubmenu, stopReading } from "./readAloud";
+import { AddFavoriteDialog, defaultFavoriteName } from "./AddFavoriteDialog";
 import { favorites, pageTitle } from "./favorites";
 import { useHistoryButtons } from "./history";
 import { SearchPanel, type PanelQuery } from "./SearchPanel";
@@ -20,80 +23,107 @@ import type { QuickKind } from "./featuresData";
 /** How many favorites the menu lists (Organize Favorites shows them all). */
 export const FAVORITES_IN_MENU = 20;
 
-/** Encarta's menu bar: File, Edit, Favorites, Help. */
+/** The Favorites menu's entries (adult and Kids): Add…, Organize…, then the saved pages or "<empty>". */
+export function favoritesMenu(onAdd: () => void): MenuEntry[] {
+  const list = favorites.list();
+  return [
+    { label: "Add to Favorites…", onSelect: onAdd, key: "fav-add" },
+    { label: "Organize Favorites…", to: "/favorites", key: "fav-org" },
+    { separator: true, key: "fav-sep" },
+    ...(list.length === 0 ? [{ label: "<empty>", disabled: true, key: "fav-empty" }] : []),
+    ...list.slice(0, FAVORITES_IN_MENU).map((f) => ({ label: f.title, to: f.path, key: f.path })),
+    ...(list.length > FAVORITES_IN_MENU ? [{ label: `All ${list.length} favorites…`, to: "/favorites", key: "all" }] : []),
+  ];
+}
+
+/**
+ * Encarta's menu bar as captured: File (Print…, Go to ▸, Options…), Edit (Copy…, Read Aloud ▸,
+ * Search Encarta, Find in this Article…), Favorites, Help. File › Exit is left out (a web page
+ * does not close its window).
+ */
 export function MenuBar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { canBack, canForward } = useHistoryButtons();
   const [note, setNote] = useState("");
   const here = `${location.pathname}${location.search}${location.hash}`;
   const flash = (msg: string) => {
     setNote(msg);
     window.setTimeout(() => setNote(""), 2500);
   };
-  const [dialog, setDialog] = useState<null | "options" | "print" | "copy">(null);
-  const isArticle = () => location.pathname.startsWith("/item/") && !!document.querySelector(".art-text");
+  const [dialog, setDialog] = useState<null | "options" | "print" | "copy" | "favorite">(null);
+  const onItem = location.pathname.startsWith("/item/");
+  const isArticle = () => onItem && !!document.querySelector(".art-text");
   const print = () => (isArticle() ? setDialog("print") : printPage());
+  const copied = (ok: boolean) => flash(ok ? "Copied." : "Nothing was copied.");
   const copy = () => {
     if (isArticle()) setDialog("copy");
-    else void copySelection(pageTitle(document.title)).then((ok) => flash(ok ? "Copied, with its source." : "Nothing was copied."));
+    else void copySelection().then(copied);
+  };
+  const read = (what: "article" | "selection") => {
+    if (!readAloud(what)) flash("Nothing to read aloud here.");
+  };
+  const focusSearch = () => {
+    const box = document.querySelector<HTMLInputElement>(".topbar-search input");
+    box?.focus();
+    box?.select();
   };
   useEffect(() => {
     const on = (name: string, fn: () => void) => {
       window.addEventListener(name, fn);
       return () => window.removeEventListener(name, fn);
     };
-    const offs = [on(OPTIONS_EVENT, () => setDialog("options")), on(PRINT_EVENT, print), on(COPY_EVENT, copy)];
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "F8" && isArticle()) {
+        e.preventDefault();
+        if (!isReading()) read("article");
+      } else if (e.key === "F9") {
+        e.preventDefault();
+        stopReading();
+      }
+    };
+    window.addEventListener("keydown", key);
+    const offs = [on(OPTIONS_EVENT, () => setDialog("options")), on(PRINT_EVENT, print), on(COPY_EVENT, copy), () => window.removeEventListener("keydown", key)];
     return () => offs.forEach((f) => f());
   });
+  useEffect(installCopySourceLine, []);
   const choose = (kind: "print" | "copy", scope: ArticleScope) => {
     setDialog(null);
-    const title = pageTitle(document.title);
-    if (kind === "print") window.setTimeout(() => printWith(scope, title), 50);
-    else void copyScope(scope, title).then((ok) => flash(ok ? "Copied, with its source." : "Nothing was copied."));
+    if (kind === "print") window.setTimeout(() => printWith(scope), 50);
+    else void copyScope(scope).then(copied);
   };
   const file = (): MenuEntry[] => [
-    { heading: true, label: "Go to", key: "goto" },
-    { label: "Home", to: "/", shortcut: "Alt+Home", key: "g-home" },
-    { label: "World Atlas", to: "/atlas", shortcut: "Ctrl+M", key: "g-atlas" },
-    { label: "Dictionary", to: "/dictionary", shortcut: "Ctrl+D", key: "g-dict" },
-    { label: "Timeline", to: "/timeline", shortcut: "Ctrl+T", key: "g-tl" },
-    { label: "Geography Quiz", to: "/games/geoquiz", shortcut: "Ctrl+Q", key: "g-quiz" },
-    { label: "Games & Fun Stuff", to: "/games", key: "g-games" },
-    { separator: true, key: "sep1" },
-    { label: "Print…", shortcut: "Ctrl+P", onSelect: print },
-    { label: "Options…", shortcut: "Ctrl+O", onSelect: () => setDialog("options") },
+    { label: "Print…", shortcut: "Ctrl+P", onSelect: print, key: "print" },
+    { separator: true, key: "s1" },
+    {
+      label: "Go to",
+      key: "goto",
+      submenu: [
+        { label: "Back", shortcut: "Alt+Left Arrow", disabled: !canBack, onSelect: () => navigate(-1), key: "g-back" },
+        { label: "Forward", shortcut: "Alt+Right Arrow", disabled: !canForward, onSelect: () => navigate(1), key: "g-fwd" },
+        { separator: true, key: "g-s" },
+        { label: "Home Page", shortcut: "Alt+Home", to: "/", key: "g-home" },
+      ],
+    },
+    { separator: true, key: "s2" },
+    { label: "Options…", shortcut: "Ctrl+O", onSelect: () => setDialog("options"), key: "options" },
   ];
   const edit = (): MenuEntry[] => [
-    {
-      label: "Copy",
-      disabled: !selectedText().trim() && !location.pathname.startsWith("/item/"),
-      onSelect: copy,
-    },
-    { label: "Read Aloud", disabled: true, key: "read-aloud" },
-    { label: "Find in Article…", shortcut: "Ctrl+F", disabled: !location.pathname.startsWith("/item/"), onSelect: openFind },
+    { label: "Copy…", shortcut: "Ctrl+C", disabled: !selectedText().trim() && !onItem, onSelect: copy, key: "copy" },
+    { separator: true, key: "s1" },
+    { label: "Read Aloud", shortcut: "F8", disabled: !isArticle() || !canReadAloud(), key: "read-aloud", submenu: readAloudSubmenu(read) },
+    { separator: true, key: "s2" },
+    { label: "Search Encarta", shortcut: "Ctrl+S", onSelect: () => window.setTimeout(focusSearch, 0), key: "search" },
+    { separator: true, key: "s3" },
+    { label: "Find in this Article…", shortcut: "Ctrl+F", disabled: !onItem, onSelect: openFind, key: "find" },
   ];
-  const favs = (): MenuEntry[] => {
-    const list = favorites.list();
-    const saved = list.some((f) => f.path === here);
-    return [
-      {
-        label: saved ? "Rename in Favorites" : "Add to Favorites",
-        onSelect: () => {
-          favorites.add(here, pageTitle(document.title));
-          flash(`“${pageTitle(document.title)}” is in your Favorites.`);
-        },
-      },
-      { label: "Organize Favorites…", to: "/favorites" },
-      ...(list.length > 0 ? [{ separator: true, key: "sep" }] : []),
-      ...list.slice(0, FAVORITES_IN_MENU).map((f) => ({ label: f.title, to: f.path, key: f.path })),
-      ...(list.length > FAVORITES_IN_MENU ? [{ label: `All ${list.length} favorites…`, to: "/favorites", key: "all" }] : []),
-    ];
-  };
+  const favs = () => favoritesMenu(() => setDialog("favorite"));
   const help = (): MenuEntry[] => [
     { label: "Help", onSelect: () => navigate("/help"), key: "help" },
     { label: "Keyboard Shortcuts", onSelect: () => navigate("/help#keys") },
     { label: "About This Encarta", onSelect: () => navigate("/help") },
   ];
+  const title = pageTitle(document.title);
   return (
     <div className="menubar" role="menubar" aria-label="Menu bar">
       <MenuButton label={<><u>F</u>ile</>} ariaLabel="File" entries={file} buttonClassName="menubar-btn" />
@@ -110,26 +140,46 @@ export function MenuBar() {
       {dialog === "copy" && (
         <ScopeDialog title="Copy Options" action="Copy" choices={COPY_CHOICES} hasSelection={!!selectedText().trim()} onChoose={(sc) => choose("copy", sc)} onCancel={() => setDialog(null)} />
       )}
+      {dialog === "favorite" && (
+        <AddFavoriteDialog
+          name={defaultFavoriteName(title, isArticle())}
+          onCancel={() => setDialog(null)}
+          onAdd={(name) => {
+            favorites.add(here, name);
+            setDialog(null);
+            flash(`“${name}” is in your Favorites.`);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-export function NavButtons({ homeTo = "/" }: { homeTo?: string }) {
+/** Back, Forward and Home with Encarta's arrow tooltips ("Back to <page>"; none on a disabled button). */
+export function NavButtons({ homeTo = "/", homeTip = "Home" }: { homeTo?: string; homeTip?: string }) {
   const navigate = useNavigate();
-  const { canBack, canForward } = useHistoryButtons();
+  const { canBack, canForward, backTitle, forwardTitle } = useHistoryButtons();
+  const back = (
+    <button type="button" className="orb orb-back" disabled={!canBack} onClick={() => navigate(-1)} aria-label="Back">
+      <Icon name="back" size={22} />
+    </button>
+  );
+  const fwd = (
+    <button type="button" className="orb orb-fwd" disabled={!canForward} onClick={() => navigate(1)} aria-label="Forward">
+      <Icon name="forward" size={16} />
+    </button>
+  );
   return (
     <div className="nav-buttons">
       <div className="nav-pair">
-        <button type="button" className="orb orb-back" disabled={!canBack} onClick={() => navigate(-1)} aria-label="Back" title="Back">
-          <Icon name="back" size={22} />
-        </button>
-        <button type="button" className="orb orb-fwd" disabled={!canForward} onClick={() => navigate(1)} aria-label="Forward" title="Forward">
-          <Icon name="forward" size={16} />
-        </button>
+        {canBack ? <ArrowTip text={backTitle ? `Back to ${backTitle}` : "Back"}>{back}</ArrowTip> : back}
+        {canForward ? <ArrowTip text={forwardTitle ? `Forward to ${forwardTitle}` : "Forward"}>{fwd}</ArrowTip> : fwd}
       </div>
-      <Link to={homeTo} className="orb orb-home" aria-label="Home" title="Home">
-        <Icon name="home" size={22} />
-      </Link>
+      <ArrowTip text={homeTip}>
+        <Link to={homeTo} className="orb orb-home" aria-label="Home">
+          <Icon name="home" size={22} />
+        </Link>
+      </ArrowTip>
     </div>
   );
 }

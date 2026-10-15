@@ -1,7 +1,9 @@
 /** Unit tests for the parity-audit additions (docs/parity.md), on synthetic data. */
 import { describe, expect, it } from "vitest";
 import type { Item, TimelineEvent } from "./api/types";
-import { citation, textWithCitation } from "./app/commands";
+import { SOURCE_LINE, withSourceLine } from "./app/commands";
+import { STRIP, tipPlacement } from "./components/ArrowTip";
+import { defaultFavoriteName } from "./app/AddFavoriteDialog";
 import { addFavorite, moveFavorite, pageTitle, parseFavorites, removeFavorite, renameFavorite } from "./app/favorites";
 import { mediaClass } from "./media/pick";
 import { archiveUrl, lifeDates, metaText, webLinkUrl } from "./pages/ItemKinds";
@@ -40,11 +42,27 @@ describe("favorites", () => {
   });
 });
 
-describe("copy with citation", () => {
-  it("appends the source line to selected text only", () => {
-    expect(textWithCitation("  ", "Zebra", "http://h/item/1")).toBeNull();
-    expect(textWithCitation("Striped.", "Zebra", "http://h/item/1")).toBe(`Striped.\n\n${citation("Zebra", "http://h/item/1")}`);
-    expect(citation("Zebra", "u")).toContain('"Zebra."');
+describe("copy with the source line", () => {
+  it("puts Encarta's line under a selection, after a blank line under a whole article", () => {
+    expect(withSourceLine("  ")).toBeNull();
+    expect(withSourceLine("Striped.")).toBe(`Striped.\n${SOURCE_LINE}`);
+    expect(withSourceLine("Zebra\n\nText.", true)).toBe(`Zebra\n\nText.\n\n${SOURCE_LINE}`);
+    expect(SOURCE_LINE).toBe("Microsoft® Encarta® 2009. © 1993-2008 Microsoft Corporation. All rights reserved.");
+  });
+});
+
+describe("arrow tooltips", () => {
+  it("centre under the button, or move to a corner near the window edges (VM)", () => {
+    expect(tipPlacement(88, 128, 41, 1024)).toEqual({ placement: "below", x: 87.5 });
+    expect(tipPlacement(8, 46, 89, 1024)).toEqual({ placement: "below-right", x: 46 });
+    expect(tipPlacement(988, 1014, 122, 1024)).toEqual({ placement: "below-left", x: 988 - 122 - STRIP });
+  });
+});
+
+describe("Add to Favorites", () => {
+  it("suggests Article - <title> for articles and the plain title otherwise", () => {
+    expect(defaultFavoriteName("Zebra", true)).toBe("Article - Zebra");
+    expect(defaultFavoriteName("Leaning Tower of Pisa", false)).toBe("Leaning Tower of Pisa");
   });
 });
 

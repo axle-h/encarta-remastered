@@ -27,9 +27,35 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 
 ## Next (priority order)
 
-Nothing queued. Re-run `encarta-convert content` (timeline `date_text`, three new UI sounds), `encarta-convert search`
-(ranking fixes) and `ENCARTA_ATLAS_ONLY=vector encarta-convert atlas` (sea-click split, rule glyph faces) to bring
-`out/` up to date.
+Found in the second VM pass, not built yet:
+1. Double-clicking a word in an article looks it up in the dictionary (seen in the VM).
+2. Favorites folders and New Folder; the Copy dialog's "With Media" choice.
+3. Decide: Encarta's MIDI output is dry and mono and cuts at the last event, while ours adds reverb (about 15 dB
+   down) and rings 0.3 s on (media.md §8). Our tour menu's "Show Labels and Hot Spots" does not exist in Encarta
+   2009 (only its strings remain); keep it as an extra or drop it. A correct Geography Quiz answer plays a ~2 s
+   fanfare that is not on the disc (likely Windows' tada.wav), so it would need a sound of our own.
+
+Re-run `encarta-convert content` (timeline `date_text`, three new UI sounds), `encarta-convert search`
+(ranking fixes) and `ENCARTA_ATLAS_ONLY=vector,style encarta-convert atlas` (hit sides, label corners, rule glyph
+faces) to bring `out/` up to date, then rebuild the server and web client.
+
+Done 2026-10-15 (VM pass 2, "Needs the VM"): **atlas**: the `b4` high nibble of PDCAltitudeGrid is the hit side
+(2 water: listed only over water; 1 land: dropped only when a water class is listed; 0 anywhere: World, plates,
+parks, statistical regions); only water-side classes are split at the coast, drawn labels are clickable, and point
+labels go above right first, then the other corners (mad-styling.md §4.4, §7.4; earth.pmtiles about 404.9 MB).
+**UI**: every *(ours)* row captured (vm-findings "UI pass 2", parity.md): the Copy source line, search-panel
+geometry and colours (Quotations only in Quick Search), games under Home › Games & Fun Stuff, Map Trek panel,
+yellow-arrow tooltips, Read Aloud states, Add to Favorites name dialog. **Data**: DATAF `pn` is a page number
+(ten sections a page, unused in 2009); `STE`/`STC` are never read (Premium uses `DLX`); heading look follows section
+depth only; the right-column modules (lists, order, sorting, row counts) are built (`article/modules.ts`, checked
+against 25 captures); quiz `D*.TXT` line 3 is how many wrong answers come from the answer's own region
+(`same_region`, `games.rs`). **Tours**: 13 of the §10 items measured (tours-3d.md §10, vm-findings "Tours pass
+2"): tick-rounded flicker, flame and spinner periods; lighting without faceColor; clouds, sprites, water, back
+faces; LOD at 13 XZ units with per-cell full-or-`lod_` choice and always-drawn sprites; caption widths from the
+captured System font widths, strict-inside clipping, 1 px `_L` outline; open edges do not stop the camera; floors
+switch once. **Music**: our synth matches the GS renders in tempo (0.15 %), onsets (7 ms), programs and velocity
+law; a looped song now restarts from its initial controller state (media.md §8). **Sounds**: a second search
+(dictionary, players, Visual Browser, quizzes, dialogs, Map Trek, Kids pages) found none of the unheard sounds.
 
 Done 2026-10-14 (VM pass, "Needs the VM"): sound in the guest (USB audio hot-plug recorded to a WAV, vm.md); interface
 sounds mapped by matching the recording against the DLL sounds (rollover tick 31971, press/release click 31973, Kids
@@ -38,7 +64,7 @@ restarts, loops); the site-map marker blinks dark/light blue every 0.715 s (tour
 map matches; atlas V15 (alternative-name line with a rule between the lines) and V16 (no time zone on its own map)
 confirmed, and no land area is listed over the sea, so area classes are split at the coast and only land parts are
 hit-tested (earth.pmtiles 398.79 → 400.28 MB: splitting the unmasked interactive classes costs more than dropping the
-water parts saves); timeline pop-up dates ("120,000 years ago", "4.60 billion years ago"); sidebars `SBA`/`SBP` look
+water parts saves; superseded by VM pass 2's hit sides); timeline pop-up dates ("120,000 years ago", "4.60 billion years ago"); sidebars `SBA`/`SBP` look
 like every other sidebar; the docked search panel, ▾ tab, Quick Search dialog and the Kids menu bar with its submenus
 built from the captures; MIDI items autoplay; GS Wavetable reference renders saved (`fixtures/music/`); search ranking
 compared on 8 queries, with two fixes (no Kids-only items in the default search; a title minus its parenthetical is an
@@ -65,18 +91,19 @@ sprites), area-pen draw-over masks, flat-view tiles in Web Workers, time zones o
 134), symbol layers stacked by priority (mad-styling.md §7.3, §8.1, §5.2, §16; atlas-output.md; atlas-client.md).
 
 ### Needs the VM
-- Atlas: label placement cost (mad-styling.md §7.4, §8.1); whether water bodies, World, tectonic plates and reefs are
-  listed over the sea (assumed yes).
+- Atlas: the order of the three fallback label corners, how overlap cost weighs against it, and the shield
+  centre-vs-overlap cost (mad-styling.md §8.1); the click menu's order in places. Needs the code or a debugger.
 - Sounds: where the unheard ENCARTAR.DLL sounds play (578, 579, 682/31972/31978, 702/31909, 31906-31908, 31910/31911,
-  31912, 31913): not in home, browse, search panel, article, atlas, timeline or Kids home; perhaps the dictionary
-  window, media players, Visual Browser or games.
+  31912, 31913). Not tried yet: Geography Quiz score dialog, Read Aloud, Print and Copy dialogs, Organize Favorites,
+  Help windows; 578 and 579 are nearly silent and may never play (media.md §9).
 - Panoramas: single panoramas' `initangle` (their viewer is Flash).
-- Tours: the look-vector value behind the 45° pitch test (needs the debugger), the remaining **[VM]** items in
-  [tours-3d.md](formats/tours-3d.md) §10.
-- UI: rows marked *(ours)* in [parity.md](parity.md).
-- Data: content-schema §11 (primary-item spacing residue, DATAF `pn`, right-column modules); a few field meanings in
-  the small formats (1.5).
+- Tours: the pitch-limit arithmetic (debugger); gravity mode, the hardware cloud step and MaxView (3D device); the
+  water ripple's step rate; what `3D.TOGGLEHIDDEN` does to the picture; ITS-mode loading ([tours-3d.md](formats/tours-3d.md) §10).
+- Data: the media-placement residue: an empty item slot (`Child_s<n>`) in four sections that no record we read
+  explains (debugger; content-schema §11); MSWORLD.SDB column B, TIMELINE.DAT field 5 and offset A, the P2MTBL and LEX
+  header words (no screen shows them).
 - Interactives: Flash is not installed in the guest, so nothing to compare the Ruffle rendering with (fonts: the
   disc lacks Trebuchet MS; Vasco da Gama's ocean fill went missing once and was not reproduced).
-- Music: a side-by-side comparison of our soundfont synth with the GS Wavetable renders in `fixtures/music/` (media.md §8).
+- Music: a reference recording with pitch bends, controllers, drums and several channels; how Encarta loops
+  MindMaze music.
 - VM tooling: a debugger workflow.

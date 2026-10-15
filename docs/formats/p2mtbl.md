@@ -64,15 +64,16 @@ The atlas's own entity ids (one id space shared with the rest of the atlas):
 | 13 | 171 | 631, none titled in PFX | **Map Trek stops**: all are `group="maptrektour"` DATA records ("Extreme Heat", "Ice Sheets: July Temperature") — label `maptrek-stop` |
 | 16 | 1,766 | 631; 1,135 of them have bodies in `content.ecn` | **"about this map" notes**: `group="aboutmap"` records (1,135; landmark notes such as "Temple of Heaven", "Buckingham Palace"; the rest are not in DataStd/DataDlx) — label `about-map` |
 
-The photo kinds look like `5 | (theme << 5)` with theme 0–5. The theme labels above are ours, read off the titles; the
-on-screen labels need the reference VM. The photo ids are the keys of `MSWORLD.ITR $WW$CTCATALOG` (3,819 of its keys
+The photo kinds look like `5 | (theme << 5)` with theme 0–5. The theme labels above are ours, read off the titles. The
+2009 atlas shows none of these photos or sounds (VM 2026-10-15: no media style, Map Customizer option or pushpin layer,
+and a place's click-menu submenu is only Map / Read Article), so there are no on-screen labels to match. The photo ids are the keys of `MSWORLD.ITR $WW$CTCATALOG` (3,819 of its keys
 appear here), which supplies their credit lines and file names.
 
 ## Validation (whole file)
 - Every block parses to exactly its length; `keyLimit` matches; ids ascend.
 - Kind 8: 7,445 of 9,436 ids are in `content.ecn` (the rest are 631/174 items that live in `data.ecn` or not at all).
-- Kinds 13–16 were identified from the DATA records (`docs/vm-findings.md`). Still open: the on-screen labels of
-  the photo themes (5 + 32·n).
+- Kinds 13–16 were identified from the DATA records (`docs/vm-findings.md`). The photo themes (5 + 32·n) have no
+  on-screen labels in 2009 (not shown by the atlas). The header words `8` and `1` stay unexplained (no UI).
 
 ## Modern target
 SQLite `place_link(place_id, kind, content_id)` plus a kind-label table.

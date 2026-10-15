@@ -42,7 +42,7 @@ describe("Kids menu bar", () => {
     expect(items("File")).toEqual(["PrintCtrl+P", "Exit"]);
     cleanup();
     setup();
-    expect(items("Favorites")).toEqual(["Add", "Organize"]);
+    expect(items("Favorites")).toEqual(["Add to Favorites…", "Organize Favorites…", "<empty>"]);
     cleanup();
     setup();
     expect(items("Help")[0]).toBe("Microsoft Encarta HelpF1");
@@ -61,23 +61,36 @@ describe("Kids menu bar", () => {
     expect(screen.getByRole("menu")).toBeTruthy();
   });
 
-  it("Read Aloud submenu speaks the selection, with Stop and Pause", () => {
-    const speak = vi.fn();
-    const cancel = vi.fn();
-    const pause = vi.fn();
-    vi.stubGlobal("speechSynthesis", { speaking: true, paused: false, speak, cancel, pause, resume: vi.fn() });
+  it("Read Aloud submenu follows the VM: start while idle, Stop and Pause/Continue while reading", () => {
+    const synth = { speaking: false, paused: false, speak: vi.fn(), cancel: vi.fn(), pause: vi.fn(), resume: vi.fn() };
+    vi.stubGlobal("speechSynthesis", synth);
     vi.stubGlobal("SpeechSynthesisUtterance", class { constructor(public text: string) {} });
     vi.spyOn(window, "getSelection").mockReturnValue({ toString: () => "hello" } as Selection);
     setup("/kids/item/1");
-    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /Read Aloud/ }));
-    expect(screen.getAllByRole("menuitem").map((e) => e.textContent)).toEqual(expect.arrayContaining(["Whole Article", "Selected Text", "Stop ReadingF9", "Pause"]));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Selected Text" }));
-    expect(speak).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /Read Aloud/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /Stop Reading/ }));
-    expect(cancel).toHaveBeenCalled();
+    const sub = () => {
+      fireEvent.click(screen.getByRole("button", { name: "Tools" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: /Read Aloud/ }));
+      return (name: RegExp | string) => screen.getByRole("menuitem", { name }) as HTMLButtonElement;
+    };
+    let item = sub();
+    expect(item("Whole Article").disabled).toBe(false);
+    expect(item(/Stop Reading/).disabled).toBe(true);
+    expect(item("Pause").disabled).toBe(true);
+    fireEvent.click(item("Selected Text"));
+    expect(synth.speak).toHaveBeenCalledOnce();
+    synth.speaking = true;
+    item = sub();
+    expect(item("Whole Article").disabled).toBe(true);
+    expect(item("Selected Text").disabled).toBe(true);
+    fireEvent.click(item("Pause"));
+    expect(synth.pause).toHaveBeenCalled();
+    synth.paused = true;
+    item = sub();
+    fireEvent.click(item("Continue"));
+    expect(synth.resume).toHaveBeenCalled();
+    item = sub();
+    fireEvent.click(item(/Stop Reading/));
+    expect(synth.cancel).toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 
@@ -150,5 +163,19 @@ describe("KidsShell", () => {
       </MemoryRouter>,
     );
     for (const n of ["Home", "Back", "Forward", "Copy", "Print"]) expect(screen.getAllByRole(n === "Home" ? "link" : "button", { name: n }).length).toBeGreaterThan(0);
+  });
+
+  it("shows the arrow tooltip on a tool button after a short hover", async () => {
+    render(
+      <MemoryRouter initialEntries={["/kids"]}>
+        <Routes>
+          <Route path="*" element={<KidsShell>x</KidsShell>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "Copy" }));
+    expect((await screen.findByRole("tooltip")).textContent).toContain("Copy the article or picture.");
+    fireEvent.mouseLeave(screen.getByRole("button", { name: "Copy" }));
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 });

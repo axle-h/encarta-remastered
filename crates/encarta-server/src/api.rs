@@ -77,7 +77,10 @@ fn assoc_sql() -> &'static str {
                     i.kind, i.media_type, i.title, i.title_html, i.caption_html,
                     CASE WHEN json_extract(i.meta_json, '$.source_attrs.NoSquish') = '1' THEN 1 END AS no_squish,
                     CASE WHEN a.grp = 'sidebar' THEN i.preview_html END AS preview_html,
-                    CASE WHEN a.grp = 'sidebar' THEN json_extract(i.meta_json, '$.sidebar_category') END AS sidebar_category, {}, {}, {}
+                    CASE WHEN a.grp = 'sidebar' THEN json_extract(i.meta_json, '$.sidebar_category') END AS sidebar_category,
+                    CASE WHEN a.grp = 'archive' THEN json_extract(i.meta_json, '$.source_attrs.year') END AS year,
+                    CASE WHEN a.grp IN ('virttour', 'vtour') THEN i.subtype END AS subtype,
+                    CASE WHEN a.grp = 'weblink' THEN json_extract(i.meta_json, '$.url[0]') END AS url, {}, {}, {}
              FROM assoc a
              LEFT JOIN item i ON i.ref_id = a.target_ref_id
              LEFT JOIN item_file ft ON ft.rowid = {}

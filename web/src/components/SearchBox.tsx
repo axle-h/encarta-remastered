@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import type { Suggestion } from "../api/types";
 import { Html } from "./Html";
 import { Icon } from "./Icons";
+import { ArrowTip } from "./ArrowTip";
 
 /** Kids mode keeps item and dictionary links inside `/kids`. */
 export function kidsUrl(url: string, kids: boolean): string {
@@ -128,9 +129,11 @@ export function SearchBox({ kids = false, placeholder = "Type a search term", au
             }}
           />
         </span>
-        <button type="submit" className="searchbox-go" aria-label="Search">
-          <Icon name="go" size={18} />
-        </button>
+        <ArrowTip text="Show the search results for the words in the search box.">
+          <button type="submit" className="searchbox-go" aria-label="Search">
+            <Icon name="go" size={18} />
+          </button>
+        </ArrowTip>
       </form>
       {open && items.length > 0 && (
         <ul className="suggest" id={listId} role="listbox">

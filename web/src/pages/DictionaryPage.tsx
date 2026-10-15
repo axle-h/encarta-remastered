@@ -8,7 +8,7 @@ import { Html } from "../components/Html";
 import { Icon } from "../components/Icons";
 import { useDocumentTitle } from "../components/useDocumentTitle";
 import { expandGrammarCodes } from "./dictCodes";
-import { printPage, textWithCitation } from "../app/commands";
+import { printPage, withSourceLine } from "../app/commands";
 import { WHEEL_BEFORE, wheelRows } from "./wordWheel";
 
 type Tab = "dictionary" | "thesaurus" | "bilingual";
@@ -225,7 +225,7 @@ function EntryView({ dict, id, fallbackWord, kids }: { dict: string; id: number;
   };
   return (
     <div className="dict-entry-inner" ref={box}>
-      <EntryTools title={e.headword} box={box} />
+      <EntryTools box={box} />
       <h2 className="dict-hw">
         {e.headword}
         {src && <SpeakerButton src={src} label={`Pronounce ${e.headword}`} />}
@@ -237,18 +237,19 @@ function EntryView({ dict, id, fallbackWord, kids }: { dict: string; id: number;
 
 /**
  * The dictionary window's Copy and Print (Encarta Dictionaries tool bar): Copy puts the whole
- * entry (or the selection inside it) on the clipboard with its source line; Print prints the entry
+ * entry on the clipboard with the source line after a blank line, or only the selection inside it; Print prints the entry
  * alone (the print style sheet leaves out the word wheel and the chrome).
  */
-function EntryTools({ title, box }: { title: string; box: React.RefObject<HTMLDivElement> }) {
+function EntryTools({ box }: { box: React.RefObject<HTMLDivElement> }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     const el = box.current;
     if (!el) return;
     const sel = window.getSelection?.();
     const inside = sel && sel.rangeCount > 0 && !sel.isCollapsed && el.contains(sel.anchorNode) ? sel.toString() : "";
-    const body = inside || (el.querySelector(".dict-hw")?.textContent ?? "") + "\n" + (el.querySelector(".dict-html") as HTMLElement | null)?.innerText;
-    const text = textWithCitation(body, title, window.location.href);
+    // VM: a selection is copied alone; the whole entry gets a blank line and the source line.
+    const entry = (el.querySelector(".dict-hw")?.textContent ?? "") + "\n" + ((el.querySelector(".dict-html") as HTMLElement | null)?.innerText ?? "");
+    const text = inside.trim() ? inside : withSourceLine(entry, true);
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);

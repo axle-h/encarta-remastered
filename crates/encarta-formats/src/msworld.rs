@@ -245,8 +245,9 @@ pub struct QuizSettings {
     pub questions: u32,
     /// Points for a correct answer at attempt 1, 2, 3, 4, and later.
     pub points: Vec<u32>,
-    /// One value per place type; meaning unknown.
-    pub per_type_unknown: Vec<u32>,
+    /// One value per place type: how many of the four wrong answers come from the answer's own region
+    /// (its pool `group`), the rest from other regions (VM, msworld.md §2).
+    pub same_region: Vec<u32>,
     /// Share of questions of place type 0, 1, 2.
     pub type_mix: Vec<f64>,
 }
@@ -278,11 +279,11 @@ pub fn parse_quiz_settings(bytes: &[u8]) -> Result<QuizSettings> {
     };
     let questions = ints(lines[0], 1)?[0];
     let points = ints(lines[1], 5)?;
-    let per_type_unknown = ints(lines[2], 3)?;
+    let same_region = ints(lines[2], 3)?;
     let mix = fields(lines[3]);
     ensure!(mix.len() == 3, "expected 3 shares in {:?}", lines[3]);
     let type_mix = mix.iter().map(|x| float(x, "quiz share")).collect::<Result<Vec<_>>>()?;
-    Ok(QuizSettings { questions, points, per_type_unknown, type_mix })
+    Ok(QuizSettings { questions, points, same_region, type_mix })
 }
 
 pub fn parse_quiz_places(bytes: &[u8]) -> Result<Vec<QuizPlace>> {

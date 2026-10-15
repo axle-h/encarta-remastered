@@ -288,7 +288,7 @@ pub fn geoquiz(extracted: &Path, sink: &Sink) -> Result<usize> {
                 db::i(level),
                 db::i(s.questions),
                 db::s(serde_json::to_string(&s.points)?),
-                db::s(serde_json::to_string(&s.per_type_unknown)?),
+                db::s(serde_json::to_string(&s.same_region)?),
                 db::s(serde_json::to_string(&s.type_mix)?),
             ],
         );

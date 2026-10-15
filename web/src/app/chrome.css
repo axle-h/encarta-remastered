@@ -276,6 +276,9 @@ html[data-text-size="large"] .art-text {
   cursor: pointer;
 }
 
+/* Results panel (VM, 1024x768: left edge x 646 with a 1 px #5A555A rule and a grip, 378 px wide by default,
+   #D4D0C8 face; bars 32 px tall every 38 px, white to #E7DFDE with a #ADAEA5 bottom edge; the open category
+   is a white box with a #B5B2B5 border; rows 56 px, first hit #84C321 with white text, hover #CEF79C) */
 .search-panel {
   position: fixed;
   top: 108px;
@@ -283,18 +286,47 @@ html[data-text-size="large"] .art-text {
   bottom: 0;
   z-index: 54;
   box-sizing: border-box;
-  width: min(374px, 100vw);
+  width: min(378px, 100vw);
   display: flex;
   flex-direction: column;
-  padding: 8px 6px 6px;
-  background: #ececec;
-  border-left: 1px solid #b9b9b9;
-  font: 13px var(--ui);
+  padding: 5px 3px 4px 12px;
+  background: #d4d0c8;
+  border-left: 1px solid #5a555a;
+  font: 13px Tahoma, Verdana, var(--ui);
+  color: #292829;
+}
+
+.sp-splitter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 9px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.sp-splitter::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  width: 2px;
+  height: 14px;
+  margin-top: -7px;
+  background: radial-gradient(circle, #6b6b6b 0.8px, transparent 1px) 0 0 / 2px 4px;
+}
+
+.sp-splitter:focus-visible {
+  outline: 2px solid #7396bd;
 }
 
 .sp-title {
-  margin: 0 0 6px;
-  font: bold 13px var(--ui);
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }
 
 .sp-hint {
@@ -307,20 +339,20 @@ html[data-text-size="large"] .art-text {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .sp-cat {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border: 1px solid #c8c8c8;
   border-radius: 6px;
-  background: #fff;
 }
 
 .sp-cat.open {
   flex: 1;
+  border: 1px solid #b5b2b5;
+  background: #fff;
 }
 
 .sp-cat h3 {
@@ -336,18 +368,30 @@ html[data-text-size="large"] .art-text {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 10px;
+  height: 32px;
+  padding: 0 12px 0 8px;
   border: 0;
+  border-bottom: 1px solid #adaea5;
   border-radius: 6px;
-  background: linear-gradient(#fff, #ececec);
-  color: #333;
-  font: 14px var(--ui);
+  background: linear-gradient(#fff 15%, #f7f3f7 40%, #e7e3e7 60%, #e7dfde);
+  color: #424242;
+  font: 15px Tahoma, Verdana, var(--ui);
   text-align: left;
   cursor: pointer;
 }
 
+.sp-cat.open h3 button {
+  border-bottom: 0;
+  background: #fff;
+}
+
 .sp-cat h3 button span:nth-child(2) {
   flex: 1;
+}
+
+.sp-toggle {
+  color: #848684;
+  font-size: 17px;
 }
 
 .sp-cat-icon {
@@ -362,21 +406,29 @@ html[data-text-size="large"] .art-text {
 
 .sp-hits {
   margin: 0;
-  padding: 0;
+  padding: 0 0 0 1px;
   list-style: none;
 }
 
 .sp-hits a {
+  box-sizing: border-box;
   display: flex;
-  gap: 10px;
-  padding: 5px 8px;
-  color: inherit;
+  gap: 24px;
+  height: 56px;
+  padding: 10px 8px 0 10px;
+  color: #292829;
   text-decoration: none;
 }
 
 .sp-hits a:hover,
 .sp-hits a:focus-visible {
-  background: #a5d63c;
+  background: #cef79c;
+  color: #5a5a5a;
+}
+
+.sp-hits a.sel {
+  background: #84c321;
+  color: #fff;
 }
 
 .sp-thumb {
@@ -392,26 +444,30 @@ html[data-text-size="large"] .art-text {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  padding-top: 2px;
 }
 
 .sp-snippet {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: #444;
 }
 
 .sp-none,
 .sp-more {
-  margin: 8px 10px;
-  color: #444;
+  margin: 8px 3px;
+}
+
+.sp-none p {
+  margin: 0 0 14px;
+  font-weight: bold;
 }
 
 .sp-options {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding-top: 6px;
+  gap: 6px;
+  padding: 4px 0 0 14px;
   font-size: 12px;
 }
 
@@ -434,4 +490,81 @@ html[data-text-size="large"] .art-text {
   .search-tab {
     right: 8px;
   }
+}
+
+/* Arrow tooltips of the tool buttons (VM: #FFDFA5 box, #FFB621 arrow strip, #00205A border and text, Tahoma 8 pt) */
+.arrow-tip {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  max-width: 150px;
+  border: 1px solid #00205a;
+  background: #ffdfa5;
+  color: #00205a;
+  font: 11px/13px Tahoma, Verdana, var(--ui);
+  pointer-events: none;
+}
+
+.arrow-tip-below {
+  flex-direction: column;
+}
+
+.arrow-tip-below-left {
+  flex-direction: row-reverse;
+}
+
+.arrow-tip-strip {
+  flex: none;
+  min-width: 14px;
+  min-height: 14px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  background: #ffb621;
+  font: bold 11px/14px Tahoma, Verdana, var(--ui);
+}
+
+.arrow-tip-text {
+  padding: 4px 6px 5px;
+}
+
+/* Add to Favorites (VM: about 307 px wide, #ADBEE7 body, "favorites" banner #EFF3FF over a 1 px rule,
+   #21304A bold labels, #C6D7EF buttons with a #7396BD border) */
+.fav-dlg {
+  width: min(307px, calc(100vw - 24px));
+  padding: 6px 8px 10px;
+  background: #adbee7;
+  border-color: #424142;
+}
+
+.fav-banner {
+  margin-bottom: 18px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid #eff3ff;
+  color: #eff3ff;
+  font: 36px/1.1 var(--ui);
+  text-align: right;
+}
+
+.fav-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-weight: bold;
+}
+
+.fav-label input {
+  font: 12px var(--ui);
+  padding: 2px 3px;
+  border: 1px solid #424142;
+}
+
+.fav-dlg .dlg-buttons button {
+  border-radius: 0;
+  background: #c6d7ef;
+  text-align: left;
+}
+
+.fav-dlg .dlg-buttons button:hover {
+  background: #eff3ff;
 }

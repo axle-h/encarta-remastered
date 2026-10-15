@@ -94,6 +94,9 @@ title and credit, and the files that resolve: `image` (`B`), `picon` (`P`) and, 
   "kind": "media", "media_type": "image", "title": "Grévy’s Zebra", "title_html": "…",
   "caption_html": "…", "no_squish": true,
   "preview_html": "<p class=\"enc-intro\">…</p>", "sidebar_category": "GREAT WORKS OF LITERATURE",   // sidebar rows only
+  "year": "1938",                     // archive rows only
+  "subtype": "2DVT",                  // virttour rows only (2DVT, 3DVT)
+  "url": "http://www.britainusa.com/", // weblink rows only
   "thumb": { "file_name": "t790545a.jtn", "url": "/media/file/t790545a.jtn", "width": 64, "height": 64 } | null,
   "picon": { "file_name": "t790545a.jsm", "url": "/media/file/t790545a.jsm", "width": 192, "height": 128 } | null,
   "image": { "file_name": "t790545a.jpg", "url": "/media/file/t790545a.jpg", "width": 556, "height": 368 } | null }
@@ -102,7 +105,8 @@ title and credit, and the files that resolve: `image` (`B`), `picon` (`P`) and, 
 falls back to the first child's `image` (audio sets, composites: the flag of a flag-and-anthem box). `no_squish` is
 present (true) when the target's DATA has `NoSquish="1"` (maps, charts). `preview_html` (the item's preview) and
 `sidebar_category` (`meta_json.sidebar_category`, content-schema §2) are set on `sidebar` rows only: what a sidebar
-teaser shows. With these a client lays out an article's
+teaser shows. `year` (DATA `year`), `subtype` (DATA `type`) and `url` (the stored address) are set on `archive`,
+`virttour`/`vtour` and `weblink` rows only: what the right-column modules print (content-schema §2 "Right column"). With these a client lays out an article's
 media without one `/api/item` request per box. `appears` is set on reverse rows only: content-schema.md §3.1.
 
 `MediaInfo` (present once the media manifest exists):

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssocItem } from "./api/types";
 import { MenuBar } from "./app/Shell";
 import { FAVORITES_KEY, favorites } from "./app/favorites";
-import { LinksPanel } from "./article/SidePanels";
+import { WebSitesModule } from "./article/SidePanels";
 import { MenuButton } from "./components/Menu";
 import { ItemPage } from "./pages/ItemPage";
 
@@ -103,13 +103,16 @@ describe("Favorites", () => {
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Favorites" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Add to Favorites" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add to Favorites…" }));
+    const name = screen.getByRole("textbox", { name: "Name:" }) as HTMLInputElement;
+    expect(name.value).toBe("Zebra");
+    fireEvent.change(name, { target: { value: "Striped horses" } });
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
     const stored = JSON.parse(window.localStorage.getItem(FAVORITES_KEY) ?? "[]");
-    expect(stored[0]).toMatchObject({ path: "/item/761575094#p3", title: "Zebra" });
+    expect(stored[0]).toMatchObject({ path: "/item/761575094#p3", title: "Striped horses" });
     await screen.findByText(/is in your Favorites/);
     fireEvent.click(screen.getByRole("button", { name: "Favorites" }));
-    expect(screen.getByRole("menuitem", { name: "Rename in Favorites" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Zebra" }).getAttribute("href")).toBe("/item/761575094#p3");
+    expect(screen.getByRole("menuitem", { name: "Striped horses" }).getAttribute("href")).toBe("/item/761575094#p3");
   });
 
   it("still works when storage throws", () => {
@@ -200,15 +203,15 @@ describe("item kinds", () => {
 });
 
 describe("Web Sites panel", () => {
-  it("shows the first links and the rest on request", () => {
-    const items: AssocItem[] = Array.from({ length: 10 }, (_, i) => ({ ref_id: i + 1, group: "weblink", title: `Site ${i + 1}` }));
+  it("shows three links and the rest on request (VM)", () => {
+    const items: AssocItem[] = Array.from({ length: 10 }, (_, i) => ({ ref_id: i + 1, group: "weblink", title: `Site ${i + 1}`, url: `http://site${i + 1}.example/` }));
     render(
       <MemoryRouter>
-        <LinksPanel title="Web Sites" items={items} kids={false} limit={8} />
+        <WebSitesModule items={items} kids={false} />
       </MemoryRouter>,
     );
-    expect(screen.getAllByRole("link")).toHaveLength(8);
-    fireEvent.click(screen.getByRole("button", { name: "Show all 10" }));
-    expect(screen.getAllByRole("link")).toHaveLength(10);
+    expect(screen.getAllByRole("link", { name: /^Site/ })).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "Show All" }));
+    expect(screen.getAllByRole("link", { name: /^Site/ })).toHaveLength(10);
   });
 });

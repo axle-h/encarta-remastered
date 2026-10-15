@@ -14,7 +14,7 @@ import { chunkKeys, impostorMaterial, sharedUniforms, tourMaterial, type SharedU
 export interface ViewOptions {
   /** Honour the walk-map PVS (§6.6). */
   pvs?: boolean;
-  /** Draw sprites even when the PVS does not list them (an open VM item; off = strict PVS). */
+  /** Draw sprites even when the PVS does not list them (VM: they are drawn; default on). */
   alwaysDrawSprites?: boolean;
   /** Re-render cloud impostors only every ~5° (hardware mode, §7.3.4). */
   cloudHardwareThreshold?: boolean;
@@ -31,6 +31,8 @@ interface UnitRt {
   index: THREE.BufferAttribute;
   /** Allowed by the current PVS cell. */
   pvsOn: boolean;
+  /** The index buffer holds every triangle (not a PVS subset). */
+  full: boolean;
 }
 
 interface NodeRt {
@@ -98,7 +100,7 @@ export class TourView {
   ) {
     this.options = {
       pvs: options.pvs ?? true,
-      alwaysDrawSprites: options.alwaysDrawSprites ?? false,
+      alwaysDrawSprites: options.alwaysDrawSprites ?? true,
       cloudHardwareThreshold: options.cloudHardwareThreshold ?? control.options.device === "hardware",
       doubleSided: options.doubleSided ?? false,
       pixelRatio: options.pixelRatio ?? (typeof devicePixelRatio === "number" ? devicePixelRatio : 1),
@@ -190,7 +192,7 @@ export class TourView {
       const index = new THREE.BufferAttribute(orig.slice(), 1);
       index.setUsage(THREE.DynamicDrawUsage);
       geom.setIndex(index);
-      const unit: UnitRt = { def: du, mesh, orig, index, pvsOn: true };
+      const unit: UnitRt = { def: du, mesh, orig, index, pvsOn: true, full: true };
       this.units.push(unit);
     }
 
@@ -405,10 +407,7 @@ export class TourView {
     if (!runs || !this.pvs) {
       for (const u of this.units) {
         u.pvsOn = true;
-        (u.index.array as Uint32Array).set(u.orig);
-        u.index.clearUpdateRanges();
-        u.index.needsUpdate = true;
-        u.mesh.geometry.setDrawRange(0, Infinity);
+        this.restoreFull(u);
       }
       return;
     }
@@ -428,6 +427,7 @@ export class TourView {
       (u.index.array as Uint32Array).set(u.orig.subarray(firstTri * 3, (firstTri + count) * 3), at);
       fill.set(du, at + count * 3);
       u.pvsOn = true;
+      u.full = false;
     }
     for (const [du, n] of fill) {
       const u = unitByIndex[du];
@@ -451,29 +451,37 @@ export class TourView {
     return this.unitIndexCache;
   }
 
+  private restoreFull(u: UnitRt): void {
+    if (u.full) return;
+    (u.index.array as Uint32Array).set(u.orig);
+    u.index.clearUpdateRanges();
+    u.index.needsUpdate = true;
+    u.mesh.geometry.setDrawRange(0, Infinity);
+    u.full = true;
+  }
+
   /** Visibility, LOD, sprites and film strips per node. */
   private syncNodes(): void {
     const c = this.control;
     const cam = c.camera;
     const yaw = (-cam.yawDeg * Math.PI) / 180;
     const lodDistance = c.scene.model.lod.switchDistance ?? 13;
+    const inPvs = this.pvsCell !== null && this.pvsCell !== undefined;
     const shown = new Set<NodeRt>();
     for (const n of this.nodes) {
-      if (n.isLodMesh) continue;
       const visible = n.obj ? n.obj.visible : true;
       if (!visible) continue;
-      if (n.lodLow) {
-        const dx = n.centre.x - cam.x, dz = n.centre.z - cam.z;
-        shown.add(Math.hypot(dx, dz) <= lodDistance ? n : n.lodLow);
-      } else {
-        shown.add(n);
-      }
+      const choice = lodChoice(inPvs, n.isLodMesh, !!n.lodLow, Math.hypot(n.centre.x - cam.x, n.centre.z - cam.z), lodDistance);
+      if (choice === "self") shown.add(n);
+      else if (choice === "partner" && n.lodLow) shown.add(n.lodLow);
     }
     for (const n of this.nodes) {
       const on = shown.has(n);
       n.root.visible = on;
       const sprite = !!n.obj?.sprite;
-      for (const u of n.units) u.mesh.visible = on && (u.pvsOn || (sprite && this.options.alwaysDrawSprites));
+      const always = sprite && this.options.alwaysDrawSprites;
+      if (on && always) for (const u of n.units) this.restoreFull(u);
+      for (const u of n.units) u.mesh.visible = on && (u.pvsOn || always);
       if (!on) continue;
       if (sprite) n.root.rotation.set(0, yaw, 0);
       else if (n.root.rotation.y !== 0) n.root.rotation.set(0, 0, 0);
@@ -653,4 +661,18 @@ async function concatRest(head: Uint8Array, chunk: Uint8Array, reader: ReadableS
     at += p.length;
   }
   return out.buffer;
+}
+
+/**
+ * Which mesh of a LOD pair draws (§6.6, §7.6, VM). Outside the PVS a `lod_` mesh never draws on its
+ * own and a base mesh with a partner is swapped for it beyond the XZ switch distance. Over a
+ * visibility cell there is no distance swap: the cell's lists name base or `lod_` meshes (the
+ * authoring tool chose per cell) and exactly the listed faces draw, so every visible mesh is a
+ * candidate and the PVS runs decide.
+ */
+export function lodChoice(inPvs: boolean, isLodMesh: boolean, hasPartner: boolean, xzDistance: number, switchDistance: number): "self" | "partner" | "none" {
+  if (inPvs) return "self";
+  if (isLodMesh) return "none";
+  if (!hasPartner) return "self";
+  return xzDistance <= switchDistance ? "self" : "partner";
 }

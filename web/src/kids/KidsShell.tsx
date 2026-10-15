@@ -3,40 +3,14 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { MenuButton, type MenuEntry } from "../components/Menu";
 import { SearchBox } from "../components/SearchBox";
-import { NavButtons } from "../app/Shell";
+import { NavButtons, favoritesMenu } from "../app/Shell";
+import { ArrowTip } from "../components/ArrowTip";
+import { AddFavoriteDialog, defaultFavoriteName } from "../app/AddFavoriteDialog";
+import { canReadAloud, isReading, readAloud, readAloudSubmenu, stopReading } from "../app/readAloud";
 import { useHistoryButtons } from "../app/history";
-import { articleText, copySelection, openFind, printPage, selectedText } from "../app/commands";
+import { copySelectionOrArticle, installCopySourceLine, openFind, printPage } from "../app/commands";
 import { favorites, pageTitle } from "../app/favorites";
 import { useSettings } from "../settings/settings";
-
-function synthesis(): SpeechSynthesis | undefined {
-  return typeof window !== "undefined" ? window.speechSynthesis : undefined;
-}
-
-/** Reads the whole article, or only the selection, with the browser's speech synthesis. */
-export function readAloud(what: "article" | "selection"): boolean {
-  const synth = synthesis();
-  if (!synth) return false;
-  const text = what === "selection" ? selectedText().trim() : articleText();
-  if (!text) return false;
-  synth.cancel();
-  synth.speak(new SpeechSynthesisUtterance(text));
-  return true;
-}
-
-export function stopReading() {
-  synthesis()?.cancel();
-}
-
-/** Pauses reading, or resumes it when paused. */
-export function togglePause() {
-  const synth = synthesis();
-  if (!synth) return;
-  if (synth.paused) synth.resume();
-  else synth.pause();
-}
-
-export const isReading = () => !!synthesis()?.speaking;
 
 const tick = (on: boolean, label: string) => `${on ? "✓ " : " "}${label}`;
 
@@ -53,7 +27,8 @@ export function KidsMenuBar() {
   };
   const here = `${location.pathname}${location.search}${location.hash}`;
   const isArticle = location.pathname.startsWith("/kids/item/");
-  const copy = () => void copySelection(pageTitle(document.title)).then((ok) => flash(ok ? "Copied, with its source." : "Select some text first."));
+  const [adding, setAdding] = useState(false);
+  const copy = () => void copySelectionOrArticle().then((ok) => flash(ok ? "Copied." : "Nothing was copied."));
   const read = (what: "article" | "selection" = "article") => {
     if (!readAloud(what)) flash("Nothing to read aloud here.");
   };
@@ -66,7 +41,7 @@ export function KidsMenuBar() {
         navigate("/help");
       } else if (e.key === "F8" && isArticle) {
         e.preventDefault();
-        read();
+        if (!isReading()) read();
       } else if (e.key === "F9") {
         e.preventDefault();
         stopReading();
@@ -119,23 +94,13 @@ export function KidsMenuBar() {
       ],
     },
   ];
-  const favs = (): MenuEntry[] => [
-    {
-      label: "Add",
-      onSelect: () => {
-        favorites.add(here, pageTitle(document.title));
-        flash(`“${pageTitle(document.title)}” is in your Favorites.`);
-      },
-    },
-    { label: "Organize", to: "/favorites" },
-  ];
+  const favs = () => favoritesMenu(() => setAdding(true));
   const onOff = (on: boolean, set: (v: boolean) => void, key: string): MenuEntry[] => [
     { label: tick(on, "On"), onSelect: () => set(true), key: `${key}-on` },
     { label: tick(!on, "Off"), onSelect: () => set(false), key: `${key}-off` },
   ];
   const tools = (): MenuEntry[] => {
-    const speech = isArticle && !!synthesis();
-    const reading = isReading();
+    const speech = isArticle && canReadAloud();
     return [
       { label: "Find in this Article...", shortcut: "Ctrl+F", disabled: !isArticle, onSelect: openFind, key: "find" },
       { separator: true, key: "s1" },
@@ -144,13 +109,7 @@ export function KidsMenuBar() {
         shortcut: "F8",
         disabled: !speech,
         key: "ra",
-        submenu: [
-          { label: "Whole Article", onSelect: () => read("article"), key: "ra-all" },
-          { label: "Selected Text", disabled: !selectedText().trim(), onSelect: () => read("selection"), key: "ra-sel" },
-          { separator: true, key: "ra-s" },
-          { label: "Stop Reading", shortcut: "F9", disabled: !reading, onSelect: stopReading, key: "ra-stop" },
-          { label: synthesis()?.paused ? "Resume" : "Pause", disabled: !reading, onSelect: togglePause, key: "ra-pause" },
-        ],
+        submenu: readAloudSubmenu(read),
       },
       { separator: true, key: "s2" },
       { label: "Menu and Button Sounds", key: "ms", submenu: onOff(settings.menuSounds, (v) => update({ menuSounds: v }), "ms") },
@@ -182,6 +141,17 @@ export function KidsMenuBar() {
       <span className="menubar-note" role="status" aria-live="polite">
         {note}
       </span>
+      {adding && (
+        <AddFavoriteDialog
+          name={defaultFavoriteName(pageTitle(document.title), isArticle)}
+          onCancel={() => setAdding(false)}
+          onAdd={(name) => {
+            favorites.add(here, name);
+            setAdding(false);
+            flash(`“${name}” is in your Favorites.`);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -190,17 +160,22 @@ export function KidsMenuBar() {
 export function KidsShell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [note, setNote] = useState("");
-  const copy = () => void copySelection(pageTitle(document.title)).then((ok) => setNote(ok ? "Copied, with its source." : "Select some text first."));
+  const copy = () => void copySelectionOrArticle().then((ok) => setNote(ok ? "Copied." : "Nothing was copied."));
+  useEffect(installCopySourceLine, []);
   return (
     <div className="shell kids-shell">
-      <header className="kids-bar" title="Microsoft Encarta Kids 2009">
-        <NavButtons homeTo="/kids" />
-        <button type="button" className="orb kids-tool" aria-label="Copy" title="Copy" onClick={copy}>
-          <span aria-hidden="true">⎘</span>
-        </button>
-        <button type="button" className="orb kids-tool" aria-label="Print" title="Print" onClick={printPage}>
-          <span aria-hidden="true">⎙</span>
-        </button>
+      <header className="kids-bar">
+        <NavButtons homeTo="/kids" homeTip="Open the Encarta Kids home page." />
+        <ArrowTip text="Copy the article or picture.">
+          <button type="button" className="orb kids-tool" aria-label="Copy" onClick={copy}>
+            <span aria-hidden="true">⎘</span>
+          </button>
+        </ArrowTip>
+        <ArrowTip text="Print the article or picture.">
+          <button type="button" className="orb kids-tool" aria-label="Print" onClick={printPage}>
+            <span aria-hidden="true">⎙</span>
+          </button>
+        </ArrowTip>
         <KidsMenuBar />
         <div className="kids-search">
           <span className="kids-search-label">search</span>

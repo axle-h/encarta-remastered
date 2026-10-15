@@ -73,13 +73,13 @@ images are baggage files of the catalog (`eit/CONTENT/*/baggage/`, e.g. `MDDLX01
   weights); three.js names the custom attributes `_flicker_slots`, `_flicker_weights`, `_flicker_slots_1`, ….
 - **Materials**: one per `.x` texture name (the engine's "texture record"), all
   `KHR_materials_unlit` with `baseColorFactor` 1: the texture is modulated by `COLOR_0` only.
-  `faceColor` is not applied (§5.4, a VM item); the source materials and their face colours are
+  `faceColor` is not applied (§5.4; VM: the original ignores it); the source materials and their face colours are
   in material `extras`. Colour-keyed BMP textures are PNGs with alpha 0 on magenta (RGB555 test),
   `alphaMode: MASK`, cutoff 0.5, and a sampler without mipmaps (sampler 1); keyed texels take the
   mean colour of their opaque neighbours so filtering does not bleed magenta. JPEGs are embedded
   byte for byte; BMP and GIF become PNG. Textures resolve by the §5.5 stem rule and are sniffed by
-  content. `doubleSided` is false (D3D clockwise front faces become glTF counter-clockwise; whether
-  the original culled back faces is a VM item, §5.9).
+  content. `doubleSided` is false (D3D clockwise front faces become glTF counter-clockwise; the
+  original culls back faces, VM, §5.9).
 - **Clouds**: one `POINTS` mesh per `.3cl` file, shared by its placements. `POSITION` holds the
   integer cloud-local coordinates (z negated), `COLOR_0` the RGB565 colour, `_KEY` the facing angle
   in degrees (`−1` for NaN keys, which are always drawn). Points keep file order (sorted by key,
@@ -104,7 +104,8 @@ LinearSRGBColorSpace`).
 Runtime terms:
 - **Flicker** (§7.2.6): `final = min(255, COLOR_0 + Σᵢ trunc(currentᵢ · wᵢ))` over the flicker
   sets, where `currentᵢ = trunc(k·savedColour)` of the light in slot `slotsᵢ`, `k` redrawn
-  uniformly from `[0.4, 1.0]` (512 steps) every `period` seconds, held constant in between.
+  uniformly from `[0.4, 1.0]` (512 steps) once `period` seconds have accumulated (the accumulator then
+  restarts at 0, so the period rounds up to whole ticks, VM), held constant in between.
   Unused entries have weight 0. Painted corners carry no flicker.
 - **`LIGHTS.OFF`** (Persepolis `stair1.3wm` cell 1255 runs `LIGHTS.OFF`/`ON`): everything full-bright.
 - A light that is off at the end of loading is not baked (none on the disc).
@@ -392,11 +393,10 @@ The converter fails when a check fails.
 
 ## Open points for the runtime (VM items)
 
-- Whether the PVS also applies LOD switching (low-detail `lod_` meshes appear in PVS lists), and
-  what the engine's always-drawn object list holds: 9 of 33 Acropolis sprites, 19 of 132 Beaumaris
-  sprites and 9 of 61 Abu Simbel sprites appear in no PVS list, so they would never be drawn over a
-  visibility cell unless that list contains them (§6.6).
-- Back-face culling, faceColor, the colour-key test on the 565 display the VM uses, sprite rotation sign
-  (§5.9, §7.10).
+- *Answered (VM):* the PVS lists choose base or `lod_` meshes per cell, so over a visibility cell the
+  runtime draws the listed faces of either with no distance swap; sprites in no PVS list (9 of 33
+  Acropolis, 19 of 132 Beaumaris, 9 of 61 Abu Simbel) are drawn (§6.6). Back faces are culled,
+  faceColor is ignored and sprites turn with the camera yaw (§5.9, §7.10).
+- The colour-key test on the 565 display the VM uses (§5.9).
 - Texture filtering: the VM's software rasteriser samples without mipmaps, so distant floors and walls look sharper
   and noisier there than with mipmapped textures.

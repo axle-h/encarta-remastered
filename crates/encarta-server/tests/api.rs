@@ -97,6 +97,10 @@ async fn content_endpoints() {
     assert_eq!(h["media"][0]["sidebar_category"], "WORLD OF SCIENCE");
     assert_eq!(h["media"][0]["preview_html"], "<p class=\"enc-intro\">Why stripes?</p>");
     assert!(a["media"][0].get("preview_html").is_none());
+    // Archive rows carry their year and web links their address (right-column modules).
+    assert_eq!(h["media"][1]["year"], "1938");
+    assert_eq!(h["media"][2]["url"], "http://horses.example/");
+    assert!(h["media"][0].get("year").is_none() && h["media"][1].get("url").is_none());
 
     let (s, p) = json(&app, "/api/place/42").await;
     assert_eq!(s, 200);

@@ -35,16 +35,16 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Home screen: logo, butterfly, background, nine links in three columns | done | `/`, data item 701712539; compared with `fixtures/vm/home.png` | — |
 | Home links → category screens (History … Sports & Recreation, Games & Fun Stuff) | done | `/browse/{id}`; 7,888 `home-page` items, 50/50 sampled render links | — |
 | Home links Dictionary, Encarta Kids | done | `/dictionary`, `/kids` | — |
-| Menu bar File / Edit / Favorites / Help | done | `MenuBar` in `app/Shell.tsx`; entries and keyboard shortcuts (`app/shortcuts.ts`) per the VM (2026-10-14) | File › Go to is a flat group, not a submenu; Read Aloud disabled |
+| Menu bar File / Edit / Favorites / Help | done | `MenuBar` in `app/Shell.tsx`; entries and keyboard shortcuts (`app/shortcuts.ts`) per the VM (2026-10-14) | File › Go to is a flat group (Back / Forward / Home Page), not a submenu; Edit › Read Aloud enabled, Pause becomes Continue (UI pass 2); File › Exit left out (a page cannot close its window) |
 | File › Print, Edit › Copy | done | Encarta's scope dialog (whole text / with media / selection), `app/ScopeDialog.tsx`, `commands.ts`; a copyright line is always appended (VM 2026-10-14) | — |
-| Edit › Copy (with a source line) | partial | `app/commands.ts` (this audit) | the source-line wording is *(ours)*; plain Ctrl+C copies without it |
+| Edit › Copy (with a source line) | partial | `app/commands.ts`; VM line "Microsoft® Encarta® 2009. © 1993-2008 Microsoft Corporation. All rights reserved." on the next line after a selection, after a blank line for a whole article or entry; Ctrl+C in articles adds it too (UI pass 2) | the copy dialog's "With Media" choice not built |
 | Edit › Find in Article | done | menu entry → find bar (this audit); Ctrl+F | — |
 | Help (Encarta's own help files) | partial | `/help`: about + keyboard shortcuts (this audit) | the disc's three CHM files (Windows UI help) are omitted by design (media.md §4) |
 | Back / Forward orbs with history state | done | `NavButtons` | — |
 | Home orb | done | | — |
-| Features ▾ menu | done | `FEATURES`, keyboard menu (this audit) | entry order is *(ours)*: the 2009 menu was not captured |
+| Features ▾ menu | done | `FEATURES`, keyboard menu (this audit) | — (order matches the VM capture) |
 | Search box with autocomplete in the tool bar | done | `SearchBox`, `/api/suggest` | — |
-| The ▾ tab under the search box, docked results panel (VM home) | done | `app/SearchPanel.tsx`, `Shell.tsx` (2026-10-14, vm-findings › Search box): Enter opens the right-docked panel with Best Matches / Articles / Photos & More / Web Links / Dictionaries / Maps / Quotations bars, one open at a time (the last one stays open for the next search), counts, "Search all" links, the two check boxes; the tab toggles it; a page click hides it unless "keep open"; opening a hit leaves it open | panel colours and geometry *(ours)*; Quotations always listed *(ours)* |
+| The ▾ tab under the search box, docked results panel (VM home) | done | `app/SearchPanel.tsx`, `Shell.tsx` (2026-10-14, vm-findings › Search box): Enter opens the right-docked panel with Best Matches / Articles / Photos & More / Web Links / Dictionaries / Maps / Quotations bars, one open at a time (the last one stays open for the next search), counts, "Search all" links, the two check boxes; the tab toggles it; a page click hides it unless "keep open"; opening a hit leaves it open | colours and geometry as measured (378 px, 308–498 px splitter, 32 px bars, first hit green), Articles titles only, empty categories show only a message; Quotations is not in the VM's panel, so only in Quick Search (UI pass 2) |
 | Window title / document title per page | done | `useDocumentTitle` | — |
 
 ## Features menu (feature records)
@@ -59,7 +59,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Geography Quiz (701712336) | done | → `/games/geoquiz` | — |
 | Encarta Kids (701712340) | done | → `/kids` | — |
 | Quick Search: Articles / Maps / Photos & More / Quotations / Dictionary / Thesaurus | partial | → `/search?kind=article`, `?kind=map`, `/media`, `?kind=quotation`, `/dictionary`, `/thesaurus` (this audit) | Maps and Photos & More open the VM's small modal "Quick Search" dialog (one box with the word wheel; Enter opens the panel with only that category, `app/QuickSearchDialog.tsx`); the other entries still open the scoped search pages |
-| World Atlas, Media Gallery, 3D Virtual Tours, Games & Quizzes | done | the Features menu now follows the VM's groups and content ids; Games & Quizzes and the extras are under File › Go to and `/games` *(ours)* | — |
+| World Atlas, Media Gallery, 3D Virtual Tours, Games & Quizzes | done | the Features menu now follows the VM's groups and content ids; no menu lists Games & Quizzes in the VM; they are under Home › Games & Fun Stuff, and our extra `/games` pages are linked from the bottom of that page (UI pass 2) | — |
 | College Prep Online (701712335) | n/a | online service | page says so (`OnlineFeatureView`) |
 | Encarta on the Web (701835573, 701882633) | n/a | online service | page says so |
 | Extras: MindMaze, City Climate, Population Chart | n/a | not reachable in 2009 (vm-findings.md); rebuilt as extras | — |
@@ -118,7 +118,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Thesaurus | done | VM `dict-thes-happy` | — |
 | Eight bilingual dictionaries, reverse links | done | VM `dict-trans-house` | — |
 | Pronunciation audio | done | | — |
-| Copy | done | `EntryTools` (this audit): entry or selection with source line | wording *(ours)* |
+| Copy | done | `EntryTools` (this audit): entry or selection with source line | the dictionary's Copy copies a selection alone, without the line (VM) |
 | Print | done | prints the entry alone (print style sheet) (this audit) | — |
 | Parental Controls (hide offensive words) | n/a | dropped by choice (PLAN.md): nothing is hidden, as on Wikipedia | — |
 | Separate window (EDICT.EXE, 765×480) | n/a | a page here | — |
@@ -158,7 +158,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Map Legend, Map Customizer | done | | legend captions are class names |
 | Statistics: Choose Statistic, table, details, hover | done | VM V14 | binning unknown |
 | Locator globe | done | | — |
-| Map Trek (171 treks, 680 stops, from the Geography pages) | done | `MapTrekView`: full-height atlas plus the VM's modeless Map Trek panel (`maptrek/MapTrekPanel.tsx`: banner, stop text and thumbnail, stop list, Stop n of N, New Trek / Back / Next) | look and controls of the 2009 Map Trek never captured *(ours)* |
+| Map Trek (171 treks, 680 stops, from the Geography pages) | done | `MapTrekView`: full-height atlas plus the VM's modeless Map Trek panel (`maptrek/MapTrekPanel.tsx`: banner, stop text and thumbnail, stop list, Stop n of N, New Trek / Back / Next, close button; sizes and colours as in the VM, UI pass 2) | — |
 | "About this map" notes (1,516) | done | render as articles | — |
 | Live weather / news links (147 `livemedia`) | n/a | MSN services | shown as link pages with the 2008 address |
 
@@ -201,7 +201,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Kids articles (orange title, tile grid, no numbers) | done | VM `kids-*` | — |
 | Kids search, Kids dictionary | done | | — |
 | Kids interactives and games (264, Flash) | done | Ruffle (18 Kids copies in the test pass); match games native | — |
-| Kids' own menu bar, Favorites, Help | done | `kids/KidsShell.tsx` (2026-10-14): lime bar with Home/Back/Forward/Copy/Print orbs and File / Edit / View / Favorites / Tools / Help with the VM's submenus (Go to, Closed Captioning, Read Aloud, Menu and Button Sounds, Startup Sound, Troubleshooting; `fixtures/ui/kids/sub-*.png`) | Read Aloud uses the browser's speech synthesis *(ours)*; the yellow arrow tooltips are plain titles |
+| Kids' own menu bar, Favorites, Help | done | `kids/KidsShell.tsx` (2026-10-14): lime bar with Home/Back/Forward/Copy/Print orbs and File / Edit / View / Favorites / Tools / Help with the VM's submenus (Go to, Closed Captioning, Read Aloud, Menu and Button Sounds, Startup Sound, Troubleshooting; `fixtures/ui/kids/sub-*.png`) | Read Aloud uses the browser's speech synthesis (no highlighting while reading, as in the VM); yellow-arrow tooltips (`ArrowTip.tsx`, also on the adult orbs; Back says "Back to <page>"; position checked through the DOM only); Kids Copy copies the selection or the whole article without a dialog (UI pass 2) |
 
 ## Interactives
 
@@ -214,10 +214,10 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| Add to Favorites (any page, with its deep link) | done | `app/favorites.ts`, localStorage (this audit) | per browser *(ours)*: 2009 kept them per Windows user |
+| Add to Favorites (any page, with its deep link) | done | `app/favorites.ts`, localStorage; Add to Favorites… opens a Name dialog ("Article - <title>"), as in the VM (UI pass 2) | per browser *(ours)*: 2009 kept them per Windows user; folders and New Folder not built |
 | Favorites list in the menu (20) and Organize Favorites (rename, reorder, remove) | done | `/favorites` (this audit) | Encarta's folder structure was not captured |
 | Print with a print style sheet | done | `styles/print.css` (this audit): no chrome, strip, tools or viewers; right column after the text | — |
-| Copy with source line | partial | see Edit › Copy | wording *(ours)* |
+| Copy with source line | partial | see Edit › Copy | "With Media" not built |
 | Export / Save As, Send to Word (Works task launcher) | n/a | `EE/WORKS` omitted (media.md §4) | — |
 
 ## Settings

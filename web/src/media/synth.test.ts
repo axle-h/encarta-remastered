@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseMidi } from "./midi";
 import { absCents, centibels, regionPitchCents, regionsFor, resolvePreset, timecents, volumeEnvelope, type SfIndex, type SfPreset, type SfRegion } from "./soundfont";
-import { scheduleUntil, volumePoints } from "./synth";
+import { scheduleUntil, SoundfontEngine, volumePoints } from "./synth";
 
 /** A Standard MIDI File, format 0, 480 ppq at the default tempo (0.5 s per quarter); synthetic. */
 function smf0(track: number[]): Uint8Array {
@@ -127,5 +127,55 @@ describe("synth envelopes", () => {
     const { param, calls } = fakeParam();
     expect(scheduleUntil(param, volumePoints(r, 60, 0, 1), 5)).toBeCloseTo(10 ** (-48 / 20), 4);
     expect(calls.at(-1)).toEqual(["set", expect.closeTo(10 ** (-48 / 20), 4), 5]);
+  });
+});
+
+/** A stand-in AudioContext whose nodes record every AudioParam call as [method, value, time]. */
+function fakeContext() {
+  const calls: [string, number, number][] = [];
+  const param = () => ({
+    value: 0,
+    setValueAtTime: (v: number, t: number) => calls.push(["set", v, t]),
+    setTargetAtTime: (v: number, t: number) => calls.push(["target", v, t]),
+    linearRampToValueAtTime: (v: number, t: number) => calls.push(["lin", v, t]),
+    exponentialRampToValueAtTime: (v: number, t: number) => calls.push(["exp", v, t]),
+    cancelScheduledValues: () => {},
+  });
+  const node = (): unknown => {
+    const params = new Map<string | symbol, unknown>();
+    return new Proxy(
+      {},
+      {
+        get: (_, k) => {
+          if (k === "connect") return (n: unknown) => n;
+          if (k === "disconnect" || k === "start" || k === "stop") return () => {};
+          if (!params.has(k)) params.set(k, param());
+          return params.get(k);
+        },
+        set: () => true,
+      },
+    );
+  };
+  const ctx = new Proxy(
+    { currentTime: 0, sampleRate: 8000, createBuffer: (_c: number, n: number) => ({ getChannelData: () => new Float32Array(n) }) },
+    { get: (t, k) => (k in t ? t[k as keyof typeof t] : node) },
+  );
+  return { ctx: ctx as unknown as BaseAudioContext, calls };
+}
+
+describe("synth engine", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("starts each pass of a looped song from the initial channel levels", () => {
+    vi.useFakeTimers();
+    // Volume 50 at 0.25 s; the 0.5 s song loops as 1 s passes, the first starting at 0.1 s.
+    const song = parseMidi(smf0([0x00, 0x90, 60, 100, 0x81, 0x70, 0xb0, 7, 50, 0x81, 0x70, 0x80, 60, 0]));
+    const { ctx, calls } = fakeContext();
+    const engine = new SoundfontEngine(ctx, ctx.destination, song, { presets: new Map(), samples: 0 }, { loop: true });
+    engine.schedule(1.2);
+    const initial = (100 / 127) ** 2;
+    expect(calls).toContainEqual(["target", (50 / 127) ** 2, expect.closeTo(0.35)]);
+    expect(calls).toContainEqual(["set", initial, expect.closeTo(1.1)]);
+    engine.stop();
   });
 });

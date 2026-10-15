@@ -131,6 +131,9 @@ fn content(path: &Path) {
         [SIDEBAR],
     )
     .unwrap();
+    // A yearbook article and a web link in the Horse article's right column (Archives, Web Sites).
+    item(610, "yearbook-article", "Horses And Mules", 1, 0, None, Some(r#"{"source_attrs":{"year":"1938"}}"#));
+    item(611, "weblink", "Horse Country", 1, 0, None, Some(r#"{"url":["http://horses.example/"]}"#));
     c.execute("INSERT INTO paragraph VALUES (?1, 'p', 1, NULL, 1, 'A naturalist proposes why zebras have stripes.')", [EVENT]).unwrap();
     c.execute_batch(
         "INSERT INTO section VALUES (100, 1, NULL, 1, 'I', 'INTRODUCTION', 4), (100, 2, NULL, 1, 'II', 'STRIPES', 5);
@@ -140,7 +143,9 @@ fn content(path: &Path) {
          INSERT INTO assoc VALUES (100, 'forward', 0, 200, 'media', 1, 1, NULL, NULL, 0),
                                   (100, 'forward', 1, 300, 'factsandfigures', 1, 2, NULL, NULL, 0),
                                   (200, 'reverse', 0, 100, 'article', NULL, 1, NULL, NULL, 0),
-                                  (101, 'forward', 0, 600, 'sidebar', 1, 1, NULL, NULL, 0);
+                                  (101, 'forward', 0, 600, 'sidebar', 1, 1, NULL, NULL, 0),
+                                  (101, 'forward', 1, 610, 'archive', 1, 2, NULL, NULL, 0),
+                                  (101, 'forward', 2, 611, 'weblink', 1, 3, NULL, NULL, 0);
          INSERT INTO item_file VALUES (200, 0, 'thumb', 'zz000001.jtn', NULL, 64, 64, NULL, NULL, NULL),
                                       (200, 1, 'image', 'zz000001.jpg', NULL, 640, 480, NULL, NULL, NULL),
                                       (200, 2, 'picon', 'zz000001.jsm', NULL, 192, 144, NULL, NULL, NULL);

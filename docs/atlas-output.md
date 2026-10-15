@@ -163,23 +163,22 @@ restricted mask). The report's `area_masks` gives per class the polygons and the
 over water, summed over the bands: 0.6–1.0 for the "… - Small" dependency and country colours, 0.15–0.46 for
 most Admin1/CountryRegion colours, 0.2 for International organization, 0.07–0.3 for time zones, 0.01–0.05 for
 parks and urban areas. In band 7, 88,072 of 390,040 masked polygons are cut and 31,192 lie entirely over water.
-Water parts are dropped for classes that no style fills over its water pixel class (`ClassUse::fill_water`);
-the rest are kept for drawing, never for hit-testing.
+Water parts are dropped for classes that no style fills over its water pixel class (`ClassUse::fill_water`)
+and that no style makes interactive; the rest are kept for drawing and hit-testing.
 
-**Land-only hits.** The click menu lists no land area where the point is over the sea (VM, Comprehensive at
-300 km off the Breton coast: only "Bay of Biscay", while our polygons of France, Brittany and Morbihan reach
-1–3 km offshore; on land "Saint-Aubin, Morbihan, Brittany, France"; Lake Geneva, land in the HYPSO mask, still
-lists Vaud and Switzerland). So interactive Earth area classes are split as above even without a masked fill
-(`Classes::land_hits`: Admin 1, Admin 2, Continent, Physiographic region, Island, Statistical region, Beach,
-regions, LANG/REL no-draw …, 15 classes with polygons in `earth`), except the classes listed over the sea too:
-water bodies (pen groups 31/42/43 or draw group b12 = 120), World (pen group 36), tectonic plates (136) and
-Reef (the last three by assumption, not checked in the VM). The client's hit layers skip `water: true` parts
-(atlas-client.md). Off Brittany (47.596, −3.368) France, Brittany and Morbihan are then only water parts; at
-Lake Geneva (46.426, 6.332) Vaud, Switzerland, Lake Geneva and the Rhône are land parts. In band 7, 101,496 of
-448,005 split polygons are cut and 43,523 lie entirely over water. Cost of the masks and the land-only hits:
-`earth.pmtiles` 316 → 400.3 MB (pixel staircases along the coasts; land-only hits +1.5 MB over the 398.8 MB
-of masked fills alone, as dropping unfilled water parts of masked classes offsets most of it), `earth-detail`
-18.2 → 18.4 MB, the vector stage 5 → 28 s.
+**Hit sides** (mad-styling.md §4.4). The click menu lists a water class (rule `b4` high nibble 2: oceans, seas,
+water labels, reefs) only where the point is over water, and leaves out land classes (nibble 1: countries,
+divisions, continents, islands …) when a water class is listed; other classes are listed anywhere (VM: off
+Brittany only "Bay of Biscay"; on Belle-Île, inside the Bay polygon, France and Brittany but not the Bay; off
+Jersey, with no water polygon, "Jersey (U.K.)" over the sea; parks, World and tectonic plates over the sea). So
+the area classes with nibble 2 in some Earth style (`Classes::water_hits`: Ocean, Inland sea, the water labels,
+Lake - no draw, Reef …) are split along the HYPSO water mask as above, and each style's `encarta:interactive`
+carries the nibble per zoom range (style.json below). The client lists a nibble-2 polygon only on its water
+part and then drops the nibble-1 hits (atlas-client.md). Land classes are not split for hit-testing. Off
+Brittany (47.596, −3.368) the Bay of Biscay is a water part; on Belle-Île (47.356, −3.226) it is a land part.
+In band 7, 95,665 of 423,161 split polygons are cut and 56,016 lie entirely over water. Sizes: `earth.pmtiles`
+404.9 MB (400.3 MB with the earlier "no land area over the sea" split; the water parts of interactive masked
+fills are now kept), `earth-detail` 18.5 MB, the vector stage 26 s.
 
 GeoGem cells never straddle ±180°. Features near the antimeridian are also written, shifted by ±360°, into the
 buffers of the edge tiles. Latitudes beyond ±85.05° are clipped by the tile bounds.
@@ -241,7 +240,7 @@ follows mad-styling.md §14.1:
 | draw-over masks of line pens and of fill pens (and pattern brushes): filter `["all", <class test>, ["==", ["get","water"], true]]` (or `!=`), pen dropped where it may draw nowhere | §5.2 |
 | tint colours (fills, lines, highlights): the ramp entry `tint_index(L)` for the mean land luminance `L` of the style's raster LOOK (`encarta:surface`); highlight fills at 60 % | §6 |
 | area labels: abbreviation (U+0002) where `length(name) · size · 0.6 em` exceeds the area's width at the current zoom (`width_z10 · 2^(z−10)`), tested every half zoom in a `step` | §7.3 |
-| per class, the zoom ranges where the rules make it interactive (`b4`): `metadata["encarta:interactive"] = {class: [[minzoom, maxzoom, tri-state]…]}` | §4.1 |
+| per class, the zoom ranges where the rules make it interactive (`b4`): `metadata["encarta:interactive"] = {class: [[minzoom, maxzoom, tri-state, hit side]…]}`; hit side = `b4` high nibble (0 anywhere, 1 land, 2 water; 0 in Moon styles) | §4.1, §4.4 |
 | MinRect boxes and the style's altitude limits as `metadata` (`encarta:min_rects`, `encarta:minzoom/maxzoom`) | §3, §13.2 |
 | `encarta:view_p_over_m` 3135, `encarta:view_p_over_m_per_height_px` 6.05, `encarta:reference_pane_height_px` 518 | §2 |
 

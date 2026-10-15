@@ -53,14 +53,14 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
 
 | path | role |
 |---|---|
-| `src/main.tsx`, `src/app/` | router, chrome (`Shell`: menu bar File/Edit/Favorites/Help, Back/Forward/Home orbs, Features menu, search, skip link), history button state, disc fonts (`fonts.ts`), Favorites store (`favorites.ts`), menu commands (`commands.ts`: print and copy by scope, copyright line), Features flyout (`FeaturesMenu.tsx`, data in `featuresData.ts`: the VM's 3 groups, More flyouts and Browse all by content id), keyboard shortcuts (`shortcuts.ts`), print/copy scope dialog and Options dialog, lazy atlas (`atlasModule.tsx`); `src/settings/`: Options store (localStorage), interface sounds (`uiSounds.ts`: startup, click, Kids home) |
+| `src/main.tsx`, `src/app/` | router, chrome (`Shell`: menu bar File/Edit/Favorites/Help, Back/Forward/Home orbs, Features menu, search, skip link), history button state, disc fonts (`fonts.ts`), Favorites store (`favorites.ts`), menu commands (`commands.ts`: print and copy by scope, source line), Read Aloud (`readAloud.ts`), Add to Favorites dialog (`AddFavoriteDialog.tsx`), Features flyout (`FeaturesMenu.tsx`, data in `featuresData.ts`: the VM's 3 groups, More flyouts and Browse all by content id), keyboard shortcuts (`shortcuts.ts`), print/copy scope dialog and Options dialog, lazy atlas (`atlasModule.tsx`); `src/settings/`: Options store (localStorage), interface sounds (`uiSounds.ts`: startup, click, Kids home) |
 | `src/api/` | typed client for api.md (`client.ts`, in-memory cache, AbortSignal), `useApi` hook, response types |
 | `src/content/` | the content model of content-schema §8 (`model.ts`), React inline renderer (`Inlines.tsx`), link mapping |
 | `src/article/` | article reader: body renderer, layout rules (`layout.ts`), media column boxes, side panels, find bar, pronunciation |
 | `src/media/` | media viewer overlay, players (audio with captions, audio sets, video with WebVTT, MIDI), variant selection (`pick.ts`), MIDI reader (`midi.ts`), soundfont loader (`soundfont.ts`) and General MIDI synth (`synth.ts`), Ruffle loader (`ruffle.ts`), its device fonts (`ruffleFonts.ts`) and Flash interactives (`FlashPlayer.tsx`) |
 | `src/pages/` | home, browse, item dispatcher (+ `itemRoute.ts`: feature records, topic timelines, panoramas, Map Trek stops), views of the other item kinds (`ItemKinds.tsx`: web links, contributors, quotation authors, tour nodes, Map Trek, online features), panoramic tours (`PanoramaTour.tsx`, `panorama.ts`), search, media gallery, dictionary (+ `wordWheel.ts`), timeline (+ pure layout/date helpers), tours, favorites, help, atlas placeholder |
 | `src/panorama/` | the native panorama player ([Panoramas](#panoramas)): cylinder geometry, WebGL and Canvas 2D renderers, `PanoramaView`, parameters from the data, the image-SWF reader, single panoramas in the media viewer |
-| `src/components/Menu.tsx` | the accessible menu button (arrows, Home/End, Esc, ←/→ along a `menubar`) used by every menu |
+| `src/components/Menu.tsx` | the accessible menu button (arrows, Home/End, Esc, ←/→ along a `menubar`) used by every menu; `ArrowTip.tsx`, the tool-button tooltips |
 | `src/kids/` | Kids shell, home screen and article view |
 | `src/styles/` | CSS by area; tokens in `base.css` |
 | `src/tours/` | the tour runtime (Step 6), unchanged |
@@ -98,10 +98,17 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
 - **Media strip and viewer sequence**: placed body media in reading order (`mediaInOrder` walks cluster and grid
   members in place), then other shown associations not placed in the body (not maps, weblinks, further reading,
   contributors). The viewer steps through it.
-- **Right column**: World Atlas (first `maps` association; links to `/atlas/place/{geocode}`), Quick
-  Facts (a facts table's first five entries, or a Facts and Figures table's entries marked `quick`;
-  "More" opens the whole table), Related Articles (the REL tree; headings expand), Further Reading.
-  Contributors (`expert` group) print under the text.
+- **Right column** (content-schema §2 "Right column", VM; lists and order in `article/modules.ts`, boxes in
+  `SidePanels.tsx`): World Atlas (first `maps` association; links to `/atlas/place/{geocode}`), Quick Facts (first
+  five entries, the fifth cut after its first value; "More" opens the whole table), Related Articles (first five
+  top-level nodes; "More" shows the rest, headings expand), Quotations (count and the first quotation), Web Sites
+  (title, description, address), Primary Sources and Sidebars (sidebar rows split by category), one Virtual Tour /
+  3D Ancient Site box per tour (banner, "Take the Tour"), Further Reading, Archives ("1938: France"). List boxes show
+  three rows (Further Reading and Archives five) and "Show All" / "Collapse" in place; Web Sites, Primary Sources and
+  Sidebars sort by title like the reader (`titleSortKey`). Not drawn: Visual Browser (no such view yet) and the
+  online Radio and News boxes. Contributors (`expert` group) print under the text.
+- **Section headings** look by depth (VM): every top-level heading is upper case with a roman numeral whatever its
+  `section@type`.
 - **"X or Y" titles**: a `title-ref` is drawn from its `title` and `alt` parts as two bold spans joined by a plain
   " or " (VM: "**East Timor** or **Timor-Leste**, …"); with an empty `alt` it is the title alone.
 - **Outline view** collapses every section to its heading and child headings; the introduction shows a
@@ -141,7 +148,11 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
   −2 dBFS guards the rest). Bugs found this way: releases ramped from the last envelope event instead of note-off,
   and pitched-down samples sounded bright from interpolation images. In headless Chromium against the release
   server: East Timor's anthem loads 70 soundfont files and plays (position advancing, Stop works, no console
-  errors); MindMaze loads its three presets.
+  errors); MindMaze loads its three presets. Against the Microsoft GS Wavetable recordings of five music items
+  (media.md §8), tempo, onsets (11 ms standard deviation), instruments and the velocity curve agree. The GS output
+  is dry and mono, where ours keeps its reverb and stereo sample pairs. A bug found during that review: each pass of a looped
+  song now starts from the initial channel gains and pitch wheel. It used to keep the previous pass's last volume,
+  expression and bend until the song set them again.
 - **Video**: WebM (VP9) then MP4, the converter's poster, WebVTT captions as a `<track>`.
 - **Dictionary**: the word wheel is `lookup?around=8`: the eight headwords before the typed text, then the following
   ones, in the reader's order (hyphens ignored), homographs numbered "Paris (1)", "Paris (2)" (`wordWheel.ts`), as in
@@ -301,9 +312,31 @@ decoded size and horizon match an independent survey of all 167.
   WebGPU; sizes 460–700 px; throttled network; in the app). Unexplained; watch for it on real GPUs.
 - Parental Controls of the dictionary window are dropped by choice (PLAN.md).
 - Item kinds, menus, Favorites, print and the panoramic tours added by the parity audit: see [parity.md](parity.md).
+- Chrome details measured in the VM (vm-findings.md, "UI pass 2"):
+  - Menus: File is Print… / Go to ▸ (Back, Forward, Home Page) / Options… (no Exit: a page cannot close its
+    window); Edit is Copy… / Read Aloud ▸ / Search Encarta (Ctrl+S) / Find in this Article…; Favorites is Add to
+    Favorites… / Organize Favorites… / the saved pages or a disabled "<empty>" (adult and Kids). No menu lists the
+    games: Home › Games & Fun Stuff (701712546) is the way in, as in 2009, and our extra `/games` pages are linked
+    from the bottom of that page.
+  - Copy (`commands.ts`): a selection gets the source line "Microsoft® Encarta® 2009. © 1993-2008 Microsoft
+    Corporation. All rights reserved." on the next line, a whole article or dictionary entry after a blank line;
+    Ctrl+C inside an article does the same (text and HTML, the name in bold). The Kids Copy button copies the
+    selection or else the whole article, with no dialog. The dictionary's Copy copies a selection alone.
+  - Read Aloud (`readAloud.ts`, browser speech synthesis; adult Edit menu and Kids Tools menu): Whole Article and
+    Selected Text only while idle, Stop Reading (F9) and Pause only while reading, Pause becomes Continue. Nothing is
+    highlighted while it reads.
+  - Tool-button tooltips (`components/ArrowTip.tsx`): the VM's orange box with an arrow strip pointing at the button,
+    centred below it, moved to the lower right or lower left near the window edges. Back and Forward say
+    "Back to <page>" (titles per history index, `history.ts`); disabled buttons have none.
+  - Search panel: 378 px wide by default, 308–498 px with the splitter at its left edge; button-face background;
+    32 px bars; the first hit highlighted green; the Articles list shows titles only; empty categories say so with no
+    link; Quotations appears only in Quick Search (the VM's panel never lists it).
+  - Add to Favorites opens a Name dialog ("Article - <title>" for articles); Encarta's folder tree is not built.
+  - Map Trek dialog at the VM's sizes (450 px, 257/150 px text and list boxes, 8 pt text) with a close button; the
+    map stays when it is closed.
 - Panoramas: none of the player's behaviour has been compared with the VM yet. The open questions are the tour
   scenes' yaw origin, the `quadrant` marker's look, `auto`/`maxspeed` units, the scenes' horizon and field of view,
   and whether 2009 showed hot regions before hover.
-- Games live under `/games/*` (`web/src/games/`, see [games.md](games.md)); the Geography Quiz feature item
-  701712336 redirects to `/games/geoquiz`. `MatchGame` interactives play natively in the media viewer.
+- Games live under `/games/*` (`web/src/games/`, see [games.md](games.md)), linked from Home › Games & Fun Stuff;
+  the Geography Quiz feature item 701712336 redirects to `/games/geoquiz` (also Ctrl+Q). `MatchGame` interactives play natively in the media viewer.
 - Light theme only, like the original.

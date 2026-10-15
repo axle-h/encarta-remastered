@@ -688,6 +688,87 @@
   background: linear-gradient(#a5a5a0, var(--gray-panel) 60%, #77776f);
 }
 
+/* VM: Primary Sources, Sidebars, Further Reading and Archives have a lighter orange bar. */
+.enc-panel-light .enc-panel-title {
+  background: linear-gradient(#fbbf4e, #f5a623 60%, #ec9a12);
+}
+
+.enc-panel-count {
+  font-weight: normal;
+}
+
+.enc-weblinks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.enc-weblinks > li {
+  margin-bottom: 10px;
+}
+
+.enc-weblink-title {
+  display: block;
+  color: #333;
+  font-weight: bold;
+}
+
+.enc-weblink-text {
+  color: #444;
+}
+
+.enc-weblink-url {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #2f6fb4;
+}
+
+.enc-quote-module {
+  display: block;
+  color: #333;
+  text-decoration: none;
+}
+
+.enc-quote-text {
+  display: block;
+  font-style: italic;
+}
+
+.enc-quote-text::before {
+  content: "\201C";
+}
+
+.enc-quote-text::after {
+  content: "\201D";
+}
+
+.enc-quote-credit {
+  display: block;
+  margin-top: 4px;
+  font-weight: bold;
+}
+
+.enc-tour-module {
+  display: block;
+  margin: 0 -17px;
+  color: #333;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.enc-tour-title {
+  display: block;
+  padding: 0 17px 6px;
+}
+
+.enc-tour-module img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .enc-panel-body {
   padding: 12px 17px 6px;
 }

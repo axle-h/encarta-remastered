@@ -412,9 +412,32 @@ FLAC files unless the source soundfont changed (`source` in `index.json`). The s
 
 **Reference renders (VM 2026-10-14).** With sound in the guest, Encarta's own playback of five music items (461531492,
 461531551, 461531578, 461531864, 461531913) through the Microsoft GS Wavetable SW Synth is recorded in the private
-`fixtures/music/<id>-gs.wav` (44.1 kHz stereo); their lengths match the MIDI files (11.7, 3.3, 4.0, 14.3, 1.3 s). Encarta
-starts a music item as soon as its page opens, so the client's MIDI player now autoplays in the media viewer like the
-other audio. A side-by-side listening comparison with our soundfont synth is still to do (it needs a browser recording).
+`fixtures/music/<id>-gs.wav` (44.1 kHz stereo, but left and right are identical). Each is a solo line on channel 2
+(piano, or flute for 461531492) with only volume and pan set. A recording starts 0.1–0.2 s before the song's first tick
+(with a click in its first 60 ms) and ends at the song's last note-off, not at End of Track: the output falls to
+digital silence while the last note still sounds, 50–95 ms before the note-off (the synth's latency), followed by
+about 40 ms of silence. End of Track, 0.07–1.4 s later, is never reached. So Encarta ends a song at its last event
+and cuts the sound off. The files are 10.9, 2.1, 4.1, 13.8 and 1.1 s long. Encarta starts a music item as soon as
+its page opens, so the client's MIDI player now autoplays in the media viewer like the other audio.
+
+**Comparison with our synth (2026-10-14).** Our engine rendered the same five MIDI files on an `OfflineAudioContext` in
+headless Chromium. The scripts are not in the repo: an esbuild bundle of `midi.ts` and `synth.ts`, with numpy
+analysis. Renders were aligned to the recordings by cross-correlating their 10 ms envelopes. Results:
+
+- **Matching.** Tempo agrees within 0.15 % (no drift over 13 s). Note onsets agree within 7 ms on average (11 ms
+  standard deviation). Instruments are the same GM programs. Velocity follows a squared law in both: 1.9–2.2 dB of
+  level per dB of velocity in ours, 1.85–1.97 in GS. After a constant offset (the recording gain), per-note peaks
+  agree within about ±3 dB. Like Encarta, our song length ends at the last event, not at End of Track. Across the
+  disc's 244 MIDI files, End of Track comes a median 2.1 s after the last note, and up to 154 s after it.
+- **Differences from the samples.** GS plays 11 cents sharp; ours is in tune (A4 at 440.1 Hz). That is GS's own
+  tuning, since the recording's clock is only 0.15 % fast. The GS piano is darker (spectral centroid 1.4 kHz against
+  2.5 kHz). Fluid's flute swells over 0.25 s, where GS's attacks at once and also releases faster.
+- **Differences from the synth.** The GS output is dry and mono, with clean exponential releases and no reverb tail.
+  Ours adds reverb about 15 dB below the dry signal. It also plays Fluid's stereo sample pairs panned hard left and
+  right, which leaves the piano's left and right channels anti-correlated between 400 and 1,000 Hz. Our player
+  stops 0.3 s after the last note-off with a short fade, where Encarta cuts at the note-off itself. These were left
+  as they are.
+- **Not covered.** None of the five uses pitch bend, other controllers, drums or more than one channel.
 
 ## 9. Interface sounds (`encarta-convert content`, step "ui sounds")
 
@@ -442,9 +465,15 @@ Written to `out/sounds/` as the unchanged RIFF files: `startup.wav`, `click.wav`
 
 Ordinary links inside pages (article sections, Show Full Article, browse-page links, search results, the search panel's
 category bars) play no Encarta sound, only Windows' own navigation click, which we do not reproduce; tabs: none heard.
-Defaults in the original (Options › Default): startup sound on, menu and button sounds **off**. Not heard in the views
-tried (home, browse, search panel, article, atlas, timeline, Kids home): ids 578, 579, 682/31972/31978, 702/31909,
-31906-31908, 31910/31911, 31912, 31913.
+Defaults in the original (Options › Default): startup sound on, menu and button sounds **off**. Not heard in any view
+tried (home, browse, search panel, article, atlas, timeline, Kids home; second pass: dictionary window, Games & Fun
+Stuff folders, video and audio-set players, Visual Browser, Quick Search dialog, Favorites dialogs, Map Trek, Geography
+Quiz, Options pages, Kids games menu, Kids video / search / article / Look at Pictures, Kids Tools menu; vm-findings.md):
+ids 578, 579, 682/31972/31978, 702/31909, 31906-31908, 31910/31911, 31912, 31913. 578 and 579 are almost silent (peak
+0.03 and 0.08 of full scale) and may be unused. The new places add no new sound: only `tick`/`click` where a control
+or menu already plays them. The media players, Visual Browser, Map Trek dialog, Options page list and the Quick Search
+dialog's field are silent. In the Geography Quiz a correct answer plays a 2 s fanfare that is not an `ENCARTAR.DLL`
+resource (probably Windows' `tada.wav`, 1.94 s; not reproduced).
 
 **Ours:** `web/src/settings/uiSounds.ts` has one document-level delegate that maps controls to the sounds above
 (`playUiSound('tick'|'click'|'kidsHover'|'timeline')`); the rules are selectors there, and `data-snd="timeline"`

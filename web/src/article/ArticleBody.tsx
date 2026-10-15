@@ -256,7 +256,9 @@ function SectionTitle({ s, level }: { s: SectionBlock; level: number }) {
   const text =
     typeof title === "string" ? title : <Inlines c={title} opts={opts} />;
   const H = `h${Math.min(6, level + 1)}` as "h2";
-  const upper = s.kind === "introduction" || s.kind === "major";
+  // VM: the heading look follows the depth only; every top-level heading (type 4, 5 or 6) is
+  // drawn alike, roman numeral and upper case (content-schema §2 `section@type`).
+  const upper = level === 1;
   // The number is the full path ("III", "A", "1"); only the last label is printed.
   // Kids articles print no section numbers.
   const num =

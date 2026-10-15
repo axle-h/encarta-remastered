@@ -44,23 +44,30 @@ describe("class overrides (mad-styling.md §4.3)", () => {
 
 describe("added layers", () => {
   it("hit-tests the classes the rules make interactive", () => {
-    expect(interactiveRanges(s).get(64)).toEqual([[0.97, 5, 2]]);
+    expect(interactiveRanges(s).get(64)).toEqual([[0.97, 5, 2, 0]]);
+    expect(interactiveRanges(s).get(80)).toEqual([[0, 24, 1, 2]]);
     const none = { on: new Set<number>(), off: new Set<number>() };
     const r = hitRanges(s, none);
     // 62 by default; 64 only when turned on; 999 even though no layer draws it (V11).
-    expect(r.get(62)).toEqual([[0.97, 16.59]]);
+    expect(r.get(62)).toEqual([
+      [0.97, 4, 0],
+      [4, 16.59, 1],
+    ]);
     expect(r.has(64)).toBe(false);
     expect(r.has(999)).toBe(true);
-    expect(hitClassesAt(r, 2).has(80)).toBe(true);
+    expect(hitClassesAt(r, 2).get(80)).toBe(2);
+    expect(hitClassesAt(r, 2).get(62)).toBe(0);
+    expect(hitClassesAt(r, 6).get(62)).toBe(1);
     expect(hitClassesAt(r, 0.5).has(62)).toBe(false);
     const on = hitRanges(s, { on: new Set([64]), off: new Set() });
-    expect(on.get(64)).toEqual([[0.97, 5]]);
+    expect(on.get(64)).toEqual([[0.97, 5, 0]]);
     expect(hitRanges(s, { on: new Set(), off: new Set([62]) }).has(62)).toBe(false);
     const h = hitLayers(s, r);
     expect(h.map((l) => l.id)).toContain("encarta-hit-areas-earth-0");
     expect(h.every((l) => (l as { paint: Record<string, unknown> }).paint["fill-opacity"] === 0)).toBe(true);
     expect(JSON.stringify(h.find((l) => (l as { minzoom?: number }).minzoom === 0.97))).toContain('"literal",[62]');
-    expect(h.every((l) => JSON.stringify((l as { filter?: unknown }).filter).includes('["get","water"]'))).toBe(true);
+    // Both parts of split polygons are hit-tested (rankHits applies the hit sides).
+    expect(h.some((l) => JSON.stringify((l as { filter?: unknown }).filter).includes('"water"'))).toBe(false);
   });
   it("leaves out the classes of pen group 134 (time zones) from the click menu", () => {
     const none = { on: new Set<number>(), off: new Set<number>() };

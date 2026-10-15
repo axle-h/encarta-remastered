@@ -144,7 +144,7 @@ export class LayerPainter {
       g.font = `700 ${EM.toFixed(2)}px ${CAPTION_FONT_STACK}`;
       g.textBaseline = "alphabetic";
       g.lineJoin = "round";
-      g.lineWidth = 3;
+      g.lineWidth = 2; // the 2-px pen on the glyph outlines: a 1-px black rim outside the white text (VM)
       g.strokeStyle = "#000000";
       g.strokeText(el.text, x, voff + ASCENT);
       g.fillStyle = "#FFFFFF";

@@ -26,13 +26,31 @@ describe("hit ranking (V11 menu order)", () => {
   it("lists points, lines, areas, countries last, once per entity", () => {
     expect(hits.map((h) => h.name)).toEqual(["Limoges", "Loire", "15°", "Tropic of Cancer", "Western Europe", "Auvergne", "France", "World"]);
   });
-  it("skips the water parts of split areas (no land area over the sea)", () => {
-    const sea = rankHits([
-      f(84, "areas", "France", "CountryRegion - Purple", 3, { water: true }),
-      f(4840, "areas", "Brittany", "Admin1 - Purple - 2 Med Dark", 5, { water: true }),
-      f(4019, "areas", "Bay of Biscay", "Water label - major", 90),
+  it("applies the hit sides: water classes only over water, land classes not with them (mad-styling.md §4.4)", () => {
+    const sides = new Map([
+      [3, 1], // CountryRegion: land
+      [5, 1], // Admin 1: land
+      [90, 2], // water body
+      [54, 0], // park: anywhere
     ]);
-    expect(sea.map((h) => h.name)).toEqual(["Bay of Biscay"]);
+    // Off the Breton coast: the Bay is hit, so France and Brittany (their water parts) are left out.
+    const sea = rankHits(
+      [
+        f(84, "areas", "France", "CountryRegion - Purple", 3, { water: true }),
+        f(4840, "areas", "Brittany", "Admin1 - Purple - 2 Med Dark", 5, { water: true }),
+        f(4019, "areas", "Bay of Biscay", "Water label - major", 90, { water: true }),
+        f(77, "areas", "Marine Park", "Park - national", 54, { water: true }),
+      ],
+      undefined,
+      sides,
+    );
+    expect(sea.map((h) => h.name)).toEqual(["Bay of Biscay", "Marine Park"]);
+    // On Belle-Île: the Bay's land part is not hit, so the land classes stay.
+    const island = rankHits([f(84, "areas", "France", "CountryRegion - Purple", 3), f(4019, "areas", "Bay of Biscay", "Water label - major", 90)], undefined, sides);
+    expect(island.map((h) => h.name)).toEqual(["France"]);
+    // Off Jersey, where no water class is hit: the land class is listed over the sea.
+    const jersey = rankHits([f(123, "areas", "Jersey (U.K.)", "Dependent - Red - Small", 3, { water: true })], undefined, sides);
+    expect(jersey.map((h) => h.name)).toEqual(["Jersey (U.K.)"]);
   });
   it("keeps only the classes in the style's hit list", () => {
     const only = rankHits([f(1, "areas", "France", "Sovereign", 62), f(10, "lines", "15°", "Graticule - 15 deg - meridian", 77)], undefined, new Set([62]));

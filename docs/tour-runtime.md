@@ -112,7 +112,10 @@ All world state is in glTF space; queries convert back to the disc's coordinates
 - **Colour.** Textures `NoColorSpace`, output `LinearSRGBColorSpace`, unlit `MeshBasicMaterial`
   with `COLOR_0`. This multiplies texel bytes by the baked bytes in display space, as the original
   did, with no overbright (tour-scene.md).
-- **Flicker** is a vertex-shader term: `min(255, COLOR_0 + Σ trunc(current[slot]·w))` over the
+- **Flicker** steps when its accumulator reaches the period and restarts it at 0, so a period
+  rounds up to whole ticks (VM: 0.1 s → 109 ms, 0.4 s → 406–421 ms at ~64 ticks/s); film strips
+  and alarms do the same (VM: `.07` strips step every 5 ticks, the 0.1-s spinner every 7). It is a
+  vertex-shader term: `min(255, COLOR_0 + Σ trunc(current[slot]·w))` over the
   `_FLICKER_*` sets, with one `vec3` uniform per flicker slot. `LIGHTS.OFF` and full-bright
   objects are shader switches.
 - **Ground mode** is snap (software device), as in the VM (§6.8); the `device: "hardware"` or
@@ -135,21 +138,28 @@ All world state is in glTF space; queries convert back to the disc's coordinates
   quantised polygon" test put the Colosseum stop "Seating Areas" on the wrong seating step.
 - **Caption colours** are the file's 0xC0D1E3 (text and frame), white on hover and press. The
   VM's 565 display shows them as (198,211,231); the runtime does not quantise.
-- **Walk-map switching** (`walkmapSwitch`, default `settle`). Read literally, §6.5 makes the
+- **Walls.** A move that leaves the collision-cell coverage is not stopped (VM: an open edge
+  0.72 units from any wall is crossed at full speed); only walls stop or deflect the eye.
+- **Walk-map switching** (`walkmapSwitch`, default `settle`, as the VM does). Read literally, §6.5 makes the
   active map flip on every tick while the eye stands in the middle strip of the overlapping stair
   bands: each map's middle strip loads the other map, and each switch re-runs the enter macro.
   `settle` treats a switch to a cached map like a first load: the new map's current cell is the
   one under the eye, its enter macro does not run, and the switch counts as seen. Crossings
   then end on the right floor with one or two switches (tested on Beaumaris `level1`/`level2`).
-  `spec` keeps the literal rule. A VM item (§6.5).
-- **PVS** is strict: over a visibility cell only the listed triangle runs are drawn, by rewriting
-  each draw unit's index buffer when the cell changes. As a result the flames that no PVS list
-  names (Acropolis 9, Beaumaris 19, Abu Simbel 9, Roman Forum 1) are not drawn over visibility
-  cells. `alwaysDrawSprites` lifts this. LOD applies inside PVS mode too: a far base mesh is
-  replaced by its `lod_` mesh, drawn with the `lod_` mesh's own runs.
-- **LOD** switches at 13 XZ units from the base mesh centre. Orphan `lod_` meshes never draw.
+  `spec` keeps the literal rule. VM: crossing the Roman Forum stair-1 band switches the active map
+  once in each direction and never back (§6.5).
+- **PVS**: over a visibility cell only the listed triangle runs are drawn, by rewriting
+  each draw unit's index buffer when the cell changes. Sprites are always drawn whole, listed or
+  not (`alwaysDrawSprites`, default on; VM: Torch_19 shows from a cell whose list lacks it), so the
+  flames no list names (Acropolis 9, Beaumaris 19, Abu Simbel 9, Roman Forum 1) show. Over a
+  visibility cell there is **no LOD distance swap**: the lists name base or `lod_` meshes and those
+  draw (VM: at the Acropolis Erechtheum stop the Parthenon columns 5.2 units away are `lod_` meshes,
+  and full columns once `WALKMAP.DELETE.VISIBILITY` drops the PVS). `lodChoice` in `render/view.ts`.
+- **LOD** outside the PVS switches at 13 XZ units from the base mesh centre (VM: between 12.99 and
+  13.01). There, `lod_` meshes never draw on their own.
 - **Sprites** rotate about Y by the camera yaw (same rotation as the camera, so the quad stays
-  parallel to the view plane); pitch is ignored.
+  parallel to the view plane); pitch is ignored (VM: face-on from every yaw; at yaw 0 a sprite and
+  the same quad unrotated render identically at pitch −40).
 - **Cloud statues** are real impostors (§7.3.3), rendered on the GPU. Each placement has a
   W×H render target matching its placeholder texture. A points pass puts each point on one
   texel at `index = row·W + W/2 + col` (rows wrap as in the original, with no per-row clipping),
@@ -167,9 +177,11 @@ All world state is in glTF space; queries convert back to the disc's coordinates
   keep independent phases although `APPLYTEXTURE` replaced their shared texture record.
 - **2D layer** is drawn on a canvas overlay in CSS pixels, in element order. Captions are
   rasterised into a 512×32 canvas each and copied with point sampling: outlined style for
-  `color_key` captions, box/icon/frame style for hotspots, hover and pressed colours. Captions
-  that straddle an edge or fail the cone test are not drawn and cannot be hit. Release over the
-  pressed element fires `MOUSEUP`. Hotspot cursor `vthot360.cur` on hover and press; otherwise
+  `color_key` captions (1-px black rim, VM), box/icon/frame style for hotspots, hover and pressed
+  colours. A caption is drawn only strictly inside the view (VM: left > 0, top > 0, right < W − 1,
+  bottom < H − 1); one dropped at an edge cannot be hit. One that fails the cone test is not drawn
+  but keeps its last rectangle, which still takes clicks (VM). Release over the pressed element
+  fires `MOUSEUP`. Hotspot cursor `vthot360.cur` on hover and press; otherwise
   the navigation zones choose slots 0–4.
 - **Surfaces are bottom-up** (§5.6). The engine's texture surfaces start with the image's bottom
   row, for 2D and 3D images alike. In 3D the converter flips V (`v' = 1 − v`), so glTF textures and
@@ -177,9 +189,10 @@ All world state is in glTF space; queries convert back to the disc's coordinates
   row `H − 1 − r`. In 2D the painter draws the images flipped and maps the `NEXTFRAME` v-range from
   the bottom (the disc's 2D GIFs are stored upside down and show upright; this also gives the spinner
   its frame order).
-- **Caption width** uses the §8.4.2 rule with an approximation of the XP System font
-  (Helvetica-Bold widths × 14.6/1000, floored). That table reproduces both widths the authoring
-  tool saved: `ERS Label` 68 px → 89-px boxes and `ERS HotSpot` 83 px → 91-px boxes.
+- **Caption width** uses the §8.4.2 rule with the XP System font widths read in the VM
+  (GetCharWidth32, 0x20–0xFF) and the scale as a float32. It gives every hotspot-box width in the
+  VM captures (55, "Titus" 52 px) and the authoring widths (`ERS Label` 68 px → 89-px boxes,
+  `ERS HotSpot` 83 px → 91-px boxes).
 - **Far plane**: `CAMERA.FAR=-1`, or no `FAR` at all (Azuchi), gives 2 × world size. The
   control's own default is unknown.
 - `CAMERA.CLEARBACKGROUND=0` is not reproduced: the frame is always cleared to the background
@@ -187,10 +200,12 @@ All world state is in glTF space; queries convert back to the disc's coordinates
 
 ## Known gaps
 
-- VM items still open (tours-3d.md §10): LOD switching, the water ripple, PVS on/off and the
-  always-drawn list, back-face culling (faces are single-sided as converted; `doubleSided`
-  option), cloud-statue update steps and freeze distance, sprite yaw sign, film-strip fps, cursor zones, gravity mode, the walk-map switch ordering,
-  System font widths, the `_L` caption outline look, rotated site maps, open edges.
+- VM items still open (tours-3d.md §10): gravity mode and the hardware 5° cloud step (no 3D device
+  in the VM), the pitch-limit arithmetic, the water ripple's step rate (here at most 40 steps/s),
+  `3D.TOGGLEHIDDEN`'s effect on drawing. Faces are single-sided as converted (VM: back faces are
+  culled; `doubleSided` remains for experiments).
+- The app's menu offers "Labels and Hot Spots" (`2D.ON`/`2D.OFF`), but Encarta 2009 has no such
+  item (VM: only its strings remain in ENCARTAR.DLL).
 - Textures are mipmapped and filtered; the VM's software rasteriser samples without mipmaps, so its
   distant surfaces look sharper and noisier.
 - The 45° pitch test uses the exact pitch, where the original tests a value derived from its float
@@ -220,7 +235,7 @@ All world state is in glTF space; queries convert back to the disc's coordinates
 
 ## Verification
 
-`npm test`: 83 tour tests (logic 37, vm 21, disc 29 with `out/tours`). `logic.test.ts` covers the parser, interpreter, macros and alarms, walk-map
+`npm test`: 91 tour tests (logic 38, vm 24, disc 29 with `out/tours`). `logic.test.ts` covers the parser, interpreter, macros and alarms, walk-map
 lookup and gap closing, hotspot enter/exit, collision, time factor, step, pitch, snap and gravity,
 mouse vector and cursor zones, flicker, film strip, water, the cloud rasteriser, caption widths,
 NEXTFRAME, hit testing and macros, anchoring and the cone test, and the site map. `vm.test.ts`

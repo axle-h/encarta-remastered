@@ -73,21 +73,30 @@ export function vectorSources(style: StyleSpecification): string[] {
     .map(([id]) => id);
 }
 
-/** `[minzoom, maxzoom)` ranges. */
-export type Ranges = [number, number][];
+/**
+ * Hit side of an interactive rule (PDCAltitudeGrid `b4` high nibble, mad-styling.md §4.4): 0 = listed
+ * anywhere; 1 = land, left out when a water hit is listed too; 2 = water, listed only over water.
+ */
+export const HIT_SIDE_LAND = 1;
+export const HIT_SIDE_WATER = 2;
+
+/** `[minzoom, maxzoom, hit side]`. */
+export type HitRange = [number, number, number];
 
 /**
  * The style's per-class interactive ranges (metadata `encarta:interactive`, from PDCAltitudeGrid
- * `b4`, mad-styling.md §4.1): `class → [[minzoom, maxzoom, tri-state], …]`, tri-state 1 = by
- * default, 2 = when the user turns the class on.
+ * `b4`, mad-styling.md §4.1, §4.3, §4.4): `class → [[minzoom, maxzoom, tri-state, hit side], …]`, tri-state
+ * 1 = by default, 2 = when the user turns the class on. Styles without the hit side get side 0.
  */
-export function interactiveRanges(style: StyleSpecification): Map<number, [number, number, number][]> {
+export function interactiveRanges(style: StyleSpecification): Map<number, [number, number, number, number][]> {
   const m = (style.metadata ?? {}) as Record<string, unknown>;
   const raw = m["encarta:interactive"];
-  const out = new Map<number, [number, number, number][]>();
+  const out = new Map<number, [number, number, number, number][]>();
   if (raw && typeof raw === "object") {
     for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-      if (Array.isArray(v)) out.set(Number(k), v.filter((r): r is [number, number, number] => Array.isArray(r) && r.length === 3));
+      if (!Array.isArray(v)) continue;
+      const rows = v.filter((r): r is number[] => Array.isArray(r) && (r.length === 3 || r.length === 4) && r.every((x) => typeof x === "number"));
+      out.set(Number(k), rows.map((r): [number, number, number, number] => [r[0]!, r[1]!, r[2]!, r[3] ?? 0]));
     }
   }
   return out;
@@ -99,15 +108,17 @@ export function menuExcludedClasses(style: StyleSpecification): Set<number> {
   return new Set(Array.isArray(raw) ? raw.filter((c): c is number => typeof c === "number") : []);
 }
 
-function union(r: Ranges): Ranges {
+/** Overlapping or adjacent ranges of the same hit side merged. */
+function union(r: HitRange[]): HitRange[] {
   const s = [...r].sort((a, b) => a[0] - b[0]);
-  const out: Ranges = [];
-  for (const [a, b] of s) {
-    const last = out[out.length - 1];
+  const out: HitRange[] = [];
+  for (const [a, b, side] of s) {
+    let last: HitRange | undefined;
+    for (const x of out) if (x[2] === side) last = x;
     if (last && a <= last[1] + 0.02) last[1] = Math.max(last[1], b);
-    else out.push([a, b]);
+    else out.push([a, b, side]);
   }
-  return out;
+  return out.sort((x, y) => x[0] - y[0]);
 }
 
 /**
@@ -117,37 +128,37 @@ function union(r: Ranges): Ranges {
  * draws nor labels. It leaves out the classes of PDCAttribute pen group 134 (time zones, DST areas,
  * "Shading - gray"), as ENCARTA.EXE does (metadata `encarta:menu_excluded_classes`, mad-styling.md §16 V11).
  */
-export function hitRanges(style: StyleSpecification, o: ClassOverrides): Map<number, Ranges> {
-  const out = new Map<number, Ranges>();
+export function hitRanges(style: StyleSpecification, o: ClassOverrides): Map<number, HitRange[]> {
+  const out = new Map<number, HitRange[]>();
   const excluded = menuExcludedClasses(style);
   for (const [cls, rules] of interactiveRanges(style)) {
     if (o.off.has(cls) || excluded.has(cls)) continue;
-    const r = union(rules.filter((x) => x[2] === 1 || (x[2] === 2 && o.on.has(cls))).map((x): [number, number] => [x[0], x[1]]));
+    const r = union(rules.filter((x) => x[2] === 1 || (x[2] === 2 && o.on.has(cls))).map((x): HitRange => [x[0], x[1], x[3]]));
     if (r.length) out.set(cls, r);
   }
   return out;
 }
 
-/** Classes in the hit list at `zoom`. */
-export function hitClassesAt(ranges: ReadonlyMap<number, Ranges>, zoom: number): Set<number> {
-  const out = new Set<number>();
-  for (const [cls, r] of ranges) if (r.some(([a, b]) => zoom >= a && zoom < b)) out.add(cls);
+/** Classes in the hit list at `zoom`, each with its hit side there. */
+export function hitClassesAt(ranges: ReadonlyMap<number, readonly HitRange[]>, zoom: number): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const [cls, r] of ranges) {
+    const hit = r.find(([a, b]) => zoom >= a && zoom < b);
+    if (hit) out.set(cls, hit[2]);
+  }
   return out;
 }
 
 const NAMED: FilterSpecification = ["all", ["has", "name"], ["!=", ["get", "name"], ""], ["!", ["to-boolean", ["coalesce", ["get", "anonymous"], false]]]];
-
-/** Not the water part of a split polygon: the click menu lists no land area over the sea (VM, Brittany coast). */
-const LAND_PART: FilterSpecification = ["!", ["to-boolean", ["coalesce", ["get", "water"], false]]];
 
 /**
  * Invisible layers for hit-testing the `areas` layer, so a click can list everything under the
  * cursor as Encarta's pop-up menu does (V11), including label-only areas that no layer draws
  * (regions, basins). One layer per zoom range with the classes in the hit list there; lines and
  * points are hit-tested on their drawn layers. MapLibre queries layers by geometry, not opacity.
- * Water parts of split polygons (`water: true`) are left out.
+ * Both parts of split polygons are hit-tested; hit.ts `rankHits` applies the hit sides.
  */
-export function hitLayers(style: StyleSpecification, ranges: ReadonlyMap<number, Ranges>): LayerSpecification[] {
+export function hitLayers(style: StyleSpecification, ranges: ReadonlyMap<number, readonly HitRange[]>): LayerSpecification[] {
   const byRange = new Map<string, number[]>();
   for (const [cls, rs] of ranges) {
     for (const [a, b] of rs) {
@@ -170,7 +181,7 @@ export function hitLayers(style: StyleSpecification, ranges: ReadonlyMap<number,
         "source-layer": "areas",
         minzoom: a,
         maxzoom: b,
-        filter: ["all", NAMED, LAND_PART, ["in", ["get", "class"], ["literal", classes]]] as FilterSpecification,
+        filter: ["all", NAMED, ["in", ["get", "class"], ["literal", classes]]] as FilterSpecification,
         paint: { "fill-opacity": 0, "fill-color": "#000" },
       });
     });

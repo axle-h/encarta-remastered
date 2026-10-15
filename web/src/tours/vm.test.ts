@@ -8,7 +8,9 @@ import { decodePose, encodePose, hotspotDestination, playHostStart, poseCommand 
 import { parseCommand } from "./script/parse";
 import { stepPitch, newCamera, NO_INPUT } from "./sim/camera";
 import { FixedTicker } from "./sim/clock";
-import { FlickerLight, lcg } from "./sim/effects";
+import { Filmstrip, FlickerLight, lcg } from "./sim/effects";
+import { captionWidth } from "./hud/caption";
+import { lodChoice } from "./render/view";
 import { coversGridCell } from "./sim/walkmap";
 import type { Cell, ElementDef, LayerFile, SeqStep, TourScene, WalkMapFile } from "./types";
 
@@ -338,6 +340,21 @@ describe("flicker and the loading screen (VM)", () => {
     expect(gaps.filter((g) => g === 7).length).toBeGreaterThan(80);
   });
 
+  it("a 0.4-s flicker steps every 26 ticks (VM: 402–421 ms) and a .07-s film strip every 5 ticks (VM: 72–96 ms, mean 81)", () => {
+    const f = new FlickerLight(0.4, [200, 150, 100]);
+    const strip = new Filmstrip(16, 0.07, lcg(3));
+    const rng = lcg(5);
+    const flick: number[] = [];
+    const frames: number[] = [];
+    for (let i = 1; i <= 640; i++) {
+      if (f.advance(1 / 64, rng)) flick.push(i);
+      if (strip.advance(1 / 64)) frames.push(i);
+    }
+    const gaps = (t: number[]) => t.slice(1).map((v, i) => v - (t[i] ?? 0));
+    expect(new Set(gaps(flick))).toEqual(new Set([26]));
+    expect(new Set(gaps(frames))).toEqual(new Set([5]));
+  });
+
   it("the loading screen stays about 2 s, its spinner turning at 10 fps", () => {
     const c = new TourControl(scene(), { rng: lcg(1) });
     let frames = 0;
@@ -403,5 +420,24 @@ describe("walk-map grid cells (VM: scan-line span rule, §6.14)", () => {
     expect(coversGridCell(right, 51, 66)).toBe(false);
     expect(coversGridCell(left, 44, 66)).toBe(false);
     expect(coversGridCell(right, 52, 80)).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------------ captions, LOD and PVS (VM pass 2026-10-15)
+
+describe("caption widths, LOD and PVS (VM)", () => {
+  it("caption boxes have the VM's widths (System font, float32 scale)", () => {
+    expect(captionWidth("Doric Columns, Parthenon", false)).toBe(155);
+    expect(captionWidth("Battle of Lapiths and Centaurs", false)).toBe(175);
+    expect(captionWidth("Parthenon Frieze", false)).toBe(112);
+    expect(captionWidth("Titus", false)).toBe(52);
+  });
+
+  it("swaps to the lod_ mesh beyond 13 XZ units only outside the PVS; over a visibility cell the lists decide", () => {
+    expect(lodChoice(false, false, true, 12.99, 13)).toBe("self");
+    expect(lodChoice(false, false, true, 13.01, 13)).toBe("partner");
+    expect(lodChoice(false, true, false, 1, 13)).toBe("none");
+    expect(lodChoice(true, true, false, 1, 13)).toBe("self");
+    expect(lodChoice(true, false, true, 20, 13)).toBe("self");
   });
 });

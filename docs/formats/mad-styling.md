@@ -156,7 +156,7 @@ pen; it is not used in the shipped data). "Tri-state" is explained in §4.3.
 | `b2` high nibble | | a level, 1 or 3 (MOBB turns 0 into 1). 49 = `0x31` in 11 rules. Meaning open | — |
 | `b3` | B | **label** visible: tri-state | code |
 | `b4` low nibble | B | **interactive** (the feature goes into the hit-test list used for tooltips and clicks): tri-state | code |
-| `b4` high nibble | | 0/1/2, mostly on areas (17 = `0x11`, 33 = `0x21`). Meaning open (probably the same tri-state for a 4th aspect) | — |
+| `b4` high nibble | | **hit side** of the click menu (§4.4): 0 anywhere, 1 land (countries, divisions, continents, islands, physiographic regions, basins), 2 water (oceans, seas, water labels, reefs). Per style: 0 for most classes in the satellite and thematic styles | VM (2026-10-14) |
 | `w5` | W | **GeoLabel index** of the label style | code; validated range (all < 422) |
 | `w6` * | W | GeoLabel index of the **alternative name** (the text after U+0004, §7.3): MOBB draws it as an extra last line under the main name, in this style. `w6` = none: the alternative is never drawn. With a shield style in `w5` (§8) it styles the text after U+0006 under the shield. Set in 23,145 of 33,086 rules (= `w5` in 17,866); all 353 names with U+0004 fall on classes that have it | code (FUN_6356e587, FUN_6356ea10) |
 | `w7 … w13` * | W | **pen layers 0…6** (GeoPenDef index). Lines: up to 5 stacked strokes in the shipped data (w12, w13 always none). Areas: w7 is the fill pen. Points: w7 is the **symbol pen** (its bitmap is the symbol) | code + renders |
@@ -210,6 +210,33 @@ at that altitude. For example, airports far out have `b2 = 2` and are shown only
 Counts over all styles: `b2` low nibble 0 = 22,508, 1 = 8,978, 2 = 1,600 rules. For a MapLibre style, compile
 `v = 1` as a visible layer. Compile `v = 2` as a layer with `visibility: none`, and let the UI's "show more"
 toggles turn it on.
+
+### 4.4 Hit side: what the click menu lists over the sea (VM, 2026-10-14)
+
+The high nibble of `b4` decides where an interactive feature enters the click menu. MOBB copies it into each
+hit-list entry; the rule below is read from the menus, not from the code:
+- **2, water** (style 0: Ocean, Inland sea, Water label major/minor/ocean water, Lake - no draw, Reef area): listed
+  only where the point is over water. On Belle-Île, inside the Bay of Biscay polygon, the menu lists Sauzon,
+  Morbihan, Brittany, Belle-Île and France but not the Bay.
+- **1, land** (Sovereign, CountryRegion, Dependent, Admin 1, Admin 2, Continent, Island, Physiographic region,
+  River basin, Mountain range): left out when a water entry is in the list. 1–3 km off Brittany (300 km) only
+  "Bay of Biscay" is listed, and the Coral Sea leaves out Australia and Coral Sea Islands Territory. Where no
+  water polygon is hit, land classes are listed over the sea: 0.7–4.8 km west of Jersey (300 km) "Jersey (U.K.),
+  Channel Islands, British Isles", exactly as far as the band-7 polygons reach; off Klaipėda (8,000 km) "Eastern
+  Europe, Europe".
+- **0, anywhere**: World (globe, mid-Pacific: "Pacific Ocean, World"), tectonic plates on the Tectonic map
+  ("North American Plate, Atlantic Ocean"), parks ("Great Barrier Reef Marine Park, Great Barrier Reef, Coral
+  Sea" over open water), statistical regions ("Western Europe, West Central Europe, North Sea"), lakes and
+  rivers (Lake Geneva with Vaud and Switzerland), time zones.
+
+The nibble is per rule and per style: Sovereign is 1 in Comprehensive, Political and Tectonic but 0 in the
+satellite, temperature, climate and other thematic styles; Ocean and the water labels are 0 in the two satellite
+styles; Admin 1 colours are 0 on the Time Zones map. Over all styles `b4` high is 0 in most rules, 1 on the land
+area classes above and 2 on the water classes. Over water means the raster's water pixel class; the converter
+uses the HYPSO water mask (atlas-output.md "Hit sides").
+
+Labels are hit too: at 8,000 km a click on the drawn "ITALY" or "GREECE" over the sea lists the country with the
+Mediterranean Sea; on the Time Zones map, which draws no country names, the same point does not list Italy.
 
 ## 5. GeoPenDef: pens and brushes
 
@@ -433,9 +460,17 @@ What is established (code and renders):
 - Point labels are placed beside the symbol. MOBB tries several positions (FUN_63535290 loops over candidate
   boxes and keeps the one with the fewest overlaps). Line labels follow the line, and MOBB rotates the font
   (`lfEscapement` from the segment angle).
+- **Candidate positions (VM, 2026-10-14):** a point label sits diagonally off its symbol, the text box's corner
+  at the symbol's corner (about 1 px apart), never centred beside, above or below it. With nothing in the way it
+  is **above right**: all 7 isolated places of the outback view (Finke, Erldunda, Kulgera, Marla, Indulkana, two
+  two-line roadhouses; `fixtures/atlas/labels/`). In dense areas (Morbihan, 300 km) the other corners occur:
+  above left most often (about 18 of 30 labels), then below right and below left (about 5 each). Lambina, with
+  "SOUTH AUSTRALIA" above it, is below right. The order after above right is not determined; the counts suggest
+  above left next. How the overlap count weighs against this order is not read (open, §17).
 
 MapLibre: `symbol-sort-key = b13` within a layer, and symbol layers stacked by descending b13 (MapLibre places
-the top layer's symbols first). Use `text-variable-anchor` [right, left, top, bottom] for points,
+the top layer's symbols first). Use `text-variable-anchor` [bottom-left, bottom-right, top-left, top-right]
+(above right first) with a small `text-radial-offset` for points,
 `symbol-placement: line` for line classes, and `text-allow-overlap: false` with `icon-optional: false` so that
 symbol and label appear together.
 
@@ -816,23 +851,26 @@ opened with the URL form of §2.3. If `alt` turns out not to be km, adjust the n
 - V15 (2026-10-14): the alternative name on a second line with a 1-px rule as wide as the wider line (§7.3).
 - Sea click (2026-10-14, Comprehensive, 300 km, Brittany coast): 1–3 km offshore the menu lists only "Bay of
   Biscay" (plus a city within its hit radius), although the polygons of France, Brittany and Morbihan cover the
-  point; on land "Saint-Aubin, Morbihan, Brittany, France". On Lake Geneva (land in the HYPSO raster) it lists
-  Vaud and Switzerland. So no land area class is hit where the raster is water. The converter splits interactive
-  area classes along the HYPSO water mask and the client skips the water parts (atlas-output.md "Draw-over masks").
+  point; on land "Saint-Aubin, Morbihan, Brittany, France". On Lake Geneva it lists Vaud and Switzerland.
+  **Explained by the hit side** (§4.4, second VM pass the same day): water classes are listed only over water,
+  land classes are left out when a water class is listed, and World, plates, parks and regions are listed anywhere.
+  A first reading ("no land area over the sea") was wrong: off Jersey, where no water polygon is hit, Jersey is
+  listed over the sea.
 
 ## 17. Open points and provenance
 
 Open, in priority order:
 1. ~~`P` and `m` (§2.1)~~: measured, `P/m ≈ 6.05 × pane height` (V1, V2).
 2. GeoLabel bytes 5–10, 11 (low nibble; what the two other line-label routines of the high nibble do), 16 (other
-   than shield outline), 25. Then PDCAltitude `b2` high nibble and `b4` high nibble (MOBB copies `b4` high into
-   each hit-list entry; its use there is not read). ~~When `w6` is used~~: alternative-name line (§4.1, §7.3),
+   than shield outline), 25. Then PDCAltitude `b2` high nibble. ~~`b4` high nibble~~: the hit side (§4.4), from
+   the VM's click menus; the code that applies it is not read. ~~When `w6` is used~~: alternative-name line (§4.1, §7.3),
    confirmed in the VM (V15, 2026-10-14), with a rule between the lines.
 3. ~~The road shield source~~: shields are labels of road lines whose `w5` GeoLabel has a shape in byte 12 (§8.1),
    checked against V8. Open: how the overlap cost weighs against the centre cost (exact choice among candidates).
 3a. ~~Why V11's click menu leaves out time zones~~: ENCARTA.EXE drops pen group 134 (§16 V11 result); V16 to
     confirm on the Time Zones map.
-4. Whether areas are always drawn before lines (§9). The exact label candidate positions (§7.4).
+4. Whether areas are always drawn before lines (§9). Label candidates (§7.4): the four diagonal corners, above
+   right first (VM); the order of the other three and the overlap cost need the code or a debugger.
 5. The Miller `y0` at levels 2–3 (§12.3), and the flat-view scale relation (§2.1).
 6. The meaning of MapStyle colour 1/2 and flags (§3); LegendGrid (§13.1).
 7. TESS triangle codes, Find Data detail tables, GeoPenDef bytes 14, 23 and 25–29 (all 0 or nearly).

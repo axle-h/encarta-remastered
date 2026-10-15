@@ -231,6 +231,7 @@ export function MapTrekView({ item, kids }: { item: Item; kids: boolean }) {
   const media = stop.data?.media?.[0];
   const thumb = media?.thumb ?? fileByRole(stop.data, "thumb", "picon");
   const caption = media?.caption_html ?? stop.data?.caption_html;
+  const [panelOpen, setPanelOpen] = useState(true);
   return (
     <div className="mt-page">
       <section className="trek-map" aria-label="Map">
@@ -242,17 +243,20 @@ export function MapTrekView({ item, kids }: { item: Item; kids: boolean }) {
           <div className="enc-loading">{stop.loading ? <div className="enc-spinner" /> : <p className="enc-muted">No map view for this stop.</p>}</div>
         )}
       </section>
-      <MapTrekPanel
-        trekTitle={item.title ?? "Map Trek"}
-        stops={stops.map((s) => ({ id: s.ref_id, title: s.title ?? "" }))}
-        index={idx}
-        thumbSrc={fileUrl(thumb)}
-        caption={caption ? <Html as="span" html={caption} /> : undefined}
-        onSelect={go}
-        onNewTrek={() => navigate(`/item/${MAP_TREKS_PAGE}`)}
-      >
-        {current ? <ArticleInline key={current} id={current} kids={kids} /> : <p>This Map Trek has no stops.</p>}
-      </MapTrekPanel>
+      {panelOpen && (
+        <MapTrekPanel
+          trekTitle={item.title ?? "Map Trek"}
+          stops={stops.map((s) => ({ id: s.ref_id, title: s.title ?? "" }))}
+          index={idx}
+          thumbSrc={fileUrl(thumb)}
+          caption={caption ? <Html as="span" html={caption} /> : undefined}
+          onSelect={go}
+          onNewTrek={() => navigate(`/item/${MAP_TREKS_PAGE}`)}
+          onClose={() => setPanelOpen(false)}
+        >
+          {current ? <ArticleInline key={current} id={current} kids={kids} /> : <p>This Map Trek has no stops.</p>}
+        </MapTrekPanel>
+      )}
     </div>
   );
 }

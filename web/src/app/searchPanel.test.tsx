@@ -69,10 +69,25 @@ describe("search panel", () => {
     fireEvent.click(maps);
     expect(maps.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("button", { name: /Best Matches/ }).getAttribute("aria-expanded")).toBe("false");
-    expect(await screen.findByRole("link", { name: "Search all maps" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Search all maps" }).getAttribute("href")).toBe("/search?q=zebra&kind=map");
+    expect(await screen.findByText("No results were found in Maps")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Quotations/ })).toBeNull();
     fireEvent.click(tab);
     expect(screen.queryByRole("complementary", { name: "Search results" })).toBeNull();
+  });
+
+  it("highlights the first hit, lists articles without snippets and resizes within the VM's limits", async () => {
+    app();
+    type("zebra");
+    const first = await screen.findByRole("link", { name: /Zebra/ });
+    expect(first.className).toBe("sel");
+    expect(screen.getAllByText("snippet").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /Articles/ }));
+    await screen.findAllByRole("link", { name: /Quagga/ });
+    expect(screen.queryByText("snippet")).toBeNull();
+    const split = screen.getByRole("separator", { name: "Resize search results" });
+    expect(split.getAttribute("aria-valuenow")).toBe("378");
+    for (let i = 0; i < 20; i++) fireEvent.keyDown(split, { key: "ArrowLeft" });
+    expect(split.getAttribute("aria-valuenow")).toBe("498");
   });
 
   it("hides on a page click unless keep open is checked", async () => {
