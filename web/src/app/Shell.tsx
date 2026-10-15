@@ -8,6 +8,7 @@ import { OptionsDialog } from "./OptionsDialog";
 import { COPY_CHOICES, PRINT_CHOICES, ScopeDialog } from "./ScopeDialog";
 import { FeaturesMenu } from "./FeaturesMenu";
 import { useShortcuts } from "./shortcuts";
+import { useDoubleClickLookup } from "./wordLookup";
 import { SearchBox } from "../components/SearchBox";
 import { COPY_EVENT, OPTIONS_EVENT, PRINT_EVENT, copyScope, copySelection, installCopySourceLine, openFind, printPage, printWith, selectedText, type ArticleScope } from "./commands";
 import { canReadAloud, isReading, readAloud, readAloudSubmenu, stopReading } from "./readAloud";
@@ -238,6 +239,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const home = location.pathname === "/";
   useShortcuts();
+  useDoubleClickLookup();
   return (
     <div className={`shell${home ? " shell-home" : ""}`}>
       <a className="skip-link" href="#content">

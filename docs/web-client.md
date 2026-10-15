@@ -310,6 +310,7 @@ decoded size and horizon match an independent survey of all 167.
 - Vasco da Gama's missing ocean fill was seen once (the first headless run against a cold server: the full-frame
   ocean rectangle and the graticule absent, land drawn) and not again in 30 runs (wgpu-webgl, webgl, canvas,
   WebGPU; sizes 460–700 px; throttled network; in the app). Unexplained; watch for it on real GPUs.
+- Double-clicking a word in article text or the Map Trek stop text opens the dictionary on it (`app/wordLookup.ts`, installed by both shells; links and buttons excluded).
 - Parental Controls of the dictionary window are dropped by choice (PLAN.md).
 - Item kinds, menus, Favorites, print and the panoramic tours added by the parity audit: see [parity.md](parity.md).
 - Chrome details measured in the VM (vm-findings.md, "UI pass 2"):

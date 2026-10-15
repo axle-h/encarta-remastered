@@ -28,16 +28,18 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 ## Next (priority order)
 
 Found in the second VM pass, not built yet:
-1. Double-clicking a word in an article looks it up in the dictionary (seen in the VM).
-2. Favorites folders and New Folder; the Copy dialog's "With Media" choice.
-3. Decide: Encarta's MIDI output is dry and mono and cuts at the last event, while ours adds reverb (about 15 dB
-   down) and rings 0.3 s on (media.md §8). Our tour menu's "Show Labels and Hot Spots" does not exist in Encarta
-   2009 (only its strings remain); keep it as an extra or drop it. A correct Geography Quiz answer plays a ~2 s
-   fanfare that is not on the disc (likely Windows' tada.wav), so it would need a sound of our own.
+1. Favorites folders and New Folder; the Copy dialog's "With Media" choice.
+2. **Geography Quiz fanfare**: a correct answer plays a ~2 s fanfare in Encarta that is not on the disc (likely
+   Windows' tada.wav); make a short fanfare of our own (synthesised, nothing from Windows). S
+3. **VM with Flash Player and a debugger** (approved by Alex 2026-10-14): install both in the guest (download on the
+   host, move in through the exchange disk), then settle the Flash- and debugger-blocked items under "Needs the VM".
 
-Re-run `encarta-convert content` (timeline `date_text`, three new UI sounds), `encarta-convert search`
-(ranking fixes) and `ENCARTA_ATLAS_ONLY=vector,style encarta-convert atlas` (hit sides, label corners, rule glyph
-faces) to bring `out/` up to date, then rebuild the server and web client.
+Decided by Alex 2026-10-15: keep our MIDI reverb and 0.3 s ring-out (Encarta's output is dry and mono and cuts at the
+last event, media.md §8); keep the tour menu's "Show Labels and Hot Spots" as an extra (Encarta 2009 has only its
+strings).
+
+Done 2026-10-15 (double-click lookup): double-clicking a word in an article or Map Trek stop text opens the dictionary
+on it (`/dictionary?q=`, `/kids/dictionary?q=` in Kids); `web/src/app/wordLookup.ts`, web-client.md. Not run in a browser.
 
 Done 2026-10-15 (VM pass 2, "Needs the VM"): **atlas**: the `b4` high nibble of PDCAltitudeGrid is the hit side
 (2 water: listed only over water; 1 land: dropped only when a water class is listed; 0 anywhere: World, plates,

@@ -11,6 +11,7 @@ import { useHistoryButtons } from "../app/history";
 import { copySelectionOrArticle, installCopySourceLine, openFind, printPage } from "../app/commands";
 import { favorites, pageTitle } from "../app/favorites";
 import { useSettings } from "../settings/settings";
+import { useDoubleClickLookup } from "../app/wordLookup";
 
 const tick = (on: boolean, label: string) => `${on ? "✓ " : " "}${label}`;
 
@@ -162,6 +163,7 @@ export function KidsShell({ children }: { children: ReactNode }) {
   const [note, setNote] = useState("");
   const copy = () => void copySelectionOrArticle().then((ok) => setNote(ok ? "Copied." : "Nothing was copied."));
   useEffect(installCopySourceLine, []);
+  useDoubleClickLookup(true);
   return (
     <div className="shell kids-shell">
       <header className="kids-bar">
