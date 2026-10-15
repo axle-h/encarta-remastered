@@ -37,7 +37,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Home links Dictionary, Encarta Kids | done | `/dictionary`, `/kids` | — |
 | Menu bar File / Edit / Favorites / Help | done | `MenuBar` in `app/Shell.tsx`; entries and keyboard shortcuts (`app/shortcuts.ts`) per the VM (2026-10-14) | File › Go to is a flat group (Back / Forward / Home Page), not a submenu; Edit › Read Aloud enabled, Pause becomes Continue (UI pass 2); File › Exit left out (a page cannot close its window) |
 | File › Print, Edit › Copy | done | Encarta's scope dialog (whole text / with media / selection), `app/ScopeDialog.tsx`, `commands.ts`; a copyright line is always appended (VM 2026-10-14) | — |
-| Edit › Copy (with a source line) | partial | `app/commands.ts`; VM line "Microsoft® Encarta® 2009. © 1993-2008 Microsoft Corporation. All rights reserved." on the next line after a selection, after a blank line for a whole article or entry; Ctrl+C in articles adds it too (UI pass 2) | the copy dialog's "With Media" choice not built |
+| Edit › Copy (with a source line) | done | `app/commands.ts`; VM line "Microsoft® Encarta® 2009. © 1993-2008 Microsoft Corporation. All rights reserved." on the next line after a selection, after a blank line for a whole article or entry; Ctrl+C in articles adds it too (UI pass 2) | the full-article dialog offers Whole Article With Media: HTML of the text and side columns (pictures, absolute URLs) plus the text and source line (not run in a browser) |
 | Edit › Find in Article | done | menu entry → find bar (this audit); Ctrl+F | — |
 | Help (Encarta's own help files) | partial | `/help`: about + keyboard shortcuts (this audit) | the disc's three CHM files (Windows UI help) are omitted by design (media.md §4) |
 | Back / Forward orbs with history state | done | `NavButtons` | — |
@@ -214,10 +214,10 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| Add to Favorites (any page, with its deep link) | done | `app/favorites.ts`, localStorage; Add to Favorites… opens a Name dialog ("Article - <title>"), as in the VM (UI pass 2) | per browser *(ours)*: 2009 kept them per Windows user; folders and New Folder not built |
-| Favorites list in the menu (20) and Organize Favorites (rename, reorder, remove) | done | `/favorites` (this audit) | Encarta's folder structure was not captured |
+| Add to Favorites (any page, with its deep link) | done | `app/favorites.ts`, localStorage; Add to Favorites… opens a Name dialog ("Article - <title>"), as in the VM (UI pass 2) | per browser *(ours)*: 2009 kept them per Windows user; folders are one level deep (the menu cascades one level); not run in a browser |
+| Favorites list in the menu (20) and Organize Favorites (folders, rename, reorder, move, remove) | done | `/favorites`; folders (New Folder, rename, delete with contents) as submenus of the menu; Add to Favorites has "Create in:" and New Folder… (VM favorites captures) | one level only |
 | Print with a print style sheet | done | `styles/print.css` (this audit): no chrome, strip, tools or viewers; right column after the text | — |
-| Copy with source line | partial | see Edit › Copy | "With Media" not built |
+| Copy with source line | done | see Edit › Copy | — |
 | Export / Save As, Send to Word (Works task launcher) | n/a | `EE/WORKS` omitted (media.md §4) | — |
 
 ## Settings

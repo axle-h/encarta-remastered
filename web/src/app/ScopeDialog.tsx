@@ -14,6 +14,7 @@ export const PRINT_CHOICES: ScopeChoice[] = [
 
 export const COPY_CHOICES: ScopeChoice[] = [
   { scope: "text", label: "Whole Article Text" },
+  { scope: "media", label: "Whole Article With Media" },
   { scope: "selection", label: "Selected Text" },
 ];
 

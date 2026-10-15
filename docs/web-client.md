@@ -45,7 +45,7 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
 | `/tours`, `/tours/{tourId}` | 3D Virtual Tours list and a tour (`mountTour`) |
 | `/atlas`, `/atlas/place/{gid}`, `/atlas?url=msencarta://…`, `/atlas?lat=&lon=&alt=[&style=][&view=flat]` | World Atlas (`src/atlas/`), or a placeholder listing the place's links when that module is missing. The map writes its view back into the URL (`onViewChange`, debounced, replace); only URL changes it did not write remount it |
 | `/kids`, `/kids/browse/{id}`, `/kids/item/{id}`, `/kids/search`, `/kids/dictionary` | Encarta Kids |
-| `/favorites` | Organize Favorites (rename, reorder, remove; kept in localStorage) |
+| `/favorites` | Organize Favorites (folders, rename, reorder, move, remove; kept in localStorage) |
 | `/help` | About and keyboard shortcuts |
 | any route `?media={id}` | the media viewer overlay on top of that page (Back closes it) |
 
@@ -332,7 +332,7 @@ decoded size and horizon match an independent survey of all 167.
   - Search panel: 378 px wide by default, 308–498 px with the splitter at its left edge; button-face background;
     32 px bars; the first hit highlighted green; the Articles list shows titles only; empty categories say so with no
     link; Quotations appears only in Quick Search (the VM's panel never lists it).
-  - Add to Favorites opens a Name dialog ("Article - <title>" for articles); Encarta's folder tree is not built.
+  - Add to Favorites opens a Name dialog ("Article - <title>" for articles); a "Create in:" folder list and New Folder… (one level; `favorites.ts` keeps folders under `encarta.favorite-folders.v1`, a favorite carries `folder`); folders are submenus of the Favorites menu. Copy on a full article offers Whole Article With Media (`commands.ts` `articleHtmlWithMedia`).
   - Map Trek dialog at the VM's sizes (450 px, 257/150 px text and list boxes, 8 pt text) with a close button; the
     map stays when it is closed.
 - Panoramas: none of the player's behaviour has been compared with the VM yet. The open questions are the tour

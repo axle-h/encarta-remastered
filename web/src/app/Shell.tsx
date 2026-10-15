@@ -27,13 +27,25 @@ export const FAVORITES_IN_MENU = 20;
 /** The Favorites menu's entries (adult and Kids): Add…, Organize…, then the saved pages or "<empty>". */
 export function favoritesMenu(onAdd: () => void): MenuEntry[] {
   const list = favorites.list();
+  const folders = favorites.folders();
+  const top = list.filter((f) => !f.folder);
   return [
     { label: "Add to Favorites…", onSelect: onAdd, key: "fav-add" },
     { label: "Organize Favorites…", to: "/favorites", key: "fav-org" },
     { separator: true, key: "fav-sep" },
-    ...(list.length === 0 ? [{ label: "<empty>", disabled: true, key: "fav-empty" }] : []),
-    ...list.slice(0, FAVORITES_IN_MENU).map((f) => ({ label: f.title, to: f.path, key: f.path })),
-    ...(list.length > FAVORITES_IN_MENU ? [{ label: `All ${list.length} favorites…`, to: "/favorites", key: "all" }] : []),
+    ...(list.length === 0 && folders.length === 0 ? [{ label: "<empty>", disabled: true, key: "fav-empty" }] : []),
+    ...folders.map((name) => {
+      const inside = list.filter((f) => f.folder === name);
+      return {
+        label: name,
+        key: `folder:${name}`,
+        submenu: inside.length
+          ? inside.slice(0, FAVORITES_IN_MENU).map((f) => ({ label: f.title, to: f.path, key: f.path }))
+          : [{ label: "<empty>", disabled: true, key: `empty:${name}` }],
+      };
+    }),
+    ...top.slice(0, FAVORITES_IN_MENU).map((f) => ({ label: f.title, to: f.path, key: f.path })),
+    ...(top.length > FAVORITES_IN_MENU ? [{ label: `All ${list.length} favorites…`, to: "/favorites", key: "all" }] : []),
   ];
 }
 
@@ -145,8 +157,8 @@ export function MenuBar() {
         <AddFavoriteDialog
           name={defaultFavoriteName(title, isArticle())}
           onCancel={() => setDialog(null)}
-          onAdd={(name) => {
-            favorites.add(here, name);
+          onAdd={(name, folder) => {
+            favorites.add(here, name, folder);
             setDialog(null);
             flash(`“${name}” is in your Favorites.`);
           }}

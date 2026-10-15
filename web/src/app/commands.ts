@@ -97,8 +97,47 @@ export function articleText(): string {
   return title && !body.startsWith(title) ? `${title}\n\n${body}` : body;
 }
 
-/** Edit › Copy for a scope: the selection, or the whole article text, with the source line. */
+/**
+ * The article as HTML with its pictures (the text column and the side column beside it), links
+ * made absolute and controls dropped; "" when the page has no article.
+ */
+export function articleHtmlWithMedia(): string {
+  const cols = document.querySelector<HTMLElement>(".art-cols");
+  if (!cols) return "";
+  const box = cols.cloneNode(true) as HTMLElement;
+  box.querySelectorAll("button, script, style, audio, video, canvas, iframe").forEach((n) => n.remove());
+  box.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
+    const src = img.getAttribute("src");
+    if (src) img.setAttribute("src", new URL(src, document.baseURI).href);
+  });
+  box.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => a.setAttribute("href", new URL(a.getAttribute("href")!, document.baseURI).href));
+  const title = (document.querySelector<HTMLElement>("main h1")?.innerText ?? "").trim();
+  const head = title ? `<h1>${title.replace(/[&<]/g, (c) => (c === "&" ? "&amp;" : "&lt;"))}</h1>` : "";
+  return `${head}${box.innerHTML}${sourceLineHtml()}`;
+}
+
+/** Puts HTML and its plain text on the clipboard; falls back to the text alone. */
+export async function writeClipboardHtml(html: string, text: string): Promise<boolean> {
+  try {
+    if (typeof ClipboardItem !== "undefined") {
+      await navigator.clipboard.write([
+        new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) }),
+      ]);
+      return true;
+    }
+  } catch {
+    /* fall through to plain text */
+  }
+  return writeClipboard(text);
+}
+
+/** Edit › Copy for a scope: the selection, the whole article text, or the whole article with its pictures. */
 export async function copyScope(scope: ArticleScope): Promise<boolean> {
+  if (scope === "media") {
+    const text = withSourceLine(articleText(), true);
+    const html = articleHtmlWithMedia();
+    return text && html ? writeClipboardHtml(html, text) : false;
+  }
   const text = scope === "selection" ? withSourceLine(selectedText()) : withSourceLine(articleText(), true);
   return text ? writeClipboard(text) : false;
 }

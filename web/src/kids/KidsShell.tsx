@@ -146,8 +146,8 @@ export function KidsMenuBar() {
         <AddFavoriteDialog
           name={defaultFavoriteName(pageTitle(document.title), isArticle)}
           onCancel={() => setAdding(false)}
-          onAdd={(name) => {
-            favorites.add(here, name);
+          onAdd={(name, folder) => {
+            favorites.add(here, name, folder);
             setAdding(false);
             flash(`“${name}” is in your Favorites.`);
           }}

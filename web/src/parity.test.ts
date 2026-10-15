@@ -4,7 +4,7 @@ import type { Item, TimelineEvent } from "./api/types";
 import { SOURCE_LINE, withSourceLine } from "./app/commands";
 import { STRIP, tipPlacement } from "./components/ArrowTip";
 import { defaultFavoriteName } from "./app/AddFavoriteDialog";
-import { addFavorite, moveFavorite, pageTitle, parseFavorites, removeFavorite, renameFavorite } from "./app/favorites";
+import { addFavorite, addFolder, allFolders, moveFavorite, moveToFolder, parseFolders, removeFolder, renameFolder, pageTitle, parseFavorites, removeFavorite, renameFavorite } from "./app/favorites";
 import { mediaClass } from "./media/pick";
 import { archiveUrl, lifeDates, metaText, webLinkUrl } from "./pages/ItemKinds";
 import { featureHref, itemRedirect, mapTrekUrl, topicTerm, translatePair } from "./pages/itemRoute";
@@ -24,6 +24,29 @@ describe("favorites", () => {
     expect(renameFavorite(l, "/item/2", "  ")).toBe(l);
     expect(renameFavorite(l, "/item/2", "Deux")[0]!.title).toBe("Deux");
     expect(addFavorite([], "/x", "   ", 1)[0]!.title).toBe("/x");
+  });
+
+  it("keeps folders: file, rename, delete with contents, reorder within a folder", () => {
+    let l = addFavorite([], "/a", "A", 1, "Trips");
+    l = addFavorite(l, "/b", "B", 2);
+    l = addFavorite(l, "/c", "C", 3, "Trips");
+    expect(l.map((f) => f.path)).toEqual(["/c", "/b", "/a"]);
+    expect(moveFavorite(l, "/c", 1).map((f) => f.path)).toEqual(["/a", "/b", "/c"]);
+    expect(moveFavorite(l, "/a", 1)).toBe(l);
+    expect(moveToFolder(l, "/a")[2]).toEqual({ path: "/a", title: "A", added: 1 });
+    expect(addFavorite(l, "/b", "B", 9, "Trips")[1]!.folder).toBe("Trips");
+    expect(allFolders(["Empty"], l)).toEqual(["Empty", "Trips"]);
+    expect(addFolder(["Trips"], " trips ")).toBeNull();
+    expect(addFolder(["Trips"], "Work")).toEqual(["Trips", "Work"]);
+    const r = renameFolder(["Trips"], l, "Trips", "Travel")!;
+    expect(r.folders).toEqual(["Travel"]);
+    expect(r.list.filter((f) => f.folder === "Travel")).toHaveLength(2);
+    expect(renameFolder(["Trips", "Work"], l, "Trips", "work")).toBeNull();
+    const d = removeFolder(["Trips"], l, "Trips");
+    expect(d.folders).toEqual([]);
+    expect(d.list.map((f) => f.path)).toEqual(["/b"]);
+    expect(parseFolders('["A"," ","A",3,"B"]')).toEqual(["A", "B"]);
+    expect(parseFavorites('[{"path":"/a","folder":"F"}]')[0]!.folder).toBe("F");
   });
 
   it("parses stored data defensively", () => {

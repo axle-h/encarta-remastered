@@ -28,15 +28,19 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 ## Next (priority order)
 
 Found in the second VM pass, not built yet:
-1. Favorites folders and New Folder; the Copy dialog's "With Media" choice.
-2. **Geography Quiz fanfare**: a correct answer plays a ~2 s fanfare in Encarta that is not on the disc (likely
+1. **Geography Quiz fanfare**: a correct answer plays a ~2 s fanfare in Encarta that is not on the disc (likely
    Windows' tada.wav); make a short fanfare of our own (synthesised, nothing from Windows). S
-3. **VM with Flash Player and a debugger** (approved by Alex 2026-10-14): install both in the guest (download on the
+2. **VM with Flash Player and a debugger** (approved by Alex 2026-10-14): install both in the guest (download on the
    host, move in through the exchange disk), then settle the Flash- and debugger-blocked items under "Needs the VM".
 
 Decided by Alex 2026-10-15: keep our MIDI reverb and 0.3 s ring-out (Encarta's output is dry and mono and cuts at the
 last event, media.md §8); keep the tour menu's "Show Labels and Hot Spots" as an extra (Encarta 2009 has only its
 strings).
+
+Done 2026-10-15 (Favorites folders, Copy With Media): Add to Favorites has "Create in:" and New Folder…; Organize
+Favorites has New Folder, folder rename/delete and a per-page folder choice; folders show as submenus of the Favorites
+menu (one level; `app/favorites.ts`, `AddFavoriteDialog.tsx`, `pages/FavoritesPage.tsx`). The adult Copy dialog offers
+Whole Article With Media (`commands.ts`). Unit and component tests added; not run in a browser.
 
 Done 2026-10-15 (double-click lookup): double-clicking a word in an article or Map Trek stop text opens the dictionary
 on it (`/dictionary?q=`, `/kids/dictionary?q=` in Kids); `web/src/app/wordLookup.ts`, web-client.md. Not run in a browser.

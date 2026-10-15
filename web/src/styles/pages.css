@@ -1627,3 +1627,28 @@
 .tl-skip:focus {
   top: 4px;
 }
+
+.favs-folder {
+  margin: 14px 0 4px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  font-size: 1.05em;
+}
+
+.favs-folder h2 {
+  flex: 1;
+  min-width: 200px;
+  margin: 0;
+  font-size: inherit;
+}
+
+.favs-new {
+  margin: 8px 0;
+}
+
+.favs-tools select {
+  font: 12px var(--ui);
+  max-width: 150px;
+}

@@ -568,3 +568,25 @@ html[data-text-size="large"] .art-text {
 .fav-dlg .dlg-buttons button:hover {
   background: #eff3ff;
 }
+
+.fav-folders {
+  margin: 10px 0 0;
+  padding: 4px 6px;
+  max-height: 120px;
+  overflow-y: auto;
+  border: 1px solid #424142;
+  background: #fff;
+  color: #21304a;
+}
+
+.fav-folders legend {
+  font-weight: bold;
+}
+
+.fav-folders label {
+  display: block;
+}
+
+.fav-folder {
+  padding-left: 14px;
+}

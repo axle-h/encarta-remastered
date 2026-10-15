@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** Component tests for the parity-audit additions: menus, Favorites, item kinds, Web Sites. */
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssocItem } from "./api/types";
@@ -113,6 +113,26 @@ describe("Favorites", () => {
     await screen.findByText(/is in your Favorites/);
     fireEvent.click(screen.getByRole("button", { name: "Favorites" }));
     expect(screen.getByRole("menuitem", { name: "Striped horses" }).getAttribute("href")).toBe("/item/761575094#p3");
+  });
+
+  it("makes a folder from Add to Favorites, files the page in it and shows a submenu", () => {
+    document.title = "Zebra - Encarta";
+    render(
+      <MemoryRouter initialEntries={["/item/5"]}>
+        <MenuBar />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Favorites" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add to Favorites…" }));
+    fireEvent.click(screen.getByRole("button", { name: "New Folder…" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Folder name:" }), { target: { value: "Animals" } });
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Create New Folder" })).getByRole("button", { name: "OK" }));
+    expect((screen.getByRole("radio", { name: "Animals" }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Add to Favorites" })).getByRole("button", { name: "OK" }));
+    expect(JSON.parse(window.localStorage.getItem(FAVORITES_KEY) ?? "[]")[0]).toMatchObject({ path: "/item/5", folder: "Animals" });
+    fireEvent.click(screen.getByRole("button", { name: "Favorites" }));
+    expect(screen.getByRole("menuitem", { name: "Animals" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Zebra" })).toBeNull();
   });
 
   it("still works when storage throws", () => {
