@@ -28,10 +28,12 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 ## Next (priority order)
 
 Found in the second VM pass, not built yet:
-1. **Geography Quiz fanfare**: a correct answer plays a ~2 s fanfare in Encarta that is not on the disc (likely
-   Windows' tada.wav); make a short fanfare of our own (synthesised, nothing from Windows). S
-2. **VM with Flash Player and a debugger** (approved by Alex 2026-10-14): install both in the guest (download on the
+1. **VM with Flash Player and a debugger** (approved by Alex 2026-10-14): install both in the guest (download on the
    host, move in through the exchange disk), then settle the Flash- and debugger-blocked items under "Needs the VM".
+
+Done 2026-10-15 (Geography Quiz fanfare): a right pick plays a 2 s fanfare of our own, synthesised in the browser with
+Web Audio (C-major arpeggio of sawtooth voices into a held chord; `games/geoquiz/fanfare.ts`, games.md). Played whatever
+the menu-sounds option says. Unit tests added; not heard in a browser.
 
 Decided by Alex 2026-10-15: keep our MIDI reverb and 0.3 s ring-out (Encarta's output is dry and mono and cuts at the
 last event, media.md §8); keep the tour menu's "Show Labels and Hot Spots" as an extra (Encarta 2009 has only its

@@ -42,7 +42,7 @@ borders, no names), plus a Hand/Pointer tool toggle. Quiz mode hides every name 
 Customizer, Globe/Flat and style controls; the locator globe and zoom slider stay. The highlight is a fill on the `areas` layer filtered by `entity`; continent
 areas are coarse outlines in the atlas data, so they are tinted at 42 % rather than filled **(ours)**. Countries fit
 their bounding box (antimeridian-safe), cities a regional view (zoom 3.6) **(ours, close to the VM's 600-mile scale
-bar)**. After a right pick the next question appears at once; after question 20 a "Scores" dialog opens (VM, vm-findings.md › UI parity pass). The end shows the score and the
+bar)**. After a right pick the next question appears at once and a 2 s fanfare plays (Encarta's is not on the disc; ours is synthesised with Web Audio, `fanfare.ts`); after question 20 a "Scores" dialog opens (VM, vm-findings.md › UI parity pass). The end shows the score and the
 table "High Scores for Geography Quiz:" (rank, name, points, level; the ten best per level in this browser, best first
 **(ours)**). Try Again reopens the start dialog over the finished question with the name and level kept; Cancel there
 goes back to the previous page (VM). The zoom slider shows the VM's nine tick marks (a datalist; browsers that skip datalist ticks show a plain slider).

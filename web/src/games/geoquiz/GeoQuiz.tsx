@@ -8,6 +8,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useApi } from "../../api/useApi";
 import { useDocumentTitle } from "../../components/useDocumentTitle";
 import { getGeoGame, getGeoLevels, type GeoGame, type GeoLevel } from "../api";
+import { playFanfare } from "./fanfare";
 import { addScore, LEVEL_NAMES, lastName, pick, pointsFor, questionText, rememberName, type HighScore, type QuestionState } from "./geo";
 import { QuizMap } from "./QuizMap";
 
@@ -173,6 +174,7 @@ function QuizRun({ game, name, level, onAgain, onExit, scoresHidden }: { game: G
   const choose = (entity: number) => {
     if (!place || done) return;
     const next = pick(q, entity, place.entity, points);
+    if (next.done && !q.done) playFanfare();
     if (!next.done) {
       setQ(next);
       return;
