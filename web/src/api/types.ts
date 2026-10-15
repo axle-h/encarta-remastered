@@ -240,6 +240,8 @@ export interface SearchHit {
   snippet_html?: string;
   media_type?: string;
   thumb?: FileRef | null;
+  /** The gallery picture (Kids result cards). */
+  picon?: FileRef | null;
 }
 
 /** `/api/index-term/{id}`: an index term and its entries (content-schema §4, DATAF). */

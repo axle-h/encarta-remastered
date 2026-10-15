@@ -1,0 +1,220 @@
+/* Encarta Kids "Look at Pictures", measured from fixtures/ui/kids2/pics*.png and max-*.png. */
+.kp {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 71px);
+  min-height: 400px;
+  overflow: hidden;
+  background: #fff url(/ui/kids-media-back.jpg) 0 0 no-repeat;
+  font-family: var(--sans);
+}
+
+.kp-head {
+  flex: none;
+  display: flex;
+  height: 62px;
+}
+
+.kp-title {
+  flex: 1;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 16pt;
+  font: normal 20pt var(--sans);
+  color: #ff7800;
+}
+
+.kp-read {
+  flex: none;
+  width: 134px;
+  height: 62px;
+  background: url(/ui/kids-article-button.gif) 0 0 no-repeat;
+}
+
+.kp-read:hover {
+  background-image: url(/ui/kids-article-button-over.gif);
+}
+
+.kp-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.kp-strip {
+  flex: none;
+  width: 173px;
+  display: flex;
+  flex-direction: column;
+}
+
+.kp-arrow-row {
+  flex: none;
+  height: 47px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kp-arrow {
+  width: 35px;
+  height: 35px;
+  padding: 0;
+  border: 0;
+  background: transparent no-repeat center;
+  cursor: default;
+}
+
+.kp-clip {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.kp-tile {
+  display: block;
+  box-sizing: border-box;
+  width: 151px;
+  height: 183px;
+  margin: 0 0 9px 11px;
+  padding: 8px 8px 0 9px;
+  overflow: hidden;
+  background: url(/ui/kids-strip-tile.gif) 0 0 no-repeat;
+  color: #03c;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.kp-tile.selected {
+  background-image: url(/ui/kids-strip-tile-selected.gif);
+}
+
+.kp-tile-pic {
+  position: relative;
+  display: block;
+  width: 133px;
+}
+
+.kp-tile-img {
+  display: block;
+  box-sizing: border-box;
+  width: 133px;
+  height: auto;
+  border: 1px solid #8bd8ff;
+}
+
+.kp-ticon {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+}
+
+.kp-tile-title {
+  display: block;
+  height: 24pt;
+  margin-top: 3pt;
+  overflow: hidden;
+  text-align: center;
+  font: 9pt var(--sans);
+  color: #03c;
+}
+
+.kp-tile:hover .kp-tile-title {
+  text-decoration: underline;
+}
+
+.kp-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: scroll;
+  padding: 0 0 12px 19px;
+  scrollbar-color: #8ee01e #a7ec2b;
+}
+
+.kp-stage {
+  min-height: 20px;
+}
+
+.kp-audio {
+  display: inline-flex;
+  flex-direction: column;
+  max-width: 100%;
+}
+
+.kp-audio > img,
+.kp-media .mv-image img {
+  display: block;
+  max-width: 100%;
+  max-height: none;
+  height: auto;
+  border: 1px solid #7a98ce;
+  box-shadow: none;
+  margin: 0;
+}
+
+.kp-audio .enc-audio {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.kp-audio .enc-audio audio {
+  display: block;
+  width: 100%;
+  height: 21px;
+  border-radius: 0;
+}
+
+.kp-media .mv-image,
+.kp-media .mv-image.wide {
+  max-width: none;
+  overflow: visible;
+}
+
+.kp-media .mv-audio,
+.kp-media .mv-tour,
+.kp-media .mv-interactive,
+.kp-media .mv-map {
+  width: auto;
+  align-items: flex-start;
+}
+
+.kp-media .enc-video {
+  width: var(--vw);
+  max-width: 100%;
+  max-height: none;
+  height: auto;
+}
+
+.kp-info {
+  max-width: 528px;
+  padding-top: 0;
+}
+
+.kp-item-title {
+  margin-top: 28px;
+  font-size: 18pt;
+  line-height: 1.3;
+  color: #0053c5;
+}
+
+.kp-caption {
+  margin-top: 25px;
+  font-size: 14pt;
+  line-height: 24px;
+  padding-right: 10pt;
+  color: #000;
+}
+
+.kp-caption p {
+  margin: 0;
+}
+
+.kp-credit {
+  margin-top: 2px;
+  font-size: 9pt;
+  line-height: 18px;
+  color: #999;
+}

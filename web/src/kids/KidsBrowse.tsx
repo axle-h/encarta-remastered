@@ -106,7 +106,7 @@ function KidsSubcategory({ item }: { item: Item }) {
         <ul className="kids-grid">
           {homeLinks(item).map((l) => (
             <li key={l.ref_id}>
-              <Link to={homeLinkHref(l, true)}>
+              <Link to={homeLinkHref(l, true)} title={l.title}>
                 <img
                   src={l.thumb ? fileUrl(l.thumb) : NO_PICTURE}
                   alt=""

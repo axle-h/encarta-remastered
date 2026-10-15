@@ -246,10 +246,11 @@ Revolution article comes first.
               "url": "/item/761575094#p12",   // or "/dictionary/DICTA/1861707064"
               "para": { "kind": "p", "id": 12, "section_id": 4, "section_title": "Stripes", "anchor": "#p12" },
               "snippet_html": "… black and white <b>stripes</b> …",
-              "media_type": "image", "thumb": { "file_name", "url", "width", "height" } | null } ] }
+              "media_type": "image", "thumb": { "file_name", "url", "width", "height" } | null,
+              "picon": { "file_name", "url", "width", "height" } | null } ] }
 ```
-`media_type` and `thumb` (the item's thumbnail) come from the content database (not for dictionary hits; omitted
-without one).
+`media_type`, `thumb` (the item's thumbnail) and `picon` (its gallery picture, which the Kids result cards show) come
+from the content database (not for dictionary hits; omitted without one).
 `para` (deep link to the best-matching paragraph) is omitted when the title itself matches the query, or starts
 with it when the last word is a prefix.
 Facets ignore the `kind`/`edition` filters so they can label tabs.
@@ -370,7 +371,11 @@ resources (media.md §9).
 toolbar from `ENCARTAR.DLL` (`kids-home`, `kids-back`, `kids-forward`, `kids-copy`, `kids-print` and `kids-search-go`
 as strips of four states, `kids-bar`, `kids-bar-left`, `kids-joint`, `kids-gap-copy`, `kids-gap-print`,
 `kids-search-label`, `kids-search-box`, `kids-logo`), the subcategory and tile highlights (`kids-subcat-selected.gif`,
-`kids-topic-selected.gif`) and the "book" tile (`kids-no-picture.jpg`). Written by `encarta-convert content` or
+`kids-topic-selected.gif`), the "book" tile (`kids-no-picture.jpg`), the article page's background, tile frames,
+buttons and badges (`kids-article-back`, `kids-tile[-over]`, `kids-pictures-button[-over]`,
+`kids-article-button[-over]`, `kids-ticon-<ticon>`), the Look at Pictures background, strip tiles and arrows
+(`kids-media-back`, `kids-strip-tile[-selected]`, `kids-strip-{up,down}-{rest,over,down,disabled}`), `kids-sky` and the
+search result cards (`kids-search-<kind>[-over]`, `kids-search-sorry`). Written by `encarta-convert content` or
 `encarta-convert ui` (media.md §9).
 
 ## Fonts

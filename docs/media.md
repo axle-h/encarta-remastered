@@ -512,7 +512,9 @@ The Kids artwork comes from the same DLL (`EE/ENCARTA` and `EE/KIDS` hold the sa
 (resource type 2, DIBs without a file header) are written as PNG, `GIF` and `JPEG` resources unchanged with the
 extension of what they hold (the `KIDS_SUBHS_*` highlights are GIFs filed under `JPEG`). Toolbar bitmaps 15050-15062,
 15071 and 15072 (positions in vm-findings.md, Kids chrome); `KIDS_SUBHS_SUBCAT_SEL`, `KIDS_SUBHS_TOPIC_SEL`,
-`KIDS_UNKNOWN_BG`. Served at `/ui/{name}` (api.md).
+`KIDS_UNKNOWN_BG`; the article and Look at Pictures art (`KIDSARTBACK` from `ENCARTAU.DLL`, `KIDSMEDMODULE`/`MOUSE`,
+`KIDSMEDIABUT`/`MOUSE`, `KIDSARTBUT`/`MOUSE`, `KIDS_TICONS_*`, `KIDS_MEDIA_BKGD`, `MEDIABARDIV*`, `MEDIABARVERT_*`,
+`KIDS_SKY_BG`) and the search cards (`JPEG` 15070, 15073-15090). Served at `/ui/{name}` (api.md).
 
 **Mapping (measured in the XP reference VM** with "Play menu and button sounds" ticked; ids with identical audio grouped):
 

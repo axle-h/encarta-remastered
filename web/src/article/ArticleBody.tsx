@@ -135,14 +135,24 @@ function SidebarTeaser({ a }: { a: AssocItem }) {
 
 function InlineTable({ table }: { table: DataTable }) {
   const ctx = useBody();
+  // Kids tables keep the stored column widths, as the Kids template does (TD WIDTH).
+  const html = ctx.opts.kids ? withColumnWidths(table) : table.html;
   return (
     <div className="enc-inline-table">
       {table.title && (
         <div className="enc-inline-table-title">{table.title}</div>
       )}
-      <Html html={table.html} kids={ctx.opts.kids} />
+      <Html html={html} kids={ctx.opts.kids} />
     </div>
   );
+}
+
+/** The table's HTML with a `<colgroup>` of its stored column widths (pixels), when it has them. */
+export function withColumnWidths(table: DataTable): string {
+  const cols = (table.json as { columns?: { width?: number }[] } | null)?.columns ?? [];
+  if (cols.length === 0 || !cols.every((c) => typeof c.width === "number" && c.width > 0)) return table.html;
+  const group = `<colgroup>${cols.map((c) => `<col style="width:${c.width}px">`).join("")}</colgroup>`;
+  return table.html.replace(/^(<table[^>]*>)/, `$1${group}`);
 }
 
 function Para({

@@ -135,7 +135,7 @@
   gap: 1px;
   border: 0;
   background: none;
-  font: 11px Tahoma, var(--ui);
+  font: 11px "Encarta Tahoma", Tahoma, var(--ui);
   color: #006500;
 }
 
@@ -157,15 +157,72 @@
   color: #006500;
 }
 
-.kids-popup,
-.kids-popup a,
-.kids-popup button {
+/*
+ * Kids menus as Encarta Kids draws them (VM captures menu-*, sub-*): square #B5F331 boxes with a 1-px
+ * #006500 frame and no shadow, 20-px rows with 4 px above the first and below the last, separators a
+ * full-width #006500 line with 4 px either side, 11-px Tahoma text 31 px in, #63B218 when disabled, the
+ * row under the pointer #63CF00 (darker at the top) with #217918 text; submenus open against the right
+ * edge, top-aligned with their row's menu.
+ */
+.kids-popup {
+  top: 100%;
+  left: 5px;
+  min-width: 0;
+  max-width: none;
+  padding: 4px 0;
+  overflow: visible;
+  border: 1px solid #006500;
+  border-radius: 0;
+  box-shadow: none;
   background: #b5f331;
-  color: #006500;
+  font: 12px "Encarta Tahoma", Tahoma, var(--ui);
 }
 
-.kids-popup {
-  overflow: visible;
+.kids-popup a,
+.kids-popup button {
+  position: relative;
+  gap: 20px;
+  height: 20px;
+  align-items: center;
+  padding: 0 10px 0 31px;
+  background: none;
+  color: #006500;
+  white-space: nowrap;
+}
+
+.kids-popup a:hover,
+.kids-popup a:focus,
+.kids-popup button:not(:disabled):hover,
+.kids-popup button:not(:disabled):focus,
+.kids-popup button[aria-expanded="true"] {
+  background: linear-gradient(#5abe00, #4aa200 35%, #5ac300 45%, #63cf00 50%);
+  color: #217918;
+}
+
+.kids-popup button:disabled {
+  color: #63b218;
+}
+
+.kids-popup .menu-sep {
+  margin: 4px 0;
+  border-top: 1px solid #006500;
+}
+
+.kids-popup .menu-shortcut {
+  margin-left: auto;
+  color: inherit;
+  font-size: inherit;
+}
+
+.kids-popup .menu-arrow {
+  margin-left: 4px;
+  color: #000;
+  font-size: 12px;
+}
+
+.kids-popup .menu-check {
+  position: absolute;
+  left: 6px;
 }
 
 .kids-popup .menu-parent {
@@ -173,17 +230,18 @@
 }
 
 .kids-popup .menu-sub {
-  top: -4px;
+  top: -5px;
   left: 100%;
-  margin-left: 2px;
-}
-
-.kids-popup .menu-arrow {
-  font-size: 11px;
-}
-
-.kids-popup button:disabled {
-  color: #6f9a4a;
+  min-width: 0;
+  max-width: none;
+  margin-left: 0;
+  padding: 4px 0;
+  overflow: visible;
+  border: 1px solid #006500;
+  border-radius: 0;
+  box-shadow: none;
+  background: #b5f331;
+  font: inherit;
 }
 
 .kids-popup .menu-heading {
@@ -207,7 +265,7 @@
   background: url(/ui/kids-search-label.png);
 }
 
-/* The box: the plain middle of the disc's search-field picture stretched across 194 px. */
+/* The box: the top left 194×38 of the disc's search-field picture, unscaled (VM: < 1 % RMSE). */
 .kids-search .searchbox {
   position: absolute;
   left: 110px;
@@ -222,7 +280,7 @@
   top: 0;
   width: 194px;
   height: 38px;
-  border-image: url(/ui/kids-search-box.png) 0 10 12 190 fill / 0;
+  background: url(/ui/kids-search-box.png) 0 0 no-repeat;
 }
 
 .searchbox.kids input {
@@ -278,10 +336,6 @@
   width: 120px;
   height: 70px;
   background: url(/ui/kids-logo.png);
-}
-
-.kids-page {
-  background: radial-gradient(ellipse at 0 0, #ffe1b5, #fff 45%);
 }
 
 /* Kids home: the disc's 1024×600 background with the category buttons on its panels */
@@ -494,129 +548,89 @@
   overflow: hidden;
 }
 
-/* Kids article */
+/*
+ * Kids article, as the disc's Kids article page (VM capture 04-article-elephants, template values): the
+ * swoosh background fixed at the top left, body padding 21, a 62-px header (title 20 pt #FF7800, the
+ * 106×62 button at the right in a 134-px cell), then one scrolling panel (padding-left 16) with the text
+ * floated right (the panel less 386 px, padding-left 25; a 526-px column) and the 170×206 tiles on the left.
+ */
 .kids-art {
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: 10px 16px 48px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 71px);
+  min-height: 400px;
+  padding-left: 21px;
+  overflow: hidden;
+  background: #fff url(/ui/kids-article-back.jpg) 0 0 no-repeat;
 }
 
 .kids-art-head {
+  position: relative;
+  flex: none;
+  height: 62px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
 }
 
 .kids-art-head h1 {
-  margin: 12px 0;
-  font: normal 28px var(--ui);
-  color: var(--kids-orange);
-}
-
-.kids-pictures {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  border: 2px solid #0d3e9e;
-  border-radius: 6px;
-  background: linear-gradient(#5aa6ff, #1a61d8);
-  color: #fff;
-  font: bold 13px var(--ui);
-  cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
-}
-
-.kids-art-cols {
-  display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
-  gap: 40px;
-}
-
-.kids-media {
-  list-style: none;
   margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  align-content: start;
+  font: normal 20pt var(--sans);
+  color: #ff7800;
 }
 
-.kids-tile {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  height: 100%;
-  padding: 8px 8px 12px;
-  border: 2px solid var(--kids-orange);
-  border-radius: 8px;
-  background: #fff;
-  cursor: pointer;
-}
-
-.kids-tile:hover {
-  background: #fff6e5;
-}
-
-.kids-tile-pic {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  border: 1px solid #f5b46e;
-  background: #fafafa;
-  overflow: hidden;
-}
-
-.kids-tile-pic img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.kids-badge {
+.kids-pictures-button {
   position: absolute;
-  right: 4px;
-  bottom: 4px;
-  display: inline-flex;
-  padding: 3px;
-  border: 1px solid #fff;
-  border-radius: 4px;
-  color: #fff;
-  background: #2f7be0;
+  top: 0;
+  right: 28px;
+  width: 106px;
+  height: 62px;
+  background: url(/ui/kids-pictures-button.gif);
 }
 
-.kids-badge-audio {
-  background: #43a823;
+.kids-pictures-button:hover {
+  background-image: url(/ui/kids-pictures-button-over.gif);
 }
 
-.kids-badge-video {
-  background: #ef7b15;
+.kids-art-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-left: 16px;
+  outline: none;
+  scrollbar-color: #8ee01e #a7ec2b;
 }
 
-.kids-badge-interactive {
-  background: #7a3db8;
-}
-
-.kids-tile-title {
-  font: 12px/1.3 var(--ui);
-  color: var(--kids-blue);
-  text-align: center;
+.kids-text {
+  float: right;
+  box-sizing: border-box;
+  width: calc(100% - 386px);
+  padding-left: 25px;
+  padding-bottom: 15pt;
 }
 
 .kids-text .enc-article {
-  font: 19px/1.42 var(--ui);
-  color: #111;
+  box-sizing: border-box;
+  width: 526px;
+  padding-right: 10px;
+  font: 14pt var(--sans);
+  color: #000;
 }
 
-.kids-text .enc-article .enc-p {
-  max-width: 560px;
+.kids-text .enc-article .enc-p,
+.kids-text .enc-article .enc-intro {
+  max-width: none;
+  margin: 0 0 1em;
+  line-height: 24px;
+}
+
+/*
+ * The opening section's paragraphs are the larger "intro" size (template: section id 1). Line pitches
+ * are the VM's (IE's rounded font metrics): 26 px at 16 pt, 24 px at 14 pt.
+ */
+.kids-text .enc-article > .enc-section:first-child .enc-p,
+.kids-text .enc-article .enc-intro {
+  font-size: 16pt;
+  line-height: 26px;
   margin-bottom: 18px;
 }
 
@@ -630,8 +644,9 @@
 }
 
 .kids-text .enc-section-title {
-  font: normal 22px var(--ui);
-  color: var(--kids-orange);
+  margin: 0 0 0.5em;
+  font: normal 18pt var(--sans);
+  color: #ff7800;
   letter-spacing: 0;
 }
 
@@ -639,8 +654,199 @@
   display: none;
 }
 
-@media (max-width: 800px) {
-  .kids-art-cols {
-    grid-template-columns: 1fr;
-  }
+/*
+ * Kids tables (the disc's Kids table template): a #8ACA5A title bar in white 16 pt, a #47A807 frame,
+ * 11 pt rows, every other row #EFFCD6 from the first; no header row when the columns have no titles.
+ */
+.kids-text .enc-inline-table {
+  width: fit-content;
+  max-width: none;
+  margin: 0 0 19px;
+  overflow: visible;
+}
+
+.kids-text .enc-inline-table-title {
+  padding: 4px 7px;
+  border: 1px solid #47a807;
+  border-bottom: 0;
+  background: #8aca5a;
+  color: #fff;
+  font: 16pt var(--sans);
+  text-align: left;
+}
+
+.kids-text .enc-table {
+  width: auto;
+  border: 1px solid #47a807;
+  border-collapse: collapse;
+  font: 11pt var(--sans);
+  color: #000;
+}
+
+.kids-text .enc-table td {
+  padding: 3px 6px;
+  border: 0;
+  background: transparent;
+  line-height: 19px;
+  vertical-align: top;
+}
+
+.kids-text .enc-table th {
+  padding: 3px 5px;
+  border-bottom: 1px solid #47a807;
+  background: #cdebad;
+  font-weight: bold;
+}
+
+.kids-text .enc-table thead:not(:has(th:not(:empty))) {
+  display: none;
+}
+
+.kids-text .enc-table tbody tr:nth-child(odd) {
+  background: #effcd6;
+}
+
+.kids-text .enc-table tbody tr:nth-child(even) {
+  background: #fff;
+}
+
+.kids-media {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.kids-media li {
+  display: inline-block;
+  vertical-align: top;
+  margin: 0 8px 8px 0;
+}
+
+.kids-tile {
+  display: block;
+  box-sizing: border-box;
+  width: 170px;
+  height: 206px;
+  padding: 10px;
+  overflow: hidden;
+  background: url(/ui/kids-tile.gif) no-repeat;
+}
+
+.kids-tile:hover {
+  background-image: url(/ui/kids-tile-over.gif);
+}
+
+.kids-tile-pic {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  width: 150px;
+  height: 150px;
+}
+
+.kids-tile-wrap {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+.kids-tile-img.wide {
+  width: 150px;
+}
+
+.kids-tile-img.tall {
+  height: 150px;
+}
+
+.kids-tile-img {
+  box-sizing: border-box;
+  border: 1px solid #ff9900;
+}
+
+.kids-tile:hover .kids-tile-img {
+  border-color: #66ccff;
+}
+
+.kids-ticon {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+}
+
+.kids-tile-title {
+  display: block;
+  height: 26pt;
+  margin-top: 5px;
+  overflow: hidden;
+  font: 9pt var(--sans);
+  color: #0033cc;
+  text-align: center;
+}
+
+.kids-tile:hover .kids-tile-title {
+  text-decoration: underline;
+}
+
+/* "Also in Encarta Kids" and "On the Web": 18 pt orange titles, 14 pt #0033FF entries in 23-pt rows. */
+.kids-related {
+  box-sizing: border-box;
+  width: 526px;
+  padding-right: 10px;
+}
+
+.kids-sectitle {
+  margin: 0;
+  font: normal 18pt var(--sans);
+  color: #ff7800;
+}
+
+.kids-related ul {
+  list-style: none;
+  margin: 12pt 0;
+  padding: 0;
+  font: 14pt/24px var(--sans);
+}
+
+.kids-related li {
+  min-height: 23pt;
+}
+
+.kids-related a {
+  color: #0033ff;
+}
+
+.kids-related a:hover {
+  text-decoration: underline;
+}
+
+.kids-weblinks li {
+  display: flex;
+  min-height: 0;
+}
+
+.kids-weblinks li::before {
+  content: "•";
+  flex: none;
+  width: 18px;
+  color: #0033ff;
+}
+
+/* The text indent differs per menu (VM, measured from the border): View 24 px, Go to 9 px, the ticked On/Off submenus 17 px. */
+.kids-popup[aria-label="View"] > li > button {
+  padding-left: 23px;
+}
+
+.kids-popup li[data-sub="goto"] > .menu-sub a,
+.kids-popup li[data-sub="goto"] > .menu-sub button {
+  padding-left: 8px;
+}
+
+.kids-popup li[data-sub="cc"] > .menu-sub button,
+.kids-popup li[data-sub="ms"] > .menu-sub button,
+.kids-popup li[data-sub="ss"] > .menu-sub button {
+  padding-left: 16px;
+}
+
+.kids-popup li[data-sub] > .menu-sub .menu-check {
+  left: 4px;
 }

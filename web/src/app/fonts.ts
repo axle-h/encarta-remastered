@@ -13,6 +13,9 @@ const FACES: Record<string, { family: string; weight: number; style: "normal" | 
   "refsanb.ttf": { family: "MS Reference Sans Serif", weight: 700, style: "normal" },
   "refsani.ttf": { family: "MS Reference Sans Serif", weight: 400, style: "italic" },
   "refsanbi.ttf": { family: "MS Reference Sans Serif", weight: 700, style: "italic" },
+  // Under its own name, so only the Kids chrome (its menus, drawn in Tahoma 8 pt) switches to it.
+  "tahoma.ttf": { family: "Encarta Tahoma", weight: 400, style: "normal" },
+  "tahomabd.ttf": { family: "Encarta Tahoma", weight: 700, style: "normal" },
 };
 
 /**
@@ -33,7 +36,7 @@ export function fontFaceCss(urls: string[]): string {
   for (const [stem, s] of sources) {
     const f = FACES[`${stem}.ttf`];
     if (!f) continue;
-    const src = [`local("${f.family}")`];
+    const src = [`local("${f.family === "Encarta Tahoma" ? "Tahoma" : f.family}")`];
     if (s.woff2) src.push(`url("${s.woff2}") format("woff2")`);
     if (s.ttf) src.push(`url("${s.ttf}") format("truetype")`);
     rules.push(

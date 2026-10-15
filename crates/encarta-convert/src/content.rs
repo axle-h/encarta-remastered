@@ -1176,15 +1176,19 @@ fn write_ui_sounds(extracted: &Path, dir: &Path) -> Result<usize> {
     Ok(n)
 }
 
-/// The Kids artwork written to `out/ui/` from `ENCARTAR.DLL` (the same file in `EE/ENCARTA` and
-/// `EE/KIDS`): `(file stem, resource type, resource)`. Bitmaps (type 2, headerless DIBs) become PNG;
-/// the `GIF` and `JPEG` resources are copied with the extension of what they hold (the `KIDS_SUBHS_*`
-/// arrows are GIFs under `JPEG`). Toolbar buttons are horizontal strips of four states: normal, mouse-over,
-/// disabled, pressed (docs/vm-findings.md, Kids chrome).
-fn ui_art_sources() -> Vec<(&'static str, pe_res::ResName, pe_res::ResName)> {
+/// The Kids artwork written to `out/ui/` from `ENCARTAR.DLL` and `ENCARTAU.DLL` (the same files in
+/// `EE/ENCARTA` and `EE/KIDS`): `(file stem, DLL, resource type, resource)`. Bitmaps (type 2, headerless
+/// DIBs) become PNG; the `GIF`, `IMG` and `JPEG` resources are copied with the extension of what they
+/// hold (the `KIDS_SUBHS_*` arrows are GIFs under `JPEG`, `KIDS_MEDIA_BKGD` a JPEG under `GIF`). Toolbar
+/// buttons are horizontal strips of four states: normal, mouse-over, disabled, pressed (docs/vm-findings.md,
+/// Kids chrome).
+fn ui_art_sources() -> Vec<(String, &'static str, pe_res::ResName, pe_res::ResName)> {
     use pe_res::ResName::{Id, Name};
-    let bmp = |stem, id| (stem, Id(2), Id(id));
-    vec![
+    const R: &str = "EE/ENCARTA/ENCARTAR.DLL";
+    const U: &str = "EE/ENCARTA/ENCARTAU.DLL";
+    let bmp = |stem: &str, id| (stem.to_string(), R, Id(2), Id(id));
+    let res = |stem: &str, dll, kind: &str, name: &str| (stem.to_string(), dll, Name(kind.into()), Name(name.into()));
+    let mut v = vec![
         bmp("kids-bar", 15050),
         bmp("kids-home", 15051),
         bmp("kids-back", 15052),
@@ -1199,10 +1203,43 @@ fn ui_art_sources() -> Vec<(&'static str, pe_res::ResName, pe_res::ResName)> {
         bmp("kids-search-box", 15062),
         bmp("kids-gap-copy", 15071),
         bmp("kids-gap-print", 15072),
-        ("kids-subcat-selected", Name("JPEG".into()), Name("KIDS_SUBHS_SUBCAT_SEL".into())),
-        ("kids-topic-selected", Name("JPEG".into()), Name("KIDS_SUBHS_TOPIC_SEL".into())),
-        ("kids-no-picture", Name("JPEG".into()), Name("KIDS_UNKNOWN_BG".into())),
-    ]
+        res("kids-subcat-selected", R, "JPEG", "KIDS_SUBHS_SUBCAT_SEL"),
+        res("kids-topic-selected", R, "JPEG", "KIDS_SUBHS_TOPIC_SEL"),
+        res("kids-no-picture", R, "JPEG", "KIDS_UNKNOWN_BG"),
+        // Articles: the page background, the media tile and its mouse-over, the "Look at Pictures" and
+        // "Read Article" buttons, the media list's background and the sky behind a full-size item.
+        res("kids-article-back", U, "JPEG", "KIDSARTBACK"),
+        res("kids-tile", R, "IMG", "KIDSMEDMODULE"),
+        res("kids-tile-over", R, "IMG", "KIDSMEDMODMOUSE"),
+        res("kids-pictures-button", R, "GIF", "KIDSMEDIABUT"),
+        res("kids-pictures-button-over", R, "GIF", "KIDSMEDIAMOUSE"),
+        res("kids-article-button", R, "GIF", "KIDSARTBUT"),
+        res("kids-article-button-over", R, "GIF", "KIDSARTMOUSE"),
+        res("kids-media-back", R, "GIF", "KIDS_MEDIA_BKGD"),
+        res("kids-sky", R, "JPEG", "KIDS_SKY_BG"),
+        // The Look at Pictures strip: tile backgrounds (the selected one orange) and its up/down arrows.
+        res("kids-strip-tile", R, "GIF", "MEDIABARDIVREST"),
+        res("kids-strip-tile-selected", R, "GIF", "MEDIABARDIVOVER"),
+    ];
+    // Kids search results: one 760×201 card per result kind with its button drawn in (15073-15081,
+    // the mouse-over set 15082-15090 in the same order) and the "Sorry!" card for no results.
+    v.push(("kids-search-sorry".to_string(), R, Name("JPEG".into()), Id(15070)));
+    let kinds = ["article", "sound", "video", "table", "activity", "map", "picture", "pictures", "chart"];
+    for (i, k) in kinds.iter().enumerate() {
+        v.push((format!("kids-search-{k}"), R, Name("JPEG".into()), Id(15073 + i as u32)));
+        v.push((format!("kids-search-{k}-over"), R, Name("JPEG".into()), Id(15082 + i as u32)));
+    }
+    for dir in ["up", "dwn"] {
+        for state in ["rest", "over", "down", "disabled"] {
+            let stem = format!("kids-strip-{}-{state}", if dir == "up" { "up" } else { "down" });
+            v.push((stem, R, Name("GIF".into()), Name(format!("MEDIABARVERT_{}_{}", dir.to_uppercase(), state.to_uppercase()))));
+        }
+    }
+    // The media tiles' corner badges, by the item's `ticon` (`media_type`).
+    for t in ["anim", "audio", "game", "ia", "image", "map", "narr", "pan", "video"] {
+        v.push((format!("kids-ticon-{t}"), R, Name("GIF".into()), Name(format!("KIDS_TICONS_{}", t.to_uppercase()))));
+    }
+    v
 }
 
 /// A bitmap resource (a DIB without its file header) as PNG bytes.
@@ -1217,16 +1254,16 @@ fn dib_to_png(dib: &[u8]) -> Result<Vec<u8>> {
 /// Writes the artwork of [`ui_art_sources`] to `dir` (temporary name, then rename); returns how many
 /// files. A missing DLL or resource is skipped.
 fn write_ui_art(extracted: &Path, dir: &Path) -> Result<usize> {
-    let dll = "EE/ENCARTA/ENCARTAR.DLL";
-    let Ok(d) = std::fs::read(extracted.join("iso").join(dll)) else { return Ok(0) };
-    let mut by_type: Vec<(pe_res::ResName, pe_res::Resources)> = Vec::new();
+    let mut loaded: HashMap<(&str, pe_res::ResName), pe_res::Resources> = HashMap::new();
     let mut n = 0;
-    for (stem, kind, res) in ui_art_sources() {
-        if !by_type.iter().any(|(k, _)| *k == kind) {
-            let found = pe_res::resources(&d, &kind).with_context(|| format!("resources of {dll}"))?;
-            by_type.push((kind.clone(), found));
-        }
-        let all = &by_type.iter().find(|(k, _)| *k == kind).expect("just added").1;
+    for (stem, dll, kind, res) in ui_art_sources() {
+        let all = match loaded.entry((dll, kind.clone())) {
+            std::collections::hash_map::Entry::Occupied(e) => e.into_mut(),
+            std::collections::hash_map::Entry::Vacant(e) => e.insert(match std::fs::read(extracted.join("iso").join(dll)) {
+                Ok(d) => pe_res::resources(&d, &kind).with_context(|| format!("resources of {dll}"))?,
+                Err(_) => Vec::new(),
+            }),
+        };
         let Some((_, bytes)) = all.iter().find(|(r, _)| *r == res) else { continue };
         let (ext, out) = match bytes.get(..4) {
             Some(b"GIF8") => ("gif", bytes.clone()),
@@ -1362,7 +1399,7 @@ mod disc_tests {
         let Some(x) = extracted() else { return };
         let dir = root().join("target/test-ui-art");
         let _ = std::fs::remove_dir_all(&dir);
-        assert_eq!(write_ui_art(&x, &dir).unwrap(), 17);
+        assert_eq!(write_ui_art(&x, &dir).unwrap(), 64);
         let home = image::open(dir.join("kids-home.png")).unwrap();
         assert_eq!((home.width(), home.height()), (264, 71));
         let sel = std::fs::read(dir.join("kids-subcat-selected.gif")).unwrap();

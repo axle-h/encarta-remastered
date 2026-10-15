@@ -15,6 +15,8 @@ import { ToursPage } from "../pages/ToursPage";
 import { KidsShell } from "../kids/KidsShell";
 import { KidsHome } from "../kids/KidsHome";
 import { KidsBrowsePage } from "../kids/KidsBrowse";
+import { KidsSearchPage } from "../kids/KidsSearch";
+import { KidsPicturesPage } from "../kids/KidsPictures";
 import { MediaViewerProvider } from "../media/MediaViewer";
 import { Shell } from "./Shell";
 import { SettingsProvider } from "../settings/settings";
@@ -148,8 +150,8 @@ export function App() {
         <Route index element={<KidsHome />} />
         <Route path="browse/:id" element={<KidsBrowsePage />} />
         <Route path="item/:id" element={<ItemPage kids />} />
-        <Route path="item/:id/media" element={<ArticleMediaPage kids />} />
-        <Route path="search" element={<SearchPage kids />} />
+        <Route path="item/:id/media" element={<KidsPicturesPage />} />
+        <Route path="search" element={<KidsSearchPage />} />
         <Route path="dictionary" element={<DictionaryPage tab="dictionary" kids />} />
         <Route path="dictionary/:dict/:entry" element={<DictionaryPage tab="dictionary" kids />} />
         <Route path="*" element={<Navigate to="/kids" replace />} />

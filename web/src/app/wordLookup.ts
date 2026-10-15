@@ -10,17 +10,20 @@ export function lookupWord(selected: string): string {
   return w && !/\s/.test(w) && w.length <= 40 ? w : "";
 }
 
-/** Encarta's general double-click lookup (vm-findings "Map Trek"): a double-clicked word opens the dictionary on it. */
-export function useDoubleClickLookup(kids = false) {
+/**
+ * Encarta's general double-click lookup (vm-findings "Map Trek"): a double-clicked word opens the
+ * dictionary on it. Encarta Kids has none (a double-click only selects the word).
+ */
+export function useDoubleClickLookup() {
   const navigate = useNavigate();
   useEffect(() => {
     const on = (e: MouseEvent) => {
       const t = e.target;
       if (!(t instanceof Element) || !t.closest(LOOKUP_AREAS) || t.closest("a, button, input, textarea")) return;
       const word = lookupWord(window.getSelection()?.toString() ?? "");
-      if (word) navigate(`${kids ? "/kids" : ""}/dictionary?q=${encodeURIComponent(word)}`);
+      if (word) navigate(`/dictionary?q=${encodeURIComponent(word)}`);
     };
     document.addEventListener("dblclick", on);
     return () => document.removeEventListener("dblclick", on);
-  }, [navigate, kids]);
+  }, [navigate]);
 }

@@ -12,9 +12,60 @@ import { useHistoryButtons } from "../app/history";
 import { copySelectionOrArticle, installCopySourceLine, openFind, requestPrint } from "../app/commands";
 import { favorites, pageTitle } from "../app/favorites";
 import { useSettings } from "../settings/settings";
-import { useDoubleClickLookup } from "../app/wordLookup";
 
 const tick = (on: boolean, label: string) => `${on ? "✓ " : " "}${label}`;
+
+/** The underlined access key of each Kids menu label (VM captures `fixtures/ui/kids/menu-*`, `sub-*`). */
+const ACCESS_KEYS: Record<string, string> = {
+  "Print...": "P",
+  Exit: "x",
+  Copy: "C",
+  "Find in this Article...": "F",
+  "Go to": "G",
+  "Closed Captioning": "C",
+  Back: "B",
+  Forward: "F",
+  "Home Page": "m",
+  On: "n",
+  Off: "O",
+  "Add to Favorites...": "F",
+  "Organize Favorites...": "O",
+  "Read Aloud": "a",
+  "Menu and Button Sounds": "M",
+  "Whole Article": "W",
+  "Selected Text": "T",
+  "Stop Reading": "S",
+  Pause: "P",
+  "Microsoft Encarta Help": "H",
+  Troubleshooting: "T",
+  "Diagnosing Problems": "D",
+  "Contacting Technical Support": "S",
+};
+
+const SHORTCUTS: Record<string, string> = { "Alt+Left": "Alt + Left Arrow", "Alt+Right": "Alt + Right Arrow", "Alt+Home": "Alt + Home" };
+
+/**
+ * Kids menus as Encarta Kids draws them: "..." for an ellipsis, the access key underlined, shortcuts
+ * spaced ("Ctrl + P", "Alt + Left Arrow") and the tick in the left margin.
+ */
+function kidsEntries(entries: MenuEntry[]): MenuEntry[] {
+  return entries.map((m) => {
+    const submenu = m.submenu && kidsEntries(m.submenu);
+    if (m.separator || typeof m.label !== "string") return { ...m, submenu };
+    const checked = m.label.startsWith("✓ ");
+    const text = m.label.replace(/^(✓ |\u2003)/, "").replace(/…/g, "...");
+    const key = ACCESS_KEYS[text];
+    const at = key ? text.indexOf(key) : -1;
+    const label = (
+      <>
+        {checked && <span className="menu-check">✓</span>}
+        {at < 0 ? text : <>{text.slice(0, at)}<u>{text[at]}</u>{text.slice(at + 1)}</>}
+      </>
+    );
+    const shortcut = m.shortcut && (SHORTCUTS[m.shortcut] ?? m.shortcut.replace(/\+/g, " + "));
+    return { ...m, label, ariaLabel: shortcut ? `${text} ${shortcut}` : text, shortcut, submenu };
+  });
+}
 
 /** Kids menu bar: File, Edit, View, Favorites, Tools, Help (items and submenus as captured). */
 export function KidsMenuBar() {
@@ -71,12 +122,14 @@ export function KidsMenuBar() {
     return () => window.removeEventListener("keydown", key);
   });
   const file = (): MenuEntry[] => [
-    { label: "Print", shortcut: "Ctrl+P", onSelect: requestPrint },
-    { label: "Exit", to: "/" },
+    { label: "Print...", shortcut: "Ctrl+P", disabled: !isArticle, onSelect: requestPrint, key: "print" },
+    { separator: true, key: "s1" },
+    { label: "Exit", to: "/", key: "exit" },
   ];
   const edit = (): MenuEntry[] => [
-    { label: "Copy", onSelect: copy },
-    { label: "Find in this Article…", shortcut: "Ctrl+F", disabled: !isArticle, onSelect: openFind },
+    { label: "Copy", shortcut: "Ctrl+C", disabled: !isArticle, onSelect: copy, key: "copy" },
+    { separator: true, key: "s1" },
+    { label: "Find in this Article...", shortcut: "Ctrl+F", disabled: !isArticle, onSelect: openFind, key: "find" },
   ];
   const view = (): MenuEntry[] => [
     {
@@ -89,6 +142,7 @@ export function KidsMenuBar() {
         { label: "Home Page", shortcut: "Alt+Home", disabled: atHome, to: "/kids", key: "home" },
       ],
     },
+    { separator: true, key: "s1" },
     {
       label: "Closed Captioning",
       shortcut: "Ctrl+L",
@@ -123,6 +177,7 @@ export function KidsMenuBar() {
   };
   const help = (): MenuEntry[] => [
     { label: "Microsoft Encarta Help", shortcut: "F1", to: "/help", key: "help" },
+    { separator: true, key: "s0" },
     {
       label: "Troubleshooting",
       key: "ts",
@@ -134,15 +189,26 @@ export function KidsMenuBar() {
     { separator: true, key: "s1" },
     { label: "About Encarta", to: "/help", key: "about" },
   ];
+  // The article's right-click menu (VM capture dict-context-menu).
+  const context = (): MenuEntry[] => [
+    { label: "Find in this Article...", shortcut: "Ctrl+F", onSelect: openFind, key: "find" },
+    { separator: true, key: "s1" },
+    { label: "Copy", shortcut: "Ctrl+C", onSelect: copy, key: "copy" },
+    { label: "Print...", shortcut: "Ctrl+P", onSelect: requestPrint, key: "print" },
+    { label: "Add to Favorites...", onSelect: () => setAdding(true), key: "fav" },
+    { separator: true, key: "s2" },
+    { label: "Read Aloud", shortcut: "F8", disabled: !canReadAloud(), key: "ra", submenu: readAloudSubmenu(read) },
+  ];
   const btn = "menubar-btn";
   return (
     <div className="kids-menu menubar" role="menubar" aria-label="Menu bar">
-      <MenuButton label={<><u>F</u>ile</>} ariaLabel="File" entries={file} buttonClassName={btn} menuClassName="kids-popup" />
-      <MenuButton label={<><u>E</u>dit</>} ariaLabel="Edit" entries={edit} buttonClassName={btn} menuClassName="kids-popup" />
-      <MenuButton label={<><u>V</u>iew</>} ariaLabel="View" entries={view} buttonClassName={btn} menuClassName="kids-popup" />
-      <MenuButton label={<>F<u>a</u>vorites</>} ariaLabel="Favorites" entries={favs} buttonClassName={btn} menuClassName="kids-popup" />
-      <MenuButton label={<><u>T</u>ools</>} ariaLabel="Tools" entries={tools} buttonClassName={btn} menuClassName="kids-popup" />
-      <MenuButton label={<><u>H</u>elp</>} ariaLabel="Help" entries={help} buttonClassName={btn} menuClassName="kids-popup" />
+      <MenuButton label={<><u>F</u>ile</>} ariaLabel="File" entries={() => kidsEntries(file())} buttonClassName={btn} menuClassName="kids-popup" />
+      <MenuButton label={<><u>E</u>dit</>} ariaLabel="Edit" entries={() => kidsEntries(edit())} buttonClassName={btn} menuClassName="kids-popup" />
+      <MenuButton label={<><u>V</u>iew</>} ariaLabel="View" entries={() => kidsEntries(view())} buttonClassName={btn} menuClassName="kids-popup" />
+      <MenuButton label={<>F<u>a</u>vorites</>} ariaLabel="Favorites" entries={() => kidsEntries(favs())} buttonClassName={btn} menuClassName="kids-popup" />
+      <MenuButton label={<><u>T</u>ools</>} ariaLabel="Tools" entries={() => kidsEntries(tools())} buttonClassName={btn} menuClassName="kids-popup" />
+      <MenuButton label={<><u>H</u>elp</>} ariaLabel="Help" entries={() => kidsEntries(help())} buttonClassName={btn} menuClassName="kids-popup" />
+      <MenuButton contextFor=".kids-art" ariaLabel="Article" entries={() => kidsEntries(context())} menuClassName="kids-popup" />
       <span className="menubar-note" role="status" aria-live="polite">
         {note}
       </span>
@@ -186,7 +252,6 @@ export function KidsShell({ children }: { children: ReactNode }) {
   // Copy and Print are greyed out on the home and category screens (VM captures).
   const onItem = location.pathname.startsWith("/kids/item/");
   useEffect(installCopySourceLine, []);
-  useDoubleClickLookup(true);
   return (
     <div className="shell kids-shell">
       <header className="kids-bar">

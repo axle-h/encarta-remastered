@@ -1,0 +1,220 @@
+/* Encarta Kids search results, measured from fixtures/ui/kids2/search-results*.png (client y = image y - 19). */
+.ks {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 71px);
+  min-height: 300px;
+  overflow: hidden;
+  background: #fff;
+  font-family: var(--sans);
+}
+
+.ks-head {
+  flex: none;
+  height: 41px;
+  margin: 0;
+  padding: 0 0 0 14px;
+  display: flex;
+  align-items: baseline;
+  white-space: pre;
+  font-weight: normal;
+}
+
+.ks-head-big {
+  font-size: 24pt;
+  line-height: 41px;
+  color: #5aae31;
+}
+
+.ks-head-small {
+  font-size: 12pt;
+  color: #313031;
+}
+
+.ks-head-small b {
+  font-weight: bold;
+}
+
+.ks-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: scroll;
+  padding-top: 4px;
+  scrollbar-color: #8ee01e #a7ec2b;
+}
+
+.ks-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ks-item {
+  margin: 0 0 12px;
+  height: 201px;
+}
+
+.ks-card {
+  position: relative;
+  display: block;
+  width: 760px;
+  height: 201px;
+  color: #000;
+  text-decoration: none;
+  background: no-repeat 0 0;
+}
+
+.ks-over {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: no-repeat 0 0;
+  pointer-events: none;
+}
+
+.ks-card:hover .ks-over {
+  opacity: 1;
+}
+
+.ks-article,
+.ks-article .ks-over {
+  background-image: url(/ui/kids-search-article.jpg);
+}
+.ks-article .ks-over {
+  background-image: url(/ui/kids-search-article-over.jpg);
+}
+.ks-article {
+  background-image: url(/ui/kids-search-article.jpg);
+}
+.ks-sound {
+  background-image: url(/ui/kids-search-sound.jpg);
+}
+.ks-sound .ks-over {
+  background-image: url(/ui/kids-search-sound-over.jpg);
+}
+.ks-video {
+  background-image: url(/ui/kids-search-video.jpg);
+}
+.ks-video .ks-over {
+  background-image: url(/ui/kids-search-video-over.jpg);
+}
+.ks-table {
+  background-image: url(/ui/kids-search-table.jpg);
+}
+.ks-table .ks-over {
+  background-image: url(/ui/kids-search-table-over.jpg);
+}
+.ks-activity {
+  background-image: url(/ui/kids-search-activity.jpg);
+}
+.ks-activity .ks-over {
+  background-image: url(/ui/kids-search-activity-over.jpg);
+}
+.ks-map {
+  background-image: url(/ui/kids-search-map.jpg);
+}
+.ks-map .ks-over {
+  background-image: url(/ui/kids-search-map-over.jpg);
+}
+.ks-picture {
+  background-image: url(/ui/kids-search-picture.jpg);
+}
+.ks-picture .ks-over {
+  background-image: url(/ui/kids-search-picture-over.jpg);
+}
+.ks-pictures {
+  background-image: url(/ui/kids-search-pictures.jpg);
+}
+.ks-pictures .ks-over {
+  background-image: url(/ui/kids-search-pictures-over.jpg);
+}
+
+/* Thumbnail: 2px coloured border, 5px white mat, 150x100 picture. */
+.ks-thumb {
+  position: absolute;
+  left: 20px;
+  top: 44px;
+  box-sizing: border-box;
+  width: 164px;
+  height: 114px;
+  padding: 5px;
+  background: #fff;
+  border: 2px solid #0099ff;
+}
+
+.ks-article .ks-thumb {
+  border-color: #ce4d00;
+}
+
+.ks-thumb img {
+  display: block;
+  width: 150px;
+  height: 100px;
+  object-fit: cover;
+}
+
+.ks-title {
+  position: absolute;
+  left: 200px;
+  top: 22px;
+  width: 520px;
+  font-size: 18pt;
+  line-height: 30px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ks-snippet {
+  position: absolute;
+  left: 200px;
+  top: 58px;
+  width: 520px;
+  font-size: 14pt;
+  line-height: 24px;
+  color: #ce4f02;
+}
+
+.ks-note {
+  margin: 20px 14px;
+}
+
+/* No results */
+.ks-sorry {
+  position: relative;
+  width: 760px;
+  height: 213px;
+  overflow: hidden;
+  background: url(/ui/kids-search-sorry.jpg) no-repeat 0 0;
+}
+
+.ks-sorry-head {
+  position: absolute;
+  left: 121px;
+  top: 22px;
+  font-size: 18pt;
+  line-height: 30px;
+  color: #ff7900;
+}
+
+.ks-sorry p {
+  position: absolute;
+  left: 121px;
+  top: 55px;
+  width: 545px;
+  margin: 0;
+  font-size: 14pt;
+  line-height: 24px;
+  color: #000;
+}
+
+.ks-none a {
+  color: #0c6cfe;
+  text-decoration: underline;
+}
+
+.ks-full {
+  margin: 61px 0 0 128px;
+  font-size: 13pt;
+  color: #636563;
+}

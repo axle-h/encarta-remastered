@@ -39,10 +39,11 @@ describe("Kids menu bar", () => {
 
   it("lists the captured items", () => {
     setup();
-    expect(items("File")).toEqual(["PrintCtrl+P", "Exit"]);
+    // As drawn by Encarta Kids: "..." ellipses and spaced shortcuts.
+    expect(items("File")).toEqual(["Print...Ctrl + P", "Exit"]);
     cleanup();
     setup();
-    expect(items("Favorites")).toEqual(["Add to Favorites…", "Organize Favorites…", "<empty>"]);
+    expect(items("Favorites")).toEqual(["Add to Favorites...", "Organize Favorites...", "<empty>"]);
     cleanup();
     setup();
     expect(items("Help")[0]).toBe("Microsoft Encarta HelpF1");
@@ -125,7 +126,7 @@ describe("Kids menu bar", () => {
     fireEvent.click(screen.getByRole("button", { name: "View" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Go to/ }));
     const sub = screen.getAllByRole("menu")[1]!;
-    expect(Array.from(sub.querySelectorAll('[role="menuitem"]')).map((e) => e.textContent)).toEqual(["BackAlt+Left", "ForwardAlt+Right", "Home PageAlt+Home"]);
+    expect(Array.from(sub.querySelectorAll('[role="menuitem"]')).map((e) => e.textContent)).toEqual(["BackAlt + Left Arrow", "ForwardAlt + Right Arrow", "Home PageAlt + Home"]);
     cleanup();
     setup();
     fireEvent.click(screen.getByRole("button", { name: "Help" }));
@@ -189,5 +190,28 @@ describe("KidsShell", () => {
     expect((await screen.findByRole("tooltip")).textContent).toContain("Copy the article or picture.");
     fireEvent.mouseLeave(screen.getByRole("button", { name: "Copy" }));
     expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("opens the article's right-click menu at the pointer, as the VM's", () => {
+    render(
+      <SettingsProvider>
+        <MemoryRouter initialEntries={["/kids/item/1"]}>
+          <KidsMenuBar />
+          <div className="kids-art">
+            <p>text</p>
+          </div>
+        </MemoryRouter>
+      </SettingsProvider>,
+    );
+    fireEvent.contextMenu(screen.getByText("text"), { clientX: 300, clientY: 200 });
+    const menu = screen.getByRole("menu", { name: "Article" });
+    expect(menu.style.left).toBe("300px");
+    expect(Array.from(menu.querySelectorAll(":scope > li > [role=menuitem]")).map((e) => e.getAttribute("aria-label"))).toEqual([
+      "Find in this Article... Ctrl + F",
+      "Copy Ctrl + C",
+      "Print... Ctrl + P",
+      "Add to Favorites...",
+      "Read Aloud F8",
+    ]);
   });
 });

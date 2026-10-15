@@ -5,7 +5,7 @@
 use anyhow::{Result, bail};
 
 /// A resource name: a number, or a string such as `INTROSOUND`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ResName {
     Id(u32),
     Name(String),

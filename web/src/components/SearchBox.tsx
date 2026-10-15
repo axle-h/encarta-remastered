@@ -46,7 +46,8 @@ export function SearchBox({ kids = false, placeholder = "Type a search term", au
 
   useEffect(() => {
     const term = q.trim();
-    if (!open || term.length < 1) {
+    // Encarta Kids has no suggestion list (VM): Enter or the arrow searches.
+    if (!open || term.length < 1 || kids) {
       setItems([]);
       return;
     }

@@ -1042,16 +1042,19 @@ pub async fn search(State(st): St, Query(q): Query<SearchQuery>) -> ApiResult<Js
     };
     let res = blocking(move || idx.search(&req)).await?;
     let mut out = serde_json::to_value(&res).map_err(anyhow::Error::from)?;
-    // Hits get the item's media type and thumbnail from the content database (not in the index).
+    // Hits get the item's media type, thumbnail and gallery picture from the content database (not in
+    // the index); Encarta Kids' result cards show the gallery picture.
     if let Some(db) = st.content.clone() {
         let refs: Vec<i64> = res.hits.iter().filter(|h| h.dictionary.is_none()).map(|h| h.ref_id as i64).collect();
         let extra = db
             .call(move |c| {
                 let mut st = c.prepare_cached(&format!(
-                    "SELECT i.media_type, {} FROM item i
+                    "SELECT i.media_type, {}, {} FROM item i
                      LEFT JOIN item_file ft ON ft.rowid = (SELECT rowid FROM item_file WHERE ref_id = i.ref_id AND role = 'thumb' ORDER BY ordinal LIMIT 1)
+                     LEFT JOIN item_file fp ON fp.rowid = (SELECT rowid FROM item_file WHERE ref_id = i.ref_id AND role = 'picon' ORDER BY ordinal LIMIT 1)
                      WHERE i.ref_id = ?1",
-                    file_cols("thumb", "ft")
+                    file_cols("thumb", "ft"),
+                    file_cols("picon", "fp")
                 ))?;
                 let mut m = std::collections::HashMap::new();
                 for id in refs {
@@ -1067,11 +1070,13 @@ pub async fn search(State(st): St, Query(q): Query<SearchQuery>) -> ApiResult<Js
                 let Some(id) = h.get("ref_id").and_then(|v| v.as_i64()) else { continue };
                 let Some(mut o) = extra.get(&id).cloned() else { continue };
                 take_file_ref(&mut o, "thumb");
+                take_file_ref(&mut o, "picon");
                 let hm = h.as_object_mut().unwrap();
                 if let Some(t) = o.remove("media_type") {
                     hm.insert("media_type".into(), t);
                 }
                 hm.insert("thumb".into(), o.remove("thumb").unwrap_or(Value::Null));
+                hm.insert("picon".into(), o.remove("picon").unwrap_or(Value::Null));
             }
         }
     }

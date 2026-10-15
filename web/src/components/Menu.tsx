@@ -4,6 +4,8 @@ import { Link, useLocation } from "react-router-dom";
 /** One menu entry: a link, a command, a separator or a group heading. */
 export interface MenuEntry {
   label?: ReactNode;
+  /** The plain name when the label marks an access key (`E<u>x</u>it`). */
+  ariaLabel?: string;
   to?: string;
   onSelect?: () => void;
   disabled?: boolean;
@@ -29,8 +31,14 @@ export function MenuButton({
   buttonClassName = "",
   menuClassName = "",
   ariaLabel,
+  contextFor,
 }: {
-  label: ReactNode;
+  label?: ReactNode;
+  /**
+   * Makes this a context menu instead: no button; a right-click inside an element matching this
+   * selector opens the menu at the pointer (focus on the first item when opened from the keyboard).
+   */
+  contextFor?: string;
   /** The plain name when the label marks an access key (`F<u>a</u>vorites`). */
   ariaLabel?: string;
   entries: () => MenuEntry[];
@@ -41,6 +49,7 @@ export function MenuButton({
   const [open, setOpen] = useState<false | "first" | "last" | "none">(false);
   const [items, setItems] = useState<MenuEntry[]>([]);
   const [sub, setSub] = useState<{ key: string; focus: boolean } | null>(null);
+  const [at, setAt] = useState<{ x: number; y: number } | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLUListElement>(null);
@@ -61,6 +70,22 @@ export function MenuButton({
   useEffect(() => {
     setOpen(false);
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (!contextFor) return;
+    const on = (e: MouseEvent) => {
+      const t = e.target;
+      if (!(t instanceof Element) || !t.closest(contextFor)) return;
+      e.preventDefault();
+      setAt({ x: e.clientX, y: e.clientY });
+      setItems(entries());
+      setSub(null);
+      // The context-menu key fires at (0, 0): put focus in the menu for the keyboard.
+      setOpen(e.clientX === 0 && e.clientY === 0 ? "first" : "none");
+    };
+    document.addEventListener("contextmenu", on);
+    return () => document.removeEventListener("contextmenu", on);
+  });
 
   useEffect(() => {
     if (sub?.focus) focusables(menu.current?.querySelector<HTMLElement>('ul[role="menu"]') ?? null)[0]?.focus();
@@ -194,6 +219,7 @@ export function MenuButton({
               role="menuitem"
               tabIndex={-1}
               aria-haspopup="menu"
+              aria-label={m.ariaLabel}
               aria-expanded={isOpen}
               disabled={m.disabled}
               aria-disabled={m.disabled}
@@ -202,7 +228,7 @@ export function MenuButton({
               {body}
             </button>
             {isOpen && (
-              <ul className="menu-popup menu-sub" role="menu" aria-label={typeof m.label === "string" ? m.label : undefined}>
+              <ul className="menu-popup menu-sub" role="menu" aria-label={m.ariaLabel ?? (typeof m.label === "string" ? m.label : undefined)}>
                 {renderEntries(m.submenu, true)}
               </ul>
             )}
@@ -212,11 +238,11 @@ export function MenuButton({
       return (
         <li key={key} role="none" onMouseEnter={() => !nested && setSub(null)}>
           {m.to && !m.disabled ? (
-            <Link role="menuitem" tabIndex={-1} to={m.to} onClick={() => pick(m)}>
+            <Link role="menuitem" tabIndex={-1} to={m.to} aria-label={m.ariaLabel} onClick={() => pick(m)}>
               {body}
             </Link>
           ) : (
-            <button type="button" role="menuitem" tabIndex={-1} disabled={m.disabled} aria-disabled={m.disabled} onClick={() => pick(m)}>
+            <button type="button" role="menuitem" tabIndex={-1} disabled={m.disabled} aria-disabled={m.disabled} aria-label={m.ariaLabel} onClick={() => pick(m)}>
               {body}
             </button>
           )}
@@ -224,6 +250,17 @@ export function MenuButton({
       );
     });
 
+  if (contextFor) {
+    return (
+      <div className={`menu ${className}`} ref={wrap}>
+        {open && at && (
+          <ul ref={menu} className={`menu-popup menu-context ${menuClassName}`} role="menu" aria-label={ariaLabel} style={{ position: "fixed", left: at.x, top: at.y }} onKeyDown={onMenuKey}>
+            {renderEntries(items, false)}
+          </ul>
+        )}
+      </div>
+    );
+  }
   return (
     <div className={`menu ${className}`} ref={wrap}>
       <button

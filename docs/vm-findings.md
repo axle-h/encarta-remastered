@@ -653,7 +653,7 @@ Measured on Westminster Abbey (461545486), Mont-Saint-Michel (461549315) and Alc
   for the top 21 px (the menu band) over the 2×50 tile 15050. Left cap 15060 at x 0; Home 15051 at 10, Back 15052 at
   76, Forward 15053 at 142 (all from y 0, 71 tall); joint 15054 at 178; Copy 15055 at 184 and Print 15056 at 237 (y 21,
   50 tall) with the fillers 15071 (230) and 15072 (283) between and after them; the "search" label 15057 at 307, the
-  box (the middle of 15062 stretched over 417-611) and the arrow 15058 at 611, y 22; logo 15059 at the right edge.
+  box (the top left 194×38 of 15062 at 417) and the arrow 15058 at 611, y 22; logo 15059 at the right edge.
   Button bitmaps are strips of four states: normal, mouse-over, disabled, pressed. Back, Forward, Copy and Print are
   disabled (third state) on the home and category screens. Menu titles: Tahoma 11 px at x 194-470, the open one on
   #B5F331 with no border.
@@ -669,7 +669,41 @@ Measured on Westminster Abbey (461545486), Mont-Saint-Michel (461549315) and Alc
   the `KIDS_SUBHS_TOPIC_SEL` card and a white frame. The scroll bar is green (face #8EE01E, track #A7EC2B). Every tile
   starts as the `KIDS_UNKNOWN_BG` "book" and swaps in its thumbnail once that has loaded, so the capture's books on
   Aardvark, Armadillo, Lemurs, Big Cats … are thumbnails not yet loaded (all of them have one). Clicking another
-  subcategory switches the grid inside the page (no history entry).
+  subcategory switches the grid inside the page (no history entry). A tile's tooltip is its title.
+- **Second pass, 2026-10-15** (`fixtures/ui/kids2/`, `INDEX.md` there; the DOM beside each HTML view). Opening a top
+  category by id gives the subcategory page, not the home with the board: the board is the home page's own state.
+  Home and board hovers swap the panel's mouse-over picture (animated); a board entry turns #FFB400.
+- **Articles** (`art-*`, template `kidsartdisp.xsl`): the `KIDSARTBACK` swoosh (800×533, `ENCARTAU.DLL`) fixed at the
+  top left; body padding 21; a 62-px header with the title (20 pt #FF7800) and the 106×62 `KIDSMEDIABUT` button
+  (`KIDSMEDIAMOUSE` under the pointer, no tooltip) at x 890; then one scrolling panel (padding-left 16) holding the
+  text floated right (panel width − 386, padding-left 25, a 526-px column with 10 px right padding) and the media
+  tiles on its left: 170×206 `KIDSMEDMODULE` frames (`KIDSMEDMODMOUSE`, blue, under the pointer), padding 10, 8 px
+  apart, the gallery picture 150 px on its longer side with a 1-px #FF9900 frame (#66CCFF under the pointer), the
+  28-px `KIDS_TICONS_<ticon>` badge 4 px from its lower right, the title 9 pt #0033CC (underlined under the pointer).
+  The opening section's paragraphs are 16 pt with 26-px lines, the rest 14 pt with 24-px lines; section titles 18 pt
+  #FF7800. The page ends with "Also in Encarta Kids" (the related tree, 14 pt #0033FF in 23-pt rows) and "On the
+  Web" (the web links by caption, bulleted). Tables (`kidstables.xsl`): a #8ACA5A title bar in white 16 pt, a #47A807
+  frame, 11 pt rows of 25 px with every other row #EFFCD6 from the first, the stored column widths, no header row.
+  The audio tile's tooltip is "Click to listen to the sound"; the other kinds' English strings were not captured
+  (the disc only has the Dutch set). Double-clicking a word only selects it (no dictionary); right-click gives
+  Find in this Article... Ctrl + F | Copy Ctrl + C, Print... Ctrl + P, Add to Favorites... | Read Aloud F8 ▸.
+- **Look at Pictures** (`pics*`, `max-*`, template `kidsmedialist.xsl`): the same page, not a separate viewer: the
+  `KIDS_MEDIA_BKGD` blue swoosh, the header with `KIDSARTBUT` "Read Article", a 173-px strip of 151×183 tiles
+  (`MEDIABARDIVREST`, the selected one `MEDIABARDIVOVER` orange) between 35-px `MEDIABARVERT_UP/DWN_*` arrows that
+  scroll it while hovered (faster pressed), and the selected item at (192, 133): picture, audio set (picture over a
+  player bar, playing at once) or inline video, then its title 18 pt #0053C5, caption 14 pt (10 pt right padding)
+  and the credit 9 pt #999999 under a bold "Encarta Encyclopedia". Clicking a tile swaps the item in place.
+- **Search** (`search-*`; a native view, no DOM): "Search Results" green with `for "<term>" in Encarta Kids`, then one
+  760×201 card per hit, 12 px apart: the disc's `JPEG` 15073-15081 by kind (article, sound, video, table, activity,
+  map, picture, pictures, chart; 15082-15090 under the pointer) with the button drawn in, the gallery picture in a
+  white mat with an orange (article) or blue (media) frame, the title 18 pt and, for articles, the lead in orange-brown
+  cut with " ...". Whole words only ("zeb" finds nothing): the green 15070 "Sorry!" card, then "To try your search in
+  the full edition of Encarta, click here." There is no suggestion list while typing.
+- **Menus** (`menu-*`, `sub-*`): square #B5F331 boxes with a 1-px #006500 frame, 20-px rows (4 px above the first and
+  below the last), separators a full-width #006500 line with 4 px either side, Tahoma text 32 px in (View 24, Go to 9,
+  the ticked On/Off submenus 17, the tick 6 px in), #63B218 when disabled, the row under the pointer #63CF00 (darker at
+  the top) with #217918 text. Labels use "..." and underline an access key (P̲rint..., Ex̲it, Ho̲me Page, Rea̲d Aloud
+  …); shortcuts are spaced ("Ctrl + P", "Alt + Left Arrow"). Print, Copy and Find are disabled off articles.
 
 ### Other item views (`items/`)
 - Web link (762518793): opens Internet Explorer on `encartaupdate.msn.com/teleport/teleport.aspx?…&tname=weblinks&…&ud=<id>`

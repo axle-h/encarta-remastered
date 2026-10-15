@@ -61,7 +61,7 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
 | `src/pages/` | home, browse, item dispatcher (+ `itemRoute.ts`: feature records, topic timelines, panoramas, Map Trek stops), views of the other item kinds (`ItemKinds.tsx`: web links, contributors, quotation authors, tour nodes, Map Trek, online features), panoramic tours (`PanoramaTour.tsx`, `panorama.ts`), search, media gallery, dictionary (+ `wordWheel.ts`), timeline (+ pure layout/date helpers), tours, favorites, help, atlas placeholder |
 | `src/panorama/` | the native panorama player ([Panoramas](#panoramas)): cylinder geometry, WebGL and Canvas 2D renderers, `PanoramaView`, parameters from the data, the image-SWF reader, single panoramas in the media viewer |
 | `src/components/Menu.tsx` | the accessible menu button (arrows, Home/End, Esc, ←/→ along a `menubar`) used by every menu; `ArrowTip.tsx`, the tool-button tooltips |
-| `src/kids/` | Kids shell (toolbar from the disc's bitmaps, menu bar), home screen, category and subcategory screens (`KidsBrowse.tsx`) and article view |
+| `src/kids/` | Kids shell (toolbar from the disc's bitmaps, menu bar, right-click menu), home screen, category and subcategory screens (`KidsBrowse.tsx`), article view, Look at Pictures (`KidsPictures.tsx`) and search results (`KidsSearch.tsx`) |
 | `src/styles/` | CSS by area; tokens in `base.css` |
 | `src/tours/` | the tour runtime (Step 6), unchanged |
 | `src/atlas/` | the atlas (Step 5), owned separately; loaded with `import.meta.glob` so the client builds without it |
@@ -130,6 +130,13 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
   subcategory (title of the category it was opened from, kept in the history state since Critter Corner and
   Science Zone are in two; sibling list with the arrow highlight; grid of 106×120 tiles). Positions and
   colours: vm-findings.md, Kids chrome.
+- **Kids pages after the second VM pass** (vm-findings.md, Kids chrome, "Second pass"): the article page
+  (`KidsArticle.tsx`: fixed swoosh, one scrolling panel, the disc's tile frames and badges, Kids tables with the
+  stored column widths, "Also in Encarta Kids" and "On the Web"), Look at Pictures (`KidsPictures.tsx`,
+  `/kids/item/{id}/media[?max=<ref>]`: the strip and the item in place; our own audio and video controls), search
+  (`KidsSearch.tsx`: the disc's result cards; whole words are kept client-side from the first 50 hits), the menus'
+  look and labels (`kidsEntries` in `KidsShell.tsx`; the disc's Tahoma as "Encarta Tahoma", `fonts.ts`) and the
+  article's right-click menu (`MenuButton` with `contextFor`). No suggestion list and no double-click lookup in Kids.
 - **Audio**: Opus, then AAC, from the item's `audio` file; captions (`cc` → WebVTT) are shown as text
   under the player. Audio sets (`audionested`) are children: a picture plus audio items. **MIDI** (236
   music files, e.g. national anthems) plays through our own SMF reader and General MIDI soundfont synth

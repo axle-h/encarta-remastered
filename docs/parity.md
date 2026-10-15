@@ -198,8 +198,10 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 |---|---|---|---|
 | Kids home with ten panels, mouse-over pictures | done | | — |
 | Kids category screens | done | `kids/KidsBrowse.tsx` (2026-10-15): category screen on its own 1024×600 background with the other nine panels and the subcategory icons; subcategory screen with the arrow-highlighted list and the 106×120 tile grid, "book" picture until a thumbnail loads (vm-findings, Kids chrome) | — |
-| Kids articles (orange title, tile grid, no numbers) | done | VM `kids-*` | — |
-| Kids search, Kids dictionary | done | | — |
+| Kids articles (orange title, tile grid, no numbers) | done | `kids/KidsArticle.tsx` (2026-10-15): the disc template's layout and art, line pitches and tables measured against `kids-*` and `fixtures/ui/kids2/art-*`; related articles and web links at the end | tile tooltips: only the audio string is known in English |
+| Kids Look at Pictures | done | `kids/KidsPictures.tsx` (2026-10-15): strip and item in place (`fixtures/ui/kids2/pics*`, `max-*`) | our own audio and video controls, no caption strip under video |
+| Kids search | done | `kids/KidsSearch.tsx` (2026-10-15): the disc's result cards, "Sorry!" card, no suggestion list | whole words are filtered client-side from the first 50 hits |
+| Kids dictionary | done | | not reachable from Kids in the VM (no double-click lookup there) |
 | Kids interactives and games (264, Flash) | done | Ruffle (18 Kids copies in the test pass); match games native | — |
 | Kids' own menu bar, Favorites, Help | done | `kids/KidsShell.tsx` (2026-10-14; bar from the disc's bitmaps 2026-10-15): lime bar with Home/Back/Forward/Copy/Print orbs and File / Edit / View / Favorites / Tools / Help with the VM's submenus (Go to, Closed Captioning, Read Aloud, Menu and Button Sounds, Startup Sound, Troubleshooting; `fixtures/ui/kids/sub-*.png`) | Read Aloud uses the browser's speech synthesis (no highlighting while reading, as in the VM); yellow-arrow tooltips (`ArrowTip.tsx`, also on the adult orbs; Back says "Back to <page>"; position checked through the DOM only); Kids Copy copies the selection or the whole article without a dialog (UI pass 2) |
 
