@@ -6,7 +6,7 @@ import { COPYRIGHT, SOURCE_LINE, addSourceToCopy } from "./commands";
 import { BROWSE_ALL, FEATURE_GROUPS, featureHref } from "./featuresData";
 import { FeaturesMenu } from "./FeaturesMenu";
 import { OptionsDialog } from "./OptionsDialog";
-import { PRINT_CHOICES, ScopeDialog } from "./ScopeDialog";
+import { COPY_CHOICES, ScopeDialog } from "./ScopeDialog";
 import { shortcutFor } from "./shortcuts";
 import { SETTINGS_KEY, SettingsProvider } from "../settings/settings";
 
@@ -69,7 +69,7 @@ describe("shortcuts", () => {
 
 describe("dialogs", () => {
   it("enables Selected Text only with a selection", () => {
-    const base = { title: "Print Options", action: "Print", choices: PRINT_CHOICES, onChoose: () => {}, onCancel: () => {} };
+    const base = { title: "Copy Options", action: "Copy", choices: COPY_CHOICES, onChoose: () => {}, onCancel: () => {} };
     const { rerender } = render(<ScopeDialog {...base} hasSelection={false} />);
     expect((screen.getByLabelText("Selected Text") as HTMLInputElement).disabled).toBe(true);
     rerender(<ScopeDialog {...base} hasSelection />);

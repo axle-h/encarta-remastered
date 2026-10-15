@@ -126,9 +126,25 @@ All world state is in glTF space; queries convert back to the disc's coordinates
   gravity on hardware and snap on software. In gravity the eye falls `vfall += GRAVITY` per tick and lands on the
   ground; in snap it is set to the ground at once. `groundMode` overrides it for experiments.
 - **Pitch** follows the original's two values (§6.9): `pitchDeg` is the stored pitch (`PITCH?`, rendering) and
-  `lookY`/`lookH` the float32 look vector. Ground following moves eye and target in float32 (`Math.fround`), so the
-  derived pitch drifts as in the VM, and the ±45° test of the pitch keys uses it. The target's X/Z rounding and the
-  rotation matrix's float error are not modelled (well under 10⁻⁵°).
+  `lookY`/`lookH` the float32 look vector. Ground following (`followGround`, `WalkMap.groundY`) repeats the
+  original's arithmetic with every operation rounded to float32, because the control's x87 runs at single
+  precision; this replays the VM's gravity log bit for bit (VM pass 5). So the derived pitch drifts as in the VM in
+  both ground modes: in gravity wherever the fall and landing round differently, in snap only on slopes where the
+  eye keeps alternating between two float32 heights (on level ground snap is drift-free after the first tick). The
+  ±45° test of the pitch keys uses the derived pitch. The target's X/Z rounding and the rotation matrix's float
+  error are not modelled (well under 10⁻⁵°).
+- **Colour-keyed textures** (§5.10; inferred, not observed). On the hardware device, keyed glb textures, keyed
+  `APPLYTEXTURE`/`FILMSTRIP` images and the cloud impostors are filtered bilinearly without mipmaps with the key
+  colour (magenta) kept in their transparent texels, and a pixel is dropped only when its filtered alpha is 0
+  (`KEY_ALPHA_REF`, `fillKeyTexels`, `keyedMap` in `render/`). That is the D3D colour-key pipeline the control
+  asks for (colour key on, alpha test and blending off): a magenta fringe about one texel wide around cut-outs,
+  and pink shimmer on keyed textures seen from afar. The software device point-samples, so it has no fringe.
+- **Full screen** (§4.0; inferred, not observed). The `_dot` button (a 4×4 black square at the control's top
+  left, shown only while standing in one walk-map cell per tour) runs `SCENE.TRYHARDWAREFULLSCREEN` in five tours.
+  On the hardware device the control then sets `fullScreen`: `mountTour` takes the browser's full screen (or
+  covers the window when refused), renders at the screen's size with the same horizontal FOV, hides the cursor,
+  and raises no events until Esc or `KILLFULLSCREEN`. On the software device the command fails and nothing
+  happens, as in the original.
 - **FOV** is horizontal (measured, §6.10): projection scale `K = (W/2)/tan(fov/2)`, shared by the
   renderer and caption anchoring. `fovAxis` remains as a switch for experiments.
 - **Control size.** The app mounts the control at 616×420, Encarta's size, and scales it to the
@@ -220,11 +236,13 @@ All world state is in glTF space; queries convert back to the disc's coordinates
 
 - Faces are single-sided as converted (VM: back faces are culled; `doubleSided` remains for experiments).
 - The "maximised" tour view (`CMax3DVTView`) is the normal tour page, the control fixed at 616×420 (tours-3d.md
-  §4.0), which the client already shows; the control's own full-screen mode cannot be reached in Encarta 2009.
+  §4.0), which the client already shows. The control's own full screen is reachable only through the `_dot` easter
+  egg; its look is inferred (above), and the host's window, hidden and restored around it, is not modelled.
 - The app's menu offers "Labels and Hot Spots" (`2D.ON`/`2D.OFF`), but Encarta 2009 has no such
   item (VM: only its strings remain in ENCARTAR.DLL).
-- Textures are mipmapped and bilinear on the hardware device (VM pass 4, WineD3D: a 2009 driver may differ,
-  e.g. colour-key fringes) and nearest-texel without mipmaps on the software device (§5.10).
+- Textures are mipmapped and bilinear on the hardware device (VM pass 4) and nearest-texel without mipmaps on the
+  software device (§5.10). The colour-key fringe of the hardware device is inferred from the D3D pipeline, not
+  observed (WineD3D shows none, and no 2009 driver is available).
 - The VM's loading takes 1.6–2.3 s depending on the tour; the data does not explain the spread
   (tours-3d.md §8.4.3), so the runtime keeps one minimum (2 s).
 - Site map: the highlighted-location look (§4.2 step 5) and the original marker icon are not
@@ -247,8 +265,9 @@ All world state is in glTF space; queries convert back to the disc's coordinates
 
 ## Verification
 
-`npm test`: 93 tour tests (logic 40, vm 24, disc 29 with `out/tours`). `logic.test.ts` covers the parser, interpreter, macros and alarms, walk-map
-lookup and gap closing, hotspot enter/exit, collision, time factor, step, pitch (the drifted look vector), snap and gravity (the VM's fall trace),
+`npm test`: 109 tour tests (logic 46, vm 27, disc 36 with `out/tours`). `logic.test.ts` covers the parser, interpreter, macros and alarms, walk-map
+lookup and gap closing, hotspot enter/exit, collision, time factor, step, pitch (the drifted look vector), snap and gravity (the VM's fall trace,
+snap's drift-free level ground and drifting slope), the colour-key fill,
 mouse vector and cursor zones, flicker, film strip, water, the cloud rasteriser, caption widths,
 NEXTFRAME, hit testing and macros, anchoring and the cone test, and the site map. `vm.test.ts`
 checks each VM measurement on synthetic scenes: walk and turn rates at 64 and 47 ticks/s, display
@@ -256,9 +275,10 @@ frame rates from 24 to 240 fps, the pitch sequences and Home, wall sliding at ya
 corner stop, upper-cased events and `USERLOCUPDATE` every 1.00 s, command replies, MOVETO to the
 current position, caption colours and cursor, when captions first show (plain vs away-and-back stop
 commands), flicker steps, the 2-s loading screen with its 10-fps spinner, hotspot destinations,
-pose round trips, and the grid span rule. The integration tests over `out/tours` cover parser
+pose round trips, the grid span rule, and the full-screen commands. The integration tests over `out/tours` cover parser
 equivalence with the converter, the post-load state, walking from the start pose, Beaumaris
-floor switching, and that each stop's site-map marker falls on its location box.
+floor switching, that each stop's site-map marker falls on its location box, and that each tour's `_dot` cell
+shows the button and a press on it enters full screen on hardware only.
 
 Against the VM captures (`fixtures/tours/`, private): every Tour Stop of the 7 tours (47 views
 including the start poses), run through the runtime with its own camera command, gives the VM's

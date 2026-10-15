@@ -5,12 +5,13 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ArrowTip } from "../components/ArrowTip";
 import { MenuButton, type MenuEntry } from "../components/Menu";
 import { OptionsDialog } from "./OptionsDialog";
-import { COPY_CHOICES, PRINT_CHOICES, ScopeDialog } from "./ScopeDialog";
+import { PrintHost } from "./PrintDialog";
+import { COPY_CHOICES, ScopeDialog } from "./ScopeDialog";
 import { FeaturesMenu } from "./FeaturesMenu";
 import { useShortcuts } from "./shortcuts";
 import { useDoubleClickLookup } from "./wordLookup";
 import { SearchBox } from "../components/SearchBox";
-import { COPY_EVENT, OPTIONS_EVENT, PRINT_EVENT, copyScope, copySelection, installCopySourceLine, openFind, printPage, printWith, selectedText, type ArticleScope } from "./commands";
+import { COPY_EVENT, OPTIONS_EVENT, copyScope, copySelection, installCopySourceLine, openFind, requestPrint, selectedText, type ArticleScope } from "./commands";
 import { canReadAloud, isReading, readAloud, readAloudSubmenu, stopReading } from "./readAloud";
 import { AddFavoriteDialog, defaultFavoriteName } from "./AddFavoriteDialog";
 import { favorites, pageTitle } from "./favorites";
@@ -64,10 +65,9 @@ export function MenuBar() {
     setNote(msg);
     window.setTimeout(() => setNote(""), 2500);
   };
-  const [dialog, setDialog] = useState<null | "options" | "print" | "copy" | "favorite">(null);
+  const [dialog, setDialog] = useState<null | "options" | "copy" | "favorite">(null);
   const onItem = location.pathname.startsWith("/item/");
   const isArticle = () => onItem && !!document.querySelector(".art-text");
-  const print = () => (isArticle() ? setDialog("print") : printPage());
   const copied = (ok: boolean) => flash(ok ? "Copied." : "Nothing was copied.");
   const copy = () => {
     if (isArticle()) setDialog("copy");
@@ -96,17 +96,16 @@ export function MenuBar() {
       }
     };
     window.addEventListener("keydown", key);
-    const offs = [on(OPTIONS_EVENT, () => setDialog("options")), on(PRINT_EVENT, print), on(COPY_EVENT, copy), () => window.removeEventListener("keydown", key)];
+    const offs = [on(OPTIONS_EVENT, () => setDialog("options")), on(COPY_EVENT, copy), () => window.removeEventListener("keydown", key)];
     return () => offs.forEach((f) => f());
   });
   useEffect(installCopySourceLine, []);
-  const choose = (kind: "print" | "copy", scope: ArticleScope) => {
+  const choose = (scope: ArticleScope) => {
     setDialog(null);
-    if (kind === "print") window.setTimeout(() => printWith(scope), 50);
-    else void copyScope(scope).then(copied);
+    void copyScope(scope).then(copied);
   };
   const file = (): MenuEntry[] => [
-    { label: "Print…", shortcut: "Ctrl+P", onSelect: print, key: "print" },
+    { label: "Print…", shortcut: "Ctrl+P", onSelect: requestPrint, key: "print" },
     { separator: true, key: "s1" },
     {
       label: "Go to",
@@ -147,11 +146,9 @@ export function MenuBar() {
         {note}
       </span>
       {dialog === "options" && <OptionsDialog onClose={() => setDialog(null)} />}
-      {dialog === "print" && (
-        <ScopeDialog title="Print Options" action="Print" choices={PRINT_CHOICES} hasSelection={!!selectedText().trim()} onChoose={(sc) => choose("print", sc)} onCancel={() => setDialog(null)} />
-      )}
+      <PrintHost />
       {dialog === "copy" && (
-        <ScopeDialog title="Copy Options" action="Copy" choices={COPY_CHOICES} hasSelection={!!selectedText().trim()} onChoose={(sc) => choose("copy", sc)} onCancel={() => setDialog(null)} />
+        <ScopeDialog title="Copy Options" action="Copy" choices={COPY_CHOICES} hasSelection={!!selectedText().trim()} onChoose={choose} onCancel={() => setDialog(null)} />
       )}
       {dialog === "favorite" && (
         <AddFavoriteDialog

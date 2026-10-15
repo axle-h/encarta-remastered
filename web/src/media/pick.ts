@@ -103,7 +103,7 @@ export function captionTracks(item: Item | undefined): { src: string; label: str
   return out;
 }
 
-export type MediaClass = "image" | "audio" | "video" | "table" | "interactive" | "tour" | "map" | "text" | "other";
+export type MediaClass = "image" | "audio" | "timeline" | "weblink" | "video" | "table" | "interactive" | "tour" | "map" | "text" | "other";
 
 /** What kind of viewer an item needs. */
 export function mediaClass(item: { kind?: string; media_type?: string; group?: string } | undefined): MediaClass {
@@ -113,6 +113,8 @@ export function mediaClass(item: { kind?: string; media_type?: string; group?: s
   // The kind wins over the icon: 57 narrated slide shows (`narr`) and 25 Flash maps (`map`) are
   // interactives with an `.iax`, not audio or atlas maps.
   if (k === "interactive") return "interactive";
+  if (k === "timeline-event" || k === "timeline-topic" || t === "timeline") return "timeline";
+  if (k === "weblink" || k === "live-link" || t === "weblink") return "weblink";
   if (k === "video" || t === "video") return "video";
   if (k === "audio" || k === "audio-set" || t === "audio" || t === "narr") return "audio";
   if (k === "table" || k === "facts" || t === "table" || t === "chart") return "table";
@@ -133,4 +135,15 @@ export function tourIdFor(contentId: number, tours: { id: string; contentId: num
 export function uniqueByRef<T extends { ref_id: number }>(list: T[]): T[] {
   const seen = new Set<number>();
   return list.filter((x) => (seen.has(x.ref_id) ? false : (seen.add(x.ref_id), true)));
+}
+
+/**
+ * Baggage icons shared by thousands of items (timeline, table, chart, composite map, atlas map,
+ * audio and generic interactive pictures). They stand for the kind, not the item, so the viewer
+ * draws them at their own size instead of enlarging them as the item's picture.
+ */
+const GENERIC_ICONS = /^(timegp|tablegp|chartgp|genatlas|mpn|audio|mag_generic|ddg_generic)\.(gsm|gtn|jsm|jtn)$/i;
+
+export function isGenericIcon(f: Pick<ItemFile, "file_name"> | undefined): boolean {
+  return !!f && GENERIC_ICONS.test(f.file_name);
 }

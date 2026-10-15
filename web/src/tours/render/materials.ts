@@ -5,6 +5,33 @@
  */
 import * as THREE from "three";
 
+/**
+ * Colour-keyed textures (tours-3d.md §5.5, §5.10; inferred, not observed). The control enables D3D colour
+ * keying with alpha test and blending off. A D3D driver gives each texel that matches the key alpha 0 *before*
+ * filtering and keeps its colour, filters RGBA, and then (alpha test being off) tests "alpha > 0" itself, so
+ * only pixels whose whole bilinear footprint is key are dropped. Edge pixels keep the key colour at its
+ * filter weight: a magenta fringe about one texel wide. Point sampling (the software device) gives 0 or 1.
+ */
+export const KEY_ALPHA_REF = 0.5 / 255;
+/** The key colour as a filtered texel shows it: 0xF81F (565) or 0x7C1F (555) expanded to 8 bits. */
+export const KEY_RGB: readonly [number, number, number] = [255, 0, 255];
+
+/**
+ * Gives every transparent texel of RGBA data the key colour, as the original's texture surface holds it
+ * (the browser's image decoding may have zeroed the colour of alpha-0 pixels). Returns the count.
+ */
+export function fillKeyTexels(rgba: Uint8Array | Uint8ClampedArray): number {
+  let n = 0;
+  for (let i = 0; i + 3 < rgba.length; i += 4) {
+    if (rgba[i + 3] !== 0) continue;
+    rgba[i] = KEY_RGB[0];
+    rgba[i + 1] = KEY_RGB[1];
+    rgba[i + 2] = KEY_RGB[2];
+    n++;
+  }
+  return n;
+}
+
 /** Uniforms shared by every tour material. */
 export interface SharedUniforms {
   /** Current colour of each flicker slot, 0–255 per channel. */
@@ -35,7 +62,8 @@ export function tourMaterial(base: THREE.Material, shared: SharedUniforms, varia
   const m = new THREE.MeshBasicMaterial({
     map: src.map,
     vertexColors: true,
-    alphaTest: src.alphaTest,
+    // The converter marks keyed textures alphaMode MASK; the test is the driver's "alpha > 0".
+    alphaTest: src.alphaTest > 0 ? KEY_ALPHA_REF : 0,
     transparent: false,
     side: src.side,
     fog: true,

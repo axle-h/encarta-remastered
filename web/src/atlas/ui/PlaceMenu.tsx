@@ -29,8 +29,15 @@ export function PlaceMenu({ ep, x, y, hits, onHover, onGoTo, onOpen, onClose }: 
 
   useEffect(() => {
     const ac = new AbortController();
+    // Places whose links are already here keep them (a re-click on the same place).
+    setLinks((m) => {
+      const missing = hits.filter((h) => !Array.isArray(m[h.entity]));
+      if (!missing.length) return m;
+      const next = { ...m };
+      for (const h of missing) next[h.entity] = "loading";
+      return next;
+    });
     for (const h of hits) {
-      setLinks((m) => ({ ...m, [h.entity]: "loading" }));
       getPlaceLinks(h.entity, ep, ac.signal)
         .then((l) => setLinks((m) => ({ ...m, [h.entity]: sortLinks(l) })))
         .catch(() => !ac.signal.aborted && setLinks((m) => ({ ...m, [h.entity]: "error" })));
@@ -44,9 +51,12 @@ export function PlaceMenu({ ep, x, y, hits, onHover, onGoTo, onOpen, onClose }: 
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Keep the menu inside the map: open upwards / leftwards near the bottom / right edge.
+  // Keep the menu inside the map: open upwards / leftwards near the bottom / right edge. The box is
+  // placed on the element after every render, not through state: a state update from this layout
+  // effect re-renders at sync priority, and while a links update of lower priority is pending React
+  // re-applies the later ones on each such render, so `links` is new every time and the effect never
+  // settled ("Maximum update depth exceeded" on a click whose places' links were cached).
   const el = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ left: x, top: y });
   useLayoutEffect(() => {
     const box = el.current;
     const parent = box?.parentElement;
@@ -55,11 +65,12 @@ export function PlaceMenu({ ep, x, y, hits, onHover, onGoTo, onOpen, onClose }: 
     const H = parent.clientHeight;
     const w = box.offsetWidth;
     const h = box.offsetHeight;
-    setPos({ left: x + w > W ? Math.max(0, x - w) : x, top: y + h > H ? Math.max(0, Math.min(y - h, H - h)) : y });
-  }, [x, y, hits, openEntity, links]);
+    box.style.left = `${x + w > W ? Math.max(0, x - w) : x}px`;
+    box.style.top = `${y + h > H ? Math.max(0, Math.min(y - h, H - h)) : y}px`;
+  });
 
   return (
-    <div className="enc-atlas-menu" ref={el} style={pos} role="menu" onMouseLeave={() => onHover(null)}>
+    <div className="enc-atlas-menu" ref={el} role="menu" onMouseLeave={() => onHover(null)}>
       {hits.map((h) => {
         const l = links[h.entity];
         const list = Array.isArray(l) ? l : [];

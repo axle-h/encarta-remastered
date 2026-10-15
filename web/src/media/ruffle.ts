@@ -18,6 +18,10 @@ export interface RufflePlayerElement extends HTMLElement {
       defaultFonts?: Record<string, string[]>;
     }): Promise<void>;
   };
+  /** Ruffle's player element API: stops the movie's frames and sounds without destroying it. */
+  volume?: number;
+  pause?(): void;
+  suspend?(): void;
 }
 
 interface RuffleGlobal {

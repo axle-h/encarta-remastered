@@ -300,6 +300,8 @@ impl Ctx<'_> {
         match kind {
             GeometryKind::Line => {
                 layout["symbol-placement"] = json!("line");
+                // Line features carry no `priority` (atlas-output.md): the class's b13 as a constant.
+                layout["symbol-sort-key"] = json!(self.classes.classes[rule.class as usize].priority);
             }
             GeometryKind::Area => {
                 layout["text-max-width"] = text.max_width(8.0);
@@ -343,7 +345,7 @@ impl Ctx<'_> {
             // one with the same text is within ~160 px (812 × 518 pane; mad-styling.md §8.1). MapLibre
             // repeats line labels at the spacing and drops a repeat of the same text within half of it.
             "symbol-spacing": 400,
-            "symbol-sort-key": ["get", "priority"],
+            "symbol-sort-key": self.classes.classes[rule.class as usize].priority,
             "text-field": if l.tail[3] == 1 { json!(["upcase", name]) } else { name },
             "text-font": [face],
             "text-size": l.b4[0] as f64,

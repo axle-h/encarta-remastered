@@ -146,12 +146,6 @@ export function stepPitch(cam: CameraState, input: StepInput): void {
   if (input.pitchDown) step(-cam.pitchSpeed);
 }
 
-/** Moves the eye vertically by `dy` with the target, both rounded to float32 as the original stores them. */
-function liftEye(cam: CameraState, dy: number): void {
-  cam.y = Math.fround(cam.y + dy);
-  cam.lookY = Math.fround(cam.lookY + dy);
-}
-
 /**
  * The step (§6.9): turn first, then move along the horizontal look direction through collision.
  * Returns true when the eye moved.
@@ -176,27 +170,38 @@ export function stepMove(cam: CameraState, input: StepInput, k: number, walk: Wa
 }
 
 /**
- * Ground following, every tick (§6.8). In gravity mode the eye falls `vfall += GRAVITY` per tick and lands on
- * the ground; in snap mode it is set to the ground at once. Each fall and each landing moves eye and target in
- * float32, which is what makes the derived pitch drift.
+ * Ground following, every tick (§6.8), in the original's float32 arithmetic (§6.9: the x87 runs at single
+ * precision, so every operation rounds to float32; a replay of the VM's gravity log matches bit for bit).
+ * `target = HEIGHT + ground`. Gravity: unless the target is above the eye, `vfall += GRAVITY` and eye and
+ * target point fall by it. Snap: `δ = target − E.y` is added to both. Then, in both modes, if the target is
+ * still above the eye, `vfall = 0` and `δ = target − E.y` is added to both again (the landing).
+ * Each addition rounds eye and target point separately, so the derived pitch can drift. In gravity mode the
+ * fall and landing round every tick; in snap mode the eye settles on the target and δ becomes 0, except on
+ * some sloped planes, where the ground point depends on E.y and the eye keeps alternating between two
+ * float32 values (§6.9 "Snap mode").
  */
 export function followGround(cam: CameraState, walk: WalkMapSet | null, mode: GroundMode, gravity: number): void {
   const map = walk?.enabled ? walk.active : null;
   if (!map) return;
   const gy = map.groundY(cam.x, cam.y, cam.z);
   if (gy === null) return;
-  const target = Math.fround(gy + cam.height);
+  const f = Math.fround;
+  const target = f(f(cam.height) + gy);
+  const add = (delta: number) => {
+    cam.y = f(delta + cam.y);
+    cam.lookY = f(delta + cam.lookY);
+  };
   if (mode === "gravity") {
-    if (cam.y >= target) {
-      cam.vfall = Math.fround(cam.vfall + gravity);
-      liftEye(cam, -cam.vfall);
-    }
-    if (cam.y < target) {
-      cam.vfall = 0;
-      liftEye(cam, target - cam.y);
+    if (!(target > cam.y)) {
+      cam.vfall = f(cam.vfall + f(gravity));
+      add(-cam.vfall);
     }
   } else {
-    liftEye(cam, target - cam.y);
+    add(f(target - cam.y));
+  }
+  if (target > cam.y) {
+    cam.vfall = 0;
+    add(f(target - cam.y));
   }
 }
 

@@ -26,9 +26,10 @@ headwords (e.g. BILAE holds `Ecuadorean`, `king-size`, `B&B`). The speller lists
 
 ```
 0x00  u32   magic 0x779FF320            (bytes 20 F3 9F 77)
-0x04  u16   lexicon stamp (0x20E, 0x208, 0x2C8, 0x2CF, 0x2D8, 0x388; varies by file). Opaque: `MSSPELL3.DLL` copies the
-            u32 at 0x04 (this value plus the version) back to the caller of `SpellerOpenLex` and uses it for nothing else
-0x06  u16   0x0100                      (probably a format version)
+0x04  u16   lexicon stamp (0x20E, 0x208, 0x2C8, 0x2CF, 0x2D8, 0x388; varies by file). Meaning unknown; **no effect on
+            Encarta 2009**: `MSSPELL3.DLL` copies the u32 at 0x04 into the caller's record at open and both callers
+            discard the copy unread (see "Unknowns")
+0x06  u16   0x0100                      (format version: the open routine rejects any other value)
 0x08  u32   64
 0x0C  8×u16 LCID list, ended by a 0 u16, the rest filled with 0xCCCC
 0x1C  u32   n                           (number of u16 units in the next field)
@@ -36,11 +37,13 @@ headwords (e.g. BILAE holds `Ecuadorean`, `king-size`, `B&B`). The speller lists
             "Copyright 2000 Megalith Corporation" (BILEA, BILIA) or "copyright 2005 Microsoft
             Corporation" (BILAF, BILFA); the last u16 of the n is not part of the
             string: it is 0x002D ('-') in most files and 0 in BILEA and BILIA (meaning unknown;
-            perhaps the word-joining character)
+            perhaps the word-joining character). **Never read by Encarta 2009** (see "Unknowns")
         u32   0                         (length of an older, table-based block; 0 here, so the body follows at once)
 body: (offsets below are relative to the body start = 0x20 + 2n + 4)
 +0x00 u32   1
-+0x04 u32   0
++0x04 u32   0   arc-option bytes (+0x04 itself unused): +0x05 bit 0 = a flag-0x004 arc carries one more varint;
+                +0x07 = 1 selects a fixed mask, +0x06 the mask, for flag-0x008 arcs. No file has such arcs, so
+                **never read by Encarta 2009** at run time (see "Unknowns")
 +0x08 u16   longest word, in characters (checked: equals the decoded maximum)
 +0x0A u16   most arcs in one node (checked: equals the decoded maximum)
 +0x0C u16   2   length in u16 units of the symbol-code descriptor at +0x30 (read by MSSPELL3.DLL)
@@ -50,7 +53,8 @@ body: (offsets below are relative to the body start = 0x20 + 2n + 4)
 +0x14 u32   word count                  (checked: equals the decoded count)
 +0x18 u32   nSkip   entries in the skip table
 +0x1C u32   nSym    entries in the symbol table
-+0x20 u32   0
++0x20 u32   0   entry count of a table between the symbol and shared-node tables, coded with the region whose
+                length is at +0x0E; empty in every file. Read once, at open
 +0x24 u32   nNode   entries in the shared-node table
 +0x28 u32   stream offset, relative to the body = 0x3C + 4 × (nSym + nNode + nSkip)
 +0x2C u32   stream length; the stream runs to the end of the file
@@ -159,14 +163,34 @@ reads a u32 length. Zero is not a failure: it means there is no older table-base
 body directly at that point (the decompiler had split this tail into a separate function, which hid it). The routine
 that parses the body (`FUN_3f005561`) requires the first u16 to be below 2 (we have 1) and then reads the u16s at body
 +0x0C, +0x0E, +0x10 and +0x12 as the lengths of the four small regions that start at +0x30 (each aligned to 4 bytes),
-and the u32s at +0x14 (stream offset), +0x1C, +0x20 and +0x24 as the counts of the symbol, 0-sized and shared-node
-tables that follow. That is exactly our layout: the three "code descriptors" at +0x30/+0x34/+0x38 are the regions whose
+and the u32s at +0x1C, +0x20 and +0x24 as the counts of the symbol, empty and shared-node tables that follow, and
++0x28 as the stream offset (an earlier note said +0x14; corrected in VM pass 5: the word count +0x14, nSkip +0x18, the
+maxima +0x08/+0x0A and the stream length +0x2C are not read by `MSSPELL3.DLL` at all). That is exactly our layout: the three "code descriptors" at +0x30/+0x34/+0x38 are the regions whose
 sizes sit at +0x0C..+0x12. Data breakpoints on the mapped file confirmed: +0x0C and +0x10 (as dwords) are read only inside
 this parse, during open; the u32 at 0x04 is read once, to hand back to the caller. Nothing read them again during
 spelling checks, and nothing read the copyright's trailing u16 (the caller passed no name buffer, so the copyright is not
 even copied).
 
-Still opaque: the header stamp at 0x04 (returned to the caller, not used by the speller), the trailing u16 of the
-copyright field (0x2D/0; never read in the search path), and the body u32 at +0x04 and +0x20 (zero). The lexicon carries no
+**Unread fields, settled (VM pass 5, 2026-10-15; vm-findings.md).** Two independent checks agree.
+- *Static:* a sweep of every PE file on the disc for the magic, `.lex` names and the speller exports finds only two readers:
+  `MSSPELL3.DLL` (loaded by `ENCARTA.EXE`, adult and Kids, which are the same binary, for search spelling suggestions;
+  and by `EDICTEIT.EBK` inside `EDICT.EXE`, which opens DICTA, THESA or a BIL file when a looked-up word is not found).
+  The open routine (`MSSPELL3` +0x781F) maps the file, checks the magic, 0x06 = 0x0100, 0x08 = 64, the LCIDs and n,
+  copies the dword at 0x04 out (+0x79EB), copies the copyright only into a caller buffer (stopping at the NUL; neither
+  caller passes one) and hands the body to the parser. `ENCARTA.EXE` keeps the copied stamp at speller-object +0x34
+  (`CSpellCheck_V3`, open call at 0x4D1FAF) and `EDICTEIT` in a stack slot; neither reads it again. The word walker
+  (`MSSPELL3` 0x3F001B70) reads body +0x05..+0x07 only for arc flags 0x004/0x008, which no file uses.
+- *Live:* cdb hardware read watchpoints (`ba r4` / `ba r2`) armed on the mapped view right after the map (+0x788F) on the
+  stamp, the trailing u16, body +0x04 and body +0x20, in `ENCARTA.EXE` (adult EESPLA01: about 20 searches, most misspelled, with
+  "did you mean" lists), Kids `ENCARTA.EXE` (Kids EESPLA01, re-opened for each search) and `EDICT.EXE` (DICTA, THESA and
+  all eight BIL files through misspelled dictionary, thesaurus and translation lookups in every language pair). The
+  only hits: the stamp at open (version check +0x78AD, copy +0x79EB), body +0x20 at open (+0x55E3), and the whole-file
+  `IsTextUnicode` sniff that the map routine runs before parsing. A control watchpoint on the first node of the stream
+  fired 232 times over the later searches, so the watchpoints stayed live. The stored stamp copy in Kids (+0x34) was
+  watched too: every later hit there was other data after the object was freed, never a read of the stamp.
+
+So the header stamp is read only to be copied and dropped (its meaning cannot be recovered from Encarta 2009; it has no
+effect), the copyright's trailing u16 and body +0x04 are **never read by Encarta 2009** (apart from `IsTextUnicode`'s
+statistical scan of the whole file), and body +0x20 is the count of an empty table. The lexicon carries no
 affix or frequency data that we could find. Suggestion behaviour (edit distance and ranking in MSSPELL3.DLL) is not in
 the file. Our rebuild replaces it (SymSpell or an `fst` over these word lists).

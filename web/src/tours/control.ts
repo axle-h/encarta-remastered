@@ -171,6 +171,12 @@ export class TourControl implements Handlers {
   readonly keys = new Set<string>();
   mouse = { x: 0, y: 0, down: false, inside: false, nav: false };
   viewport = { w: 640, h: 480 };
+  /**
+   * The control's own full-screen mode (§4.0; inferred, not observed): the 3D view takes the whole
+   * screen at the display's size until Esc or `KILLFULLSCREEN`, and no events reach the host. The page
+   * hosting the control resizes it while this is set.
+   */
+  fullScreen = false;
 
   // Clock.
   simTime = 0;
@@ -227,7 +233,31 @@ export class TourControl implements Handlers {
   }
 
   fireEvent(text: string): void {
+    // In full screen the control raises no events: the host never hears of hotspot clicks, moves
+    // or floor changes until it is left (§4.0).
+    if (this.fullScreen) return;
     this.events.onEvent?.(text);
+  }
+
+  /**
+   * Device commands (§3.3, §4.0). Only the full-screen ones change anything here: the device is fixed by
+   * the options. `TRYHARDWAREFULLSCREEN` (the `_dot` button) needs a D3D device, `TRYFULLSCREEN` does not.
+   */
+  private deviceCommand(command: string): string {
+    switch (command) {
+      case "TRYHARDWAREFULLSCREEN":
+        if (this.options.device !== "hardware") return FAILED;
+        this.fullScreen = true;
+        return SUCCESS;
+      case "TRYFULLSCREEN":
+        this.fullScreen = true;
+        return SUCCESS;
+      case "KILLFULLSCREEN":
+        this.fullScreen = false;
+        return SUCCESS;
+      default:
+        return SUCCESS;
+    }
   }
 
   /** Starts `load.3sc` (§2.2 step 2.3) from the converter's executed load sequence. */
@@ -473,8 +503,9 @@ export class TourControl implements Handlers {
   apply(step: Step): string {
     switch (step.op) {
       case "draw":
-      case "device":
         return SUCCESS;
+      case "device":
+        return this.deviceCommand(step.command);
       case "loadScript":
         // The host's `script.load=load.3sc` starts the converted load sequence. Every nested
         // SCENE.LOAD of the disc was expanded in place by the converter; there are no script

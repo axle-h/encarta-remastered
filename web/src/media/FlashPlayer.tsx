@@ -1,6 +1,22 @@
 import { useEffect, useRef, useState } from "react";
-import { iafPlayer, loadRuffle } from "./ruffle";
+import { iafPlayer, loadRuffle, type RufflePlayerElement } from "./ruffle";
 import { DEFAULT_FONTS, ruffleFontSources } from "./ruffleFonts";
+
+/**
+ * Removing a Ruffle element shuts the instance down and closes its AudioContext. A movie that is still
+ * running keeps starting sounds on that context for a moment ("Construction of AudioBufferSourceNode is
+ * not useful when context is closed"), so the movie is paused first: no more frames, no more sounds.
+ */
+export function stopFlashPlayer(player: RufflePlayerElement | null) {
+  if (!player) return;
+  try {
+    player.volume = 0;
+    player.pause?.();
+  } catch {
+    /* already gone */
+  }
+  player.remove();
+}
 
 /**
  * An `.iax` interactive run by the disc's IAF Flash player under Ruffle, at its own size
@@ -15,7 +31,7 @@ export function FlashInteractive({ iax, width, height, kids = false }: { iax: st
     const el = box.current;
     if (!el) return;
     let cancelled = false;
-    let player: HTMLElement | null = null;
+    let player: RufflePlayerElement | null = null;
     setError(null);
     Promise.all([loadRuffle(), ruffleFontSources()])
       .then(([r, fontSources]) => {
@@ -30,8 +46,7 @@ export function FlashInteractive({ iax, width, height, kids = false }: { iax: st
       .catch((e: unknown) => !cancelled && setError(e instanceof Error ? e.message : String(e)));
     return () => {
       cancelled = true;
-      // Removing the element shuts the Ruffle instance down.
-      player?.remove();
+      stopFlashPlayer(player);
     };
   }, [iax, kids]);
 

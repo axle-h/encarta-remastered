@@ -42,6 +42,9 @@ export interface ItemChild {
   sequence?: number | null;
   title?: string;
   item_kind?: string;
+  caption_html?: string | null;
+  picon?: FileRef | null;
+  image?: FileRef | null;
 }
 
 export interface AssocItem {
@@ -152,7 +155,8 @@ export interface Item {
   /** Items that list this one among their `children` (a tour node's stop or tour). */
   parents?: ItemParent[];
   data_table?: DataTable | null;
-  timeline?: TimelineEvent | null;
+  /** `start` is null on a topic's row, which names a set of events rather than a date. */
+  timeline?: (Omit<TimelineEvent, "start"> & { start: TimelineDate | null }) | null;
 }
 
 export interface ItemRef {

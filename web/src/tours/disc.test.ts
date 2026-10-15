@@ -115,6 +115,34 @@ describe.skipIf(ids.length === 0)("converted tours", () => {
         expect(c.layer.elements.filter((e) => e.visible && e.name !== "_dot").length).toBe(0);
       });
 
+      it("the `_dot` button shows in one walk-map cell; pressing it there enters full screen on hardware (§4.0)", () => {
+        const found = scene.walkmaps.maps.flatMap((m) =>
+          m.cells.filter((cell) => cell.kind === "hotspot" && /2D\._DOT\.VISIBLE=1/i.test(cell.enter.script)).map((cell) => ({ m, cell })),
+        );
+        expect(found.length).toBeGreaterThan(0);
+        const dot = scene.layers.find((l) => l.final)?.elements.find((e) => e.name === "_dot");
+        const press = dot?.state?.macros.mouseDown?.[0] ?? "";
+        if (!press) return; // Azuchi's `_dot` has no macro
+        const entersFullScreen = /TRYHARDWAREFULLSCREEN/i.test(press);
+        for (const device of ["hardware", "software"] as const) {
+          const { m, cell } = found[0]!;
+          const c = new TourControl(scene, { rng: lcg(5), device });
+          c.startLoad();
+          for (let i = 0; i < 2000 && c.loading; i++) c.tick();
+          c.tick();
+          c.do(`WALKMAP.LOAD=${m.file}`);
+          const p = cell.polygons[0]!;
+          const n = p.length / 3;
+          let x = 0, z = 0;
+          for (let i = 0; i < n; i++) { x += p[i * 3]! / n; z += p[i * 3 + 2]! / n; }
+          c.walk.hotspotCheck(x, z, (s) => c.interp.run(s));
+          expect(c.layer.find("_dot")?.visible, `${m.file} cell ${cell.index}`).toBe(true);
+          c.viewport = { w: 616, h: 420 };
+          c.pointer(1, 1, true);
+          expect(c.fullScreen).toBe(entersFullScreen && device === "hardware");
+        }
+      });
+
       it("walking forward from the start stays on walkable ground and follows it", () => {
         const c = new TourControl(scene, { rng: lcg(3) });
         c.startLoad();

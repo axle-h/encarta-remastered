@@ -82,7 +82,7 @@ function ItemView({ item, kids }: { item: Item; kids: boolean }) {
       <h1 className="art-title">
         <Html as="span" html={item.title_html ?? item.title ?? ""} />
       </h1>
-      {ev && (
+      {ev?.start && (
         <p className="itempage-date">
           {eventDateText(ev)} · <Link to={`/timeline?year=${ev.start.year}`}>Show on the Timeline</Link>
         </p>

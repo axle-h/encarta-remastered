@@ -61,11 +61,11 @@ export function TimelinePage() {
   const [selected, setSelected] = useState<TimelineEvent | null>(null);
   useEffect(() => {
     const ev = eventItem.data?.timeline;
-    if (!eventId || !ev || opened.current === eventId) return;
+    if (!eventId || !ev || !ev.start || opened.current === eventId) return;
     opened.current = eventId;
-    if (!explicitWindow.current) setWin(eventWindow(ev, min, max));
+    if (!explicitWindow.current) setWin(eventWindow({ ...ev, start: ev.start }, min, max));
     explicitWindow.current = false;
-    setSelected(ev);
+    setSelected({ ...ev, start: ev.start });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventItem.data, eventId]);
   const bandRef = useRef<HTMLDivElement>(null);

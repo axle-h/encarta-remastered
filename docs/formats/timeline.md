@@ -163,7 +163,7 @@ Each 16-byte term entry is:
 
 | off | type | field |
 |---|---|---|
-| 0 | u32 | offset A: cumulative, non-decreasing; **not read by any shipped code** (see below) |
+| 0 | u32 | offset A: cumulative, non-decreasing; **never read by Encarta 2009** (static and watchpoints, see below) |
 | 4 | u32 | **term text offset**: cumulative byte offset of this term's text (UTF-16Z) in a term-text pool |
 | 8 | u32 | reference offset: byte offset into the reference pool |
 | 12 | u32 | reference count |
@@ -181,11 +181,20 @@ Each 16-byte term entry is:
   It is not in the catalog record: the record holds only the title. It matches the title length for 13,577 of 22,748 terms.
   It is not the referenced event's title either. **Settled as unused (static analysis of `ENCARTA.EXE`, 2026-10-15):** the only code that opens `timeline.dat` (the file name is string 10159 in `ENCARTAR.DLL`; loader `FUN_005e40a0`) maps the file, reads the descriptor and category/region lists, and computes the term-table and reference-pool base pointers, but nothing ever reads through them; only the event table (70-byte records), the title pool and the lists are used (an index of events by sequence number and refId is built from the event table). The term and reference tables are leftovers of the build tool, and offset A is most likely an offset into a string pool that was dropped from the file. The Timeline Search list is driven by the PFX word wheel instead. Nothing to implement.
 
+- **Never read by Encarta 2009 (VM pass 5, 2026-10-15; vm-findings.md).** Static: across every PE file on the disc only
+  `ENCARTA.EXE` names the file (string 10159); its loader (`0x5E40A0`, called from three places, maps the file once per
+  process) stores the term-table, reference-pool and item-table base pointers in globals (`0x6F3DC4`, `0x6F3DBC`,
+  `0x6F3DB0`) that no instruction reads, and the sizes used to compute them are read only inside the loader; the term
+  accessor at `0x5E3B30` has no callers. Live: cdb read/write watchpoints on the two pointer globals and on offset A of
+  terms 0 and 11,374 (set right after the term table is located, `0x5E424E`) stayed silent through zooming, panning, the
+  era links, event pop-ups, Find Topic or Year (Aachen, Gold Rush, 1066, 10th Century BC, Zulu), Category and Place,
+  Compare and View as List. Encarta Kids ships no `TIMELINE.DAT` and its process never called the loader.
+
 ## 6. Unknowns (need decompiler analysis or VM observation)
 
 1. ~~Descriptor field 5 (always 1)~~: the wide-title flag (§1).
-2. ~~Term entry field 0 ("offset A")~~: unused by the shipped viewer (§5), so its meaning cannot be recovered from code;
-   it is not visible in the UI. Left as an unexplained build-time value.
+2. ~~Term entry field 0 ("offset A")~~: never read by Encarta 2009 (static analysis and watchpoints, §5), so its meaning
+   cannot be recovered from code; it is not visible in the UI. Safe to drop.
 3. ~~Inferred labels~~: confirmed in the VM (§3.2): 0x01 = period bar, 0x02/0x08 = circa ("?"), kind 3 =
    essay, importance 1 = largest title. Still open: importance 0 on 4 records, and how importance maps
    to zoom levels.

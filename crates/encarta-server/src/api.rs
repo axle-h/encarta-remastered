@@ -67,6 +67,9 @@ fn file_cols(prefix: &str, alias: &str) -> String {
 fn assoc_sql() -> &'static str {
     static SQL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     SQL.get_or_init(|| {
+        // Rows naming an id that no package defines are dropped (`WHERE i.ref_id IS NOT NULL`): the disc
+        // has such references (the default home background 701712244, a few article media), and a
+        // client following one only reaches a 404.
         let one = |role: &str, of: &str| format!("(SELECT rowid FROM item_file WHERE ref_id = {of} AND role = '{role}' ORDER BY ordinal LIMIT 1)");
         // The picture an item shows at full size: its own `image`, else (audio sets, composites)
         // the first child that has one.
@@ -86,7 +89,7 @@ fn assoc_sql() -> &'static str {
              LEFT JOIN item_file ft ON ft.rowid = {}
              LEFT JOIN item_file fp ON fp.rowid = {}
              LEFT JOIN item_file fi ON fi.rowid = COALESCE({}, {child_image})
-             WHERE a.ref_id = ?1 AND a.direction = ?2 ORDER BY a.ordinal LIMIT ?3",
+             WHERE a.ref_id = ?1 AND a.direction = ?2 AND i.ref_id IS NOT NULL ORDER BY a.ordinal LIMIT ?3",
             file_cols("thumb", "ft"),
             file_cols("picon", "fp"),
             file_cols("image", "fi"),
@@ -213,15 +216,26 @@ pub async fn item(State(st): St, Path(id): Path<i64>, Query(q): Query<EditionQue
                 o.insert("media".into(), json!(info_for_name(c, has_m, &name, &edition)?));
             }
             o.insert("files".into(), json!(files));
-            o.insert(
-                "children".into(),
-                json!(query_objects(
-                    c,
-                    "SELECT ch.kind, ch.child_ref_id AS ref_id, ch.sequence, i.title, i.kind AS item_kind
-                     FROM item_child ch LEFT JOIN item i ON i.ref_id = ch.child_ref_id WHERE ch.ref_id = ?1 ORDER BY ch.ordinal",
-                    [id]
-                )?),
-            );
+            // A child's own pictures ride along: a composite (a set of photographs) has none of its own.
+            let mut kids = query_objects(
+                c,
+                &format!(
+                    "SELECT ch.kind, ch.child_ref_id AS ref_id, ch.sequence, i.title, i.kind AS item_kind, i.caption_html, {}, {}
+                     FROM item_child ch LEFT JOIN item i ON i.ref_id = ch.child_ref_id
+                     LEFT JOIN item_file fp ON fp.rowid = (SELECT rowid FROM item_file WHERE ref_id = ch.child_ref_id AND role = 'picon' ORDER BY ordinal LIMIT 1)
+                     LEFT JOIN item_file fi ON fi.rowid = (SELECT rowid FROM item_file WHERE ref_id = ch.child_ref_id AND role = 'image' ORDER BY ordinal LIMIT 1)
+                     WHERE ch.ref_id = ?1 ORDER BY ch.ordinal",
+                    file_cols("picon", "fp"),
+                    file_cols("image", "fi")
+                ),
+                [id],
+            )?;
+            for k in &mut kids {
+                let o = k.as_object_mut().unwrap();
+                take_file_ref(o, "picon");
+                take_file_ref(o, "image");
+            }
+            o.insert("children".into(), json!(kids));
             o.insert("media".into(), json!(assoc_items(c, id, "forward", 1000)?));
             o.insert("appears_in".into(), json!(assoc_items(c, id, "reverse", 500)?));
             // Items whose own forward associations name this one: the quotations of an author, the
@@ -451,9 +465,7 @@ pub async fn place(State(st): St, Path(gid): Path<i64>) -> ApiResult<Json<Value>
             )?)
         })
         .await?;
-    if links.is_empty() {
-        return Err(ApiError::not_found(format!("no links for place {gid}")));
-    }
+    // Most places (all but about 12,000 of 1.8 million) have no links: an empty list, not a 404.
     Ok(Json(json!({ "place_id": gid, "links": links })))
 }
 
@@ -1191,6 +1203,23 @@ pub async fn atlas_place(State(st): St, Path(entity): Path<i64>) -> ApiResult<Js
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn assoc_items_skip_ids_with_no_item() {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE item (ref_id INTEGER PRIMARY KEY, kind TEXT, media_type TEXT, title TEXT, title_html TEXT, caption_html TEXT, preview_html TEXT, subtype TEXT, meta_json TEXT);
+             CREATE TABLE item_file (ref_id INTEGER, ordinal INTEGER, role TEXT, file_name TEXT, width INTEGER, height INTEGER);
+             CREATE TABLE item_child (ref_id INTEGER, ordinal INTEGER, kind TEXT, child_ref_id INTEGER, sequence INTEGER);
+             CREATE TABLE assoc (ref_id INTEGER, direction TEXT, ordinal INTEGER, target_ref_id INTEGER, grp TEXT, sec INTEGER, sequence INTEGER, appears INTEGER, par INTEGER, reviewed INTEGER);
+             INSERT INTO item (ref_id, kind, title) VALUES (10, 'media', 'Present');
+             INSERT INTO assoc (ref_id, direction, ordinal, target_ref_id, grp) VALUES (1, 'forward', 0, 99, 'media'), (1, 'forward', 1, 10, 'media');",
+        )
+        .unwrap();
+        let rows = assoc_items(&c, 1, "forward", 10).unwrap();
+        let ids: Vec<i64> = rows.iter().map(|r| r["ref_id"].as_i64().unwrap()).collect();
+        assert_eq!(ids, vec![10]);
+    }
 
     #[test]
     fn wheel_order_ignores_hyphens_and_case() {

@@ -62,6 +62,16 @@ export function topicTerm(title: string): string {
     .trim();
 }
 
+/** The Timeline route of a timeline event (opened at the event) or topic (fitted to its events); null for other items. */
+export function timelineHref(item: Pick<Item, "kind" | "ref_id" | "title" | "sort_title" | "timeline">): string | null {
+  if (item.kind === "timeline-event") return item.timeline ? `/timeline?event=${item.ref_id}` : "/timeline";
+  if (item.kind === "timeline-topic") {
+    const term = topicTerm(item.sort_title || item.title || "");
+    return term ? `/timeline?term=${encodeURIComponent(term)}` : "/timeline";
+  }
+  return null;
+}
+
 /** The Map Trek view of a stop's (or a tour's) Encarta atlas URL. */
 export function mapTrekUrl(attrs: Record<string, unknown> | undefined): string | null {
   const lat = Number(attrs?.lat);
@@ -87,12 +97,10 @@ export function itemRedirect(item: Item): string | null {
     }
     case "timeline-event": {
       // Like the VM, an event opens the Timeline view at the event, its pop-up open.
-      return item.timeline ? `/timeline?event=${item.ref_id}` : null;
+      return item.timeline ? timelineHref(item) : null;
     }
-    case "timeline-topic": {
-      const term = topicTerm(item.sort_title || item.title || "");
-      return term ? `/timeline?term=${encodeURIComponent(term)}` : "/timeline";
-    }
+    case "timeline-topic":
+      return timelineHref(item);
     case "panorama": {
       // The 151 panoramas carry only an icon: their pictures are in the Flash viewer that shows them.
       if (hasPicture(item)) return null;

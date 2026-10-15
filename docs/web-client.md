@@ -53,11 +53,11 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
 
 | path | role |
 |---|---|
-| `src/main.tsx`, `src/app/` | router, chrome (`Shell`: menu bar File/Edit/Favorites/Help, Back/Forward/Home orbs, Features menu, search, skip link), history button state, disc fonts (`fonts.ts`), Favorites store (`favorites.ts`), menu commands (`commands.ts`: print and copy by scope, source line), Read Aloud (`readAloud.ts`), Add to Favorites dialog (`AddFavoriteDialog.tsx`), Features flyout (`FeaturesMenu.tsx`, data in `featuresData.ts`: the VM's 3 groups, More flyouts and Browse all by content id), keyboard shortcuts (`shortcuts.ts`), print/copy scope dialog and Options dialog, lazy atlas (`atlasModule.tsx`); `src/settings/`: Options store (localStorage), interface sounds (`uiSounds.ts`: startup, menu and button sounds, Kids home, tour site-map stops; media.md §9) |
+| `src/main.tsx`, `src/app/` | router, chrome (`Shell`: menu bar File/Edit/Favorites/Help, Back/Forward/Home orbs, Features menu, search, skip link), history button state, disc fonts (`fonts.ts`), Favorites store (`favorites.ts`), menu commands (`commands.ts`: print and copy by scope, `requestPrint`, source line), Read Aloud (`readAloud.ts`), Add to Favorites dialog (`AddFavoriteDialog.tsx`), Features flyout (`FeaturesMenu.tsx`, data in `featuresData.ts`: the VM's 3 groups, More flyouts and Browse all by content id), keyboard shortcuts (`shortcuts.ts`), Print dialog (`PrintDialog.tsx`: Encarta's four variants, Print Setup = the browser's print flow, the estimated "longer than 5 pages" prompt; media.md §9), copy scope dialog and Options dialog, lazy atlas (`atlasModule.tsx`); `src/settings/`: Options store (localStorage), interface sounds (`uiSounds.ts`: startup, menu and button sounds, Kids home, tour site-map stops; media.md §9) |
 | `src/api/` | typed client for api.md (`client.ts`, in-memory cache, AbortSignal), `useApi` hook, response types |
 | `src/content/` | the content model of content-schema §8 (`model.ts`), React inline renderer (`Inlines.tsx`), link mapping |
 | `src/article/` | article reader: body renderer, layout rules (`layout.ts`), media column boxes, side panels, find bar, pronunciation |
-| `src/media/` | media viewer overlay, players (audio with captions, audio sets, video with WebVTT, MIDI), variant selection (`pick.ts`), MIDI reader (`midi.ts`), soundfont loader (`soundfont.ts`) and General MIDI synth (`synth.ts`), Ruffle loader (`ruffle.ts`), its device fonts (`ruffleFonts.ts`) and Flash interactives (`FlashPlayer.tsx`) |
+| `src/media/` | media viewer overlay, players (audio with captions, audio sets, video with WebVTT, MIDI), variant selection (`pick.ts`), MIDI reader (`midi.ts`), soundfont loader (`soundfont.ts`) and General MIDI synth (`synth.ts`), Ruffle loader (`ruffle.ts`), its device fonts (`ruffleFonts.ts`) and Flash interactives (`FlashPlayer.tsx`; leaving one pauses the movie before the element is removed, since a running movie otherwise starts sounds on Ruffle's closed AudioContext and Chrome warns "…not useful when context is closed") |
 | `src/pages/` | home, browse, item dispatcher (+ `itemRoute.ts`: feature records, topic timelines, panoramas, Map Trek stops), views of the other item kinds (`ItemKinds.tsx`: web links, contributors, quotation authors, tour nodes, Map Trek, online features), panoramic tours (`PanoramaTour.tsx`, `panorama.ts`), search, media gallery, dictionary (+ `wordWheel.ts`), timeline (+ pure layout/date helpers), tours, favorites, help, atlas placeholder |
 | `src/panorama/` | the native panorama player ([Panoramas](#panoramas)): cylinder geometry, WebGL and Canvas 2D renderers, `PanoramaView`, parameters from the data, the image-SWF reader, single panoramas in the media viewer |
 | `src/components/Menu.tsx` | the accessible menu button (arrows, Home/End, Esc, ←/→ along a `menubar`) used by every menu; `ArrowTip.tsx`, the tool-button tooltips |
@@ -173,6 +173,15 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
   different spans (4.7 billion years ago to 2006).
 - **Tours**: `TourView` mounts `mountTour` with `baseUrl: "/out/tours"`, maps the labels checkbox to
   `2D.ON`/`2D.OFF`, and opens `HOTSPOTCLICKED` ids in a side panel (`/api/item/{id}`).
+- **Media viewer stages for generic items** (`MediaViewer.tsx`, `pick.ts`): Encarta opens a timeline item in its Timeline
+  (`msencarta://id=`, vm-findings.md › timeline.md and Other item views: topic timelines open zoomed to the span with
+  their events listed) and hands a web link to the browser; neither has a picture of its own, only the shared baggage
+  icons (`timegp.gsm` 244x68 on 16,465 items). So `mediaClass` has `timeline` and `weblink` classes. The `timeline`
+  stage shows the event's date line and body, or a topic's first 12 events with the count, and an "Open in Timeline"
+  button (`timelineHref`: `/timeline?event=` / `?term=`, the same targets `itemRedirect` uses); the icon is a small
+  thumbnail. The `weblink` stage shows the address, an "Open the web site" button and the 2008 Internet Archive copy.
+  Other shared icons (`isGenericIcon`: table, chart, composite map, atlas map, audio, generic interactive) are drawn at
+  their own size, never enlarged; a table or chart with no data and no picture says so.
 - **Search results and the Media Gallery** draw the hits' `thumb`s (api.md), no per-hit requests.
 - **Interactives** (`.iax`, 860 media items, all `group="flash"`): the viewer runs the disc's own IAF player under
   Ruffle: `base.swf` from `/media/disc/{edition}/dswMedia/shared/players/IAFPlayer/` with the FlashVar

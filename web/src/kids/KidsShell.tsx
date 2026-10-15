@@ -5,10 +5,11 @@ import { MenuButton, type MenuEntry } from "../components/Menu";
 import { SearchBox } from "../components/SearchBox";
 import { NavButtons, favoritesMenu } from "../app/Shell";
 import { ArrowTip } from "../components/ArrowTip";
+import { PrintHost } from "../app/PrintDialog";
 import { AddFavoriteDialog, defaultFavoriteName } from "../app/AddFavoriteDialog";
 import { canReadAloud, isReading, readAloud, readAloudSubmenu, stopReading } from "../app/readAloud";
 import { useHistoryButtons } from "../app/history";
-import { copySelectionOrArticle, installCopySourceLine, openFind, printPage } from "../app/commands";
+import { copySelectionOrArticle, installCopySourceLine, openFind, requestPrint } from "../app/commands";
 import { favorites, pageTitle } from "../app/favorites";
 import { useSettings } from "../settings/settings";
 import { useDoubleClickLookup } from "../app/wordLookup";
@@ -46,6 +47,9 @@ export function KidsMenuBar() {
       } else if (e.key === "F9") {
         e.preventDefault();
         stopReading();
+      } else if (mod && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        requestPrint();
       } else if (mod && e.key.toLowerCase() === "l") {
         e.preventDefault();
         update({ captions: !settings.captions });
@@ -67,7 +71,7 @@ export function KidsMenuBar() {
     return () => window.removeEventListener("keydown", key);
   });
   const file = (): MenuEntry[] => [
-    { label: "Print", shortcut: "Ctrl+P", onSelect: printPage },
+    { label: "Print", shortcut: "Ctrl+P", onSelect: requestPrint },
     { label: "Exit", to: "/" },
   ];
   const edit = (): MenuEntry[] => [
@@ -113,7 +117,7 @@ export function KidsMenuBar() {
         submenu: readAloudSubmenu(read),
       },
       { separator: true, key: "s2" },
-      { label: "Menu and Button Sounds", key: "ms", submenu: onOff(settings.menuSounds, (v) => update({ menuSounds: v }), "ms") },
+      { label: "Menu and Button Sounds", key: "ms", submenu: onOff(settings.kidsMenuSounds, (v) => update({ kidsMenuSounds: v }), "ms") },
       { label: "Startup Sound", key: "ss", submenu: onOff(settings.startupSound, (v) => update({ startupSound: v }), "ss") },
     ];
   };
@@ -142,6 +146,7 @@ export function KidsMenuBar() {
       <span className="menubar-note" role="status" aria-live="polite">
         {note}
       </span>
+      <PrintHost kids />
       {adding && (
         <AddFavoriteDialog
           name={defaultFavoriteName(pageTitle(document.title), isArticle)}
@@ -174,7 +179,7 @@ export function KidsShell({ children }: { children: ReactNode }) {
           </button>
         </ArrowTip>
         <ArrowTip text="Print the article or picture.">
-          <button type="button" className="orb kids-tool" aria-label="Print" onClick={printPage}>
+          <button type="button" className="orb kids-tool" aria-label="Print" onClick={requestPrint}>
             <span aria-hidden="true">⎙</span>
           </button>
         </ArrowTip>

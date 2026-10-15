@@ -1277,3 +1277,108 @@ gravity only until they first walk, then snap; hardware users always get gravity
 - Per-frame work moves to the device: the control sets world/view/projection with `SetTransform` and draws
   `D3DLVERTEX` fans with `DrawIndexedPrimitive` (lighting is still the control's own, in the vertex colours); the cloud
   image goes through a system-memory copy (§7.3.4 step 5).
+
+## VM pass 5 (2026-10-15): tours, decided without a 2009 driver
+
+No VM was run: the three questions were settled from the control's code (static, `analysis/decompiled/`), the
+converted data and the earlier cdb logs. Scripts in the session scratchpad; nothing new in `fixtures/`.
+
+### Snap-mode pitch drift (§6.8, §6.9)
+- **The x87 runs at single precision.** A float32-per-operation model of the ground step (0x10026543–0x100265C3:
+  `targetY = HEIGHT + g.y` on the FPU stack, g.y stored as float32) replays `target/agent-flash/fall.log` (the
+  "Tours under the debugger" write breakpoint on the eye's Y, software device, gravity at the Acropolis start)
+  **bit for bit: 1,090 writes of E.y, T.y and vfall in its two runs**; 53- and 64-bit intermediates fail at the first
+  write. This corrects §6.9's "`targetY − E.y` computed in higher precision".
+- Snap mode runs the same landing instructions (δ = target − E.y added to eye and target, then a second landing if
+  E.y is still below). On level ground it settles after the first tick and never drifts; on slopes the ground point
+  depends on E.y, and where the eye alternates between two float32 heights T.y walks. Census over all 12,036 ground
+  cells (centroid, pitch 21°, 2,000 ticks at rest): 39 drift in snap mode, 146 in gravity mode. At the Acropolis start
+  pose snap mode is drift-free (T.y − E.y identical at tick 10 and 3,840), so the fourth 6° step from 21.000036 would
+  be refused there. Conclusive from the model, so not checked under cdb. Runtime: `sim/camera.ts` `followGround`,
+  `sim/walkmap.ts` `groundY`.
+
+### Colour-key fringes (§5.5, §5.10; inferred, not observed)
+- The device setup (0x10067390–0x10067648) sets `COLORKEYENABLE` 1, `ALPHATESTENABLE` 0, `ALPHABLENDENABLE` 0.
+  Microsoft's D3D driver pipeline (DDK; NVIDIA, "Color Key in Direct3D", 2000) sets a keyed texel's alpha to 0 before
+  filtering and keeps its colour, and with alpha test off the driver tests alpha > 0 itself. So a 2009 driver drew a
+  magenta fringe about one texel wide on every cut-out (more where magnified, pink shimmer on distant keyed
+  lattices, keyed textures having no mipmaps). WineD3D's clean edges do not follow that pipeline. Implemented for the
+  hardware device (`render/materials.ts`, `render/view.ts`); checked in headless Chrome at the Bronze Athena and
+  Athena Parthenos stops (fringe on hardware, none on software).
+
+### Full screen (§4.0.1; reachable, look inferred)
+- **Reachable after all**, as an easter egg: `_dot` (4×4 black, top-left) runs `SCENE.TRYHARDWAREFULLSCREEN` on
+  mouse-down in five tours, and one walk-map hotspot cell per tour makes it visible (acr 1709, rom 672, bea 845,
+  per 1251, col 1114, abu 615, azu 115; Persepolis's macro loads `stair1.3wm`, Azuchi's is empty). Without a D3D device
+  the command fails and nothing happens, which is why the VM never showed it.
+- Static reading: exclusive DirectDraw at the current display mode, viewport = the whole screen, exclusive
+  DirectInput (no cursor), no events to the host, Esc or `KILLFULLSCREEN` to leave, host window restored afterwards.
+  The runtime enters the browser's full screen on that press (hardware device only) at the screen's size with the same
+  horizontal FOV (`control.ts` `fullScreen`, `runtime.ts`).
+
+## VM pass 5 (2026-10-15): print, Kids sounds, unread data
+Lane `target/vm1` (agent 7807, tour 7808, VNC :8) from `d3d-ready`. Sounds as in pass 3: `--wav` usb-audio, cdb on the
+process with breakpoints on the `ENCARTAR.DLL` loader (`0x411860`) and every `winmm` play API, slices matched with
+`sndmatch.py`. Helpers and logs: `target/agent-vmsounds/` (`act.sh`, `k.sh`, `pressk.py`, `sl.py`, `snd.cdb`, `wp/*.cdb`,
+`wp/*.log`). Captures: `fixtures/ui/print2/`.
+
+### Print (media.md §9)
+- Printer: XP's built-in "MS Publisher Imagesetter" PostScript driver on `FILE:` (`printui.dll,PrintUIEntry /if ... /r
+  "FILE:"`, driver from `C:\WINDOWS\Driver Cache`), made default. Not in any snapshot: without it Print says "There is no
+  default printer" (`no-default-printer.png`).
+- Paths: article File › Print / Ctrl+P → Encarta's Print dialog (`encarta-print-article.png`; picture variant
+  `encarta-print-picture.png`; timeline variant "All events on this page / All events in current timeline", which also
+  switches the timeline to its list view, `encarta-print-timeline.png`; Kids variant with only Whole Article Text,
+  `kids-print-article.png`). For a long article both **Print** and **Print Setup** ask "longer than 5 pages" (Yes/No;
+  `encarta-longer-than-5.png`; No cancels) and then open the same Windows Print dialog (`windows-print-general.png`,
+  `-options.png`). The timeline's Print prints straight to the default printer. The atlas map's File › Print opens the
+  old-style Windows Print dialog directly (`atlas-print-windows.png`); the dictionary's Print link opens the Windows
+  dialog from `EDICT.EXE` (`dictionary-print-windows.png`). No Print Preview anywhere.
+- Sounds: Encarta's dialog push buttons tick 31914 on rollover and click 31916 on release; radios click 31917; the
+  long-article prompt clicks 31916 on Yes/No with no rollover; the Windows dialogs, "Print to File" and printing are
+  silent apart from Windows' navigation click around the dictionary's print. From the keyboard (arrows, Tab, Space,
+  Enter, Esc) the dialog plays nothing; the Options dialog's check boxes and radios are likewise silent from the keyboard.
+- Menus (adult and Kids, same code): entering a menu-bar title ticks 31971 (menu open or not); clicking an enabled item
+  plays 31973 on press and 31974 on release (both the `click` audio); disabled items and separators are silent. Alt+F
+  and arrow keys tick. A release that lands on a round toolbar button after a menu closes plays its 31974 (artefact).
+
+### Kids process sounds (cdb on Kids `ENCARTA.EXE`, the same binary as the adult one)
+- Exercised: home (all category panels, subcategory lists), category pages and tiles, articles, Look at Pictures and the
+  media player, search (results, "Sorry" page, misspellings), Launch Activity (Flash interactive), Games and Fun Stuff
+  (Word Play, Spelling Bee), all six menus and their submenus, Find in This Article, Add to Favorites, Organize Favorites,
+  About (its four buttons), Print, Copy, Read Aloud (F8). Kids has no dictionary window (a double-click only selects)
+  and no timeline.
+- Ids played: 31971 (menu titles and highlights), 31973/31974 (menu items), 31975 (round buttons and search arrow
+  rollover, enabled only), 31976/31977 (round button press/release), 31914/31916/31917 (dialogs), 31979-31988 (home
+  panels) and 31973 on a panel click. Nothing else, so **no unheard id plays in Kids either**. Flash games, the video
+  and audio players and Read Aloud make their own sound outside these APIs.
+- Kids' flag word (`0x6F0F44`) read 7 with menu sounds on at attach time, and its registry key
+  (`HKCU\Software\Microsoft\Microsoft Reference\K09ADXRC`) stores no settings: Kids' "Menu and Button Sounds" is **on
+  by default**, the adult option off.
+- Web client (`web/src/settings/uiSounds.ts`, `settings.tsx`, `kids/KidsShell.tsx`): menu-bar titles tick on rollover;
+  menu-bar items click on press and release (the Features flyout keeps only its rollover tick, unchanged); keyboard
+  clicks are silent; Kids uses its own `kidsMenuSounds`, default on. The print dialog already matched (push buttons tick
+  and click, radios click). Print Setup and the "longer than 5 pages" prompt were added afterwards (media.md §9).
+
+### Unread data: LEX and TIMELINE.DAT (formats/lex.md, timeline.md)
+- **Static** (`analysis/decompiled/lexscan/NOTES.txt`, new Ghidra export of `EDICTEIT.EBK`): of all PE files on the disc only
+  `MSSPELL3.DLL` holds the LEX magic and only `ENCARTA.EXE` names `timeline.dat`. LEX opens come from `ENCARTA.EXE` (search
+  speller) and `EDICTEIT.EBK` in `EDICT.EXE` (a looked-up word that is not found). The stamp dword is copied out once and
+  both callers drop it; the copyright is copied only into a caller buffer, which neither passes; the walker reads body
+  +0x05..+0x07 only for arc flags 0x004/0x008, absent from all 12 files; body +0x20 is the count of an empty table, read
+  at open. The parser takes the stream offset from body +0x28 (lex.md said +0x14). TIMELINE: the term-table,
+  reference-pool and item-table pointers are write-only globals.
+- **Watchpoints** (cdb `ba`, armed by a breakpoint right after the file is located): adult `ENCARTA.EXE` (about 20
+  searches, misspellings with "did you mean" lists and an auto-correction; control watch on the first stream node hit
+  232 times), Kids (EESPLA01 is re-opened and freed for every search), `EDICT.EXE` (DICTA, THESA and all eight BIL files
+  through misspelled dictionary, thesaurus and translation lookups in every pair). Hits only at open: version check and
+  stamp copy, body +0x20 count, and `IsTextUnicode`'s scan of the whole view (the map routine's text sniff, which also
+  catches the previous file's watchpoints when the next lexicon is mapped at the same address). Timeline (adult):
+  watches on both pointer globals and on offset A of terms 0 and 11,374 stayed silent through zoom, pan, era links,
+  pop-ups, Find Topic or Year (five searches), Category and Place, Compare and View as List. Kids never calls the loader.
+- Result: the copyright's trailing u16, body +0x04 and TIMELINE offset A are **never read by Encarta 2009**; the stamp is
+  read only to be copied and dropped (no effect); body +0x20 is an (empty) table count.
+
+### Still open
+Whether a click on a submenu parent (an item with ▸) also plays 31973/31974 (not tried); the Features flyout items'
+sound (pass 2 heard none; our client now matches and is silent there).

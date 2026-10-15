@@ -29,7 +29,7 @@ export interface Layer {
 // ---------------------------------------------------------------------------------------------
 // Protobuf primitives
 
-class Reader {
+export class Reader {
   pos = 0;
   constructor(readonly b: Uint8Array) {}
   varint(): number {

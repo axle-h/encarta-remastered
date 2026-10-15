@@ -227,6 +227,133 @@ html[data-text-size="large"] .art-text {
   display: none;
 }
 
+/* Encarta's Print dialog and its "longer than 5 pages" prompt (fixtures/ui/print2): pale blue (#adbee7) body,
+   navy gradient title bar, a big white "print" banner, buttons in #c6d7ef; the prompt is frameless, black-bordered. */
+.print-backdrop {
+  background: transparent;
+}
+
+.print-dlg {
+  box-sizing: border-box;
+  width: 322px;
+  padding: 2px 6px 6px;
+  background: #adbee7;
+  border: 2px outset #d6d3ce;
+  box-shadow: 1px 1px 0 #404040;
+  font: 11px Tahoma, var(--ui);
+  color: #21304a;
+}
+
+.print-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 -4px;
+  padding: 1px 2px 1px 4px;
+  background: linear-gradient(90deg, #18347b, #a5c3ef);
+  color: #fff;
+  font-weight: bold;
+}
+
+.print-close {
+  width: 16px;
+  height: 14px;
+  padding: 0;
+  border: 1px outset #d6d3ce;
+  background: #d6d3ce;
+  color: #000;
+  font: bold 12px/10px Tahoma, var(--ui);
+  cursor: pointer;
+}
+
+.print-banner {
+  margin: 8px 0 16px;
+  border-bottom: 1px solid #eff3ff;
+  color: #eff3ff;
+  font: 38px/44px Arial, var(--ui);
+  text-align: right;
+}
+
+.print-group {
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+}
+
+.print-group legend {
+  padding: 0;
+  margin-bottom: 3px;
+  font-weight: bold;
+}
+
+.print-group label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 4px;
+}
+
+.print-group input {
+  margin: 0;
+}
+
+.print-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.print-buttons button {
+  flex: 1;
+  height: 23px;
+  padding: 0 6px;
+  border: 1px solid #c6d7ef;
+  background: #c6d7ef;
+  color: #21304a;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.print-buttons button:hover,
+.print-buttons button:focus-visible {
+  background: #d8e4f8;
+  outline: 1px dotted #21304a;
+  outline-offset: -3px;
+}
+
+.print-prompt {
+  box-sizing: border-box;
+  width: 274px;
+  height: 182px;
+  padding: 62px 12px 0;
+  background: #adbee7;
+  border: 1px solid #000;
+  font: bold 11px Tahoma, var(--ui);
+  color: #21304a;
+  text-align: center;
+}
+
+.print-prompt p {
+  margin: 0;
+}
+
+.print-prompt-buttons {
+  display: flex;
+  justify-content: space-between;
+  margin: 58px 24px 0;
+}
+
+.print-prompt-buttons button {
+  width: 64px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #000;
+  background: #fff;
+  color: #21304a;
+  font: normal 11px Tahoma, var(--ui);
+  cursor: pointer;
+}
+
 @media print {
   .dlg-backdrop {
     display: none !important;
@@ -242,6 +369,49 @@ html[data-text-size="large"] .art-text {
   html[data-print-scope="text"] .art-side,
   html[data-print-scope="text"] .enc-media,
   html[data-print-scope="text"] .art-text img {
+    display: none !important;
+  }
+
+  /* Picture: only the open viewer's stage (and, for "caption", the caption and credit). */
+  html[data-print-scope="picture"] body *,
+  html[data-print-scope="caption"] body * {
+    visibility: hidden;
+  }
+
+  html[data-print-scope="picture"] .mv-backdrop,
+  html[data-print-scope="caption"] .mv-backdrop {
+    position: absolute;
+    inset: 0 auto auto 0;
+    display: block !important;
+    padding: 0;
+    background: none;
+  }
+
+  html[data-print-scope="picture"] .mv-backdrop *,
+  html[data-print-scope="caption"] .mv-backdrop * {
+    visibility: visible;
+  }
+
+  html[data-print-scope="picture"] .mv-bar,
+  html[data-print-scope="picture"] .mv-nav,
+  html[data-print-scope="picture"] .mv-strip,
+  html[data-print-scope="picture"] .mv-info,
+  html[data-print-scope="caption"] .mv-bar,
+  html[data-print-scope="caption"] .mv-nav,
+  html[data-print-scope="caption"] .mv-strip,
+  html[data-print-scope="caption"] .mv-appears {
+    display: none !important;
+  }
+
+  html[data-print-scope="picture"] .mv-stage,
+  html[data-print-scope="caption"] .mv-stage {
+    max-height: none;
+    overflow: visible;
+  }
+
+  /* Timeline: the event list only (the band is a picture of the same events). */
+  html[data-print-scope^="timeline"] .tl-band,
+  html[data-print-scope^="timeline"] .tl-legend {
     display: none !important;
   }
 

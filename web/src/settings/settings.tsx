@@ -14,6 +14,8 @@ export type Units = "metric" | "us";
 export interface Settings {
   startupSound: boolean;
   menuSounds: boolean;
+  /** Encarta Kids' own Tools > Menu and Button Sounds; on by default there (VM pass 5). */
+  kidsMenuSounds: boolean;
   textSize: TextSize;
   captions: boolean;
   atlasLinearStats: boolean;
@@ -31,6 +33,7 @@ export const SETTINGS_KEY = "encarta.settings.v1";
 export const DEFAULT_SETTINGS: Settings = {
   startupSound: true,
   menuSounds: false,
+  kidsMenuSounds: true,
   textSize: "medium",
   captions: false,
   atlasLinearStats: false,
@@ -57,6 +60,7 @@ export function parseSettings(raw: string | null): Settings {
   return {
     startupSound: bool(o.startupSound, d.startupSound),
     menuSounds: bool(o.menuSounds, d.menuSounds),
+    kidsMenuSounds: bool(o.kidsMenuSounds, d.kidsMenuSounds),
     textSize: oneOf(o.textSize, ["small", "medium", "large"], d.textSize),
     captions: bool(o.captions, d.captions),
     atlasLinearStats: bool(o.atlasLinearStats, d.atlasLinearStats),
@@ -107,7 +111,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
   useEffect(() => applyTextSize(settings.textSize), [settings.textSize]);
-  useEffect(() => configureUiSounds(settings.startupSound, settings.menuSounds), [settings.startupSound, settings.menuSounds]);
+  useEffect(
+    () => configureUiSounds(settings.startupSound, settings.menuSounds, settings.kidsMenuSounds),
+    [settings.startupSound, settings.menuSounds, settings.kidsMenuSounds],
+  );
   useEffect(() => {
     playStartupSound();
     return installUiSoundDelegates();

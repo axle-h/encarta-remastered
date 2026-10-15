@@ -145,13 +145,20 @@ export class WalkMap {
     return null;
   }
 
-  /** Ground height under the eye (§6.8): projection onto the cell plane along its normal, or null. */
+  /**
+   * Ground height under the eye (§6.8): projection onto the cell plane along its normal, or null. Evaluated
+   * in the original's order with every operation rounded to float32, as its x87 runs at single precision
+   * (§6.9): `s = Σ (−d·nᵢ − Eᵢ)·nᵢ`, `g.y = s·n.y + E.y`. Mirroring Z (glTF) leaves the result unchanged.
+   */
   groundY(x: number, y: number, z: number): number | null {
     const cell = this.find("ground", x, z);
     if (!cell || !cell.plane) return null;
-    const [a, b, c, d] = cell.plane;
-    const dist = a * x + b * y + c * z + d;
-    return y - dist * b;
+    const f = Math.fround;
+    const [a, b, c, d] = cell.plane.map(f) as [number, number, number, number];
+    const nd = -d;
+    const term = (n: number, e: number) => f(f(f(nd * n) - f(e)) * n);
+    const s = f(f(term(a, x) + term(b, y)) + term(c, z));
+    return f(f(s * b) + f(y));
   }
 
   /** `WALKMAP.DELETE.<kind>` (§6.10). `visibility.data` keeps the cells but drops the PVS. */

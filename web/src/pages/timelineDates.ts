@@ -19,14 +19,15 @@ export function formatDate(d: TimelineDate): string {
   return `${circa}${year}`;
 }
 
-export function formatEventDate(e: Pick<TimelineEvent, "start" | "end">): string {
+export function formatEventDate(e: { start: TimelineDate | null; end?: TimelineDate | null }): string {
+  if (!e.start) return "";
   const s = formatDate(e.start);
   if (!e.end || (e.end.year === e.start.year && e.end.month === e.start.month && e.end.day === e.start.day)) return s;
   return `${s} – ${formatDate(e.end)}`;
 }
 
 /** The pop-up date line: the converter's `date_text` ("4? BC - AD 29?", timeline.md §3.2), else our own wording. */
-export function eventDateText(e: Pick<TimelineEvent, "start" | "end" | "date_text">): string {
+export function eventDateText(e: { start: TimelineDate | null; end?: TimelineDate | null; date_text?: string | null }): string {
   return e.date_text ?? formatEventDate(e);
 }
 

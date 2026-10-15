@@ -470,3 +470,27 @@ describe("caption widths, LOD and PVS (VM)", () => {
     expect(lodChoice(true, false, true, 20, 13)).toBe("self");
   });
 });
+
+// ------------------------------------------------------------------ full screen (static reading, §4.0; look inferred)
+
+describe("the control's full screen (§4.0, inferred)", () => {
+  it("TRYHARDWAREFULLSCREEN needs the hardware device; no events reach the host until Esc/KILLFULLSCREEN", () => {
+    const { c, events } = loaded();
+    expect(c.do("SCENE.TRYHARDWAREFULLSCREEN")).toBe("Success");
+    expect(c.fullScreen).toBe(true);
+    const n = events.length;
+    for (let i = 0; i < 64 * 3; i++) c.tick();
+    c.do("SCRIPT.EVENT(HotSpotClicked:hotSpotID=701500001)");
+    expect(events.length).toBe(n);
+    expect(c.do("SCENE.KILLFULLSCREEN")).toBe("Success");
+    expect(c.fullScreen).toBe(false);
+    for (let i = 0; i < 64 * 2; i++) c.tick();
+    expect(events.length).toBeGreaterThan(n);
+
+    const sw = new TourControl(scene(), { device: "software", rng: lcg(1) });
+    expect(sw.do("SCENE.TRYHARDWAREFULLSCREEN")).toBe("Failed");
+    expect(sw.fullScreen).toBe(false);
+    expect(sw.do("SCENE.TRYFULLSCREEN")).toBe("Success");
+    expect(sw.fullScreen).toBe(true);
+  });
+});

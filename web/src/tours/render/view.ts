@@ -9,7 +9,7 @@ import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js"
 import type { ObjectRt, TourControl } from "../control";
 import { cloudPhi } from "../sim/effects";
 import type { DrawUnit, TourScene } from "../types";
-import { chunkKeys, impostorMaterial, sharedUniforms, tourMaterial, type SharedUniforms } from "./materials";
+import { chunkKeys, fillKeyTexels, impostorMaterial, KEY_ALPHA_REF, KEY_RGB, sharedUniforms, tourMaterial, type SharedUniforms } from "./materials";
 
 export interface ViewOptions {
   /** Honour the walk-map PVS (§6.6). */
@@ -84,6 +84,8 @@ export class TourView {
   private appliedVersion = -1;
   private lightsVersion = -1;
   private textureCache = new Map<string, THREE.Texture>();
+  /** Hardware copies of colour-keyed textures, by source texture (keyedMap). */
+  private keyedMaps = new Map<THREE.Texture, THREE.Texture>();
   private pvs: Uint8Array | null = null;
   private pvsCell: number | null | undefined = undefined;
   private clouds: CloudRt[] = [];
@@ -159,6 +161,7 @@ export class TourView {
         if (m.map) {
           m.map.colorSpace = THREE.NoColorSpace;
           this.deviceFilter(m.map);
+          if (m.alphaTest > 0) m.map = this.keyedMap(m.map);
         }
         if (this.options.doubleSided) m.side = THREE.DoubleSide;
         variants.set(key, m);
@@ -274,7 +277,7 @@ export class TourView {
         m.onBeforeCompile = (u.mesh.material as THREE.MeshBasicMaterial).onBeforeCompile;
         m.customProgramCacheKey = (u.mesh.material as THREE.MeshBasicMaterial).customProgramCacheKey;
         m.map = rt.texture;
-        m.alphaTest = 0.5;
+        m.alphaTest = KEY_ALPHA_REF;
         u.mesh.material = m;
       }
       this.clouds.push({ node: host, rt, points, w, h, lastPhi: null, rendered: false });
@@ -311,6 +314,40 @@ export class TourView {
     t.needsUpdate = true;
   }
 
+  /**
+   * A colour-keyed texture as the hardware device filters it (§5.10; inferred, not observed): transparent
+   * texels hold the key colour, which bilinear filtering mixes into the cut-out's edge pixels (materials.ts).
+   * The pixels are copied so that the key colour survives however the browser decoded the PNG. Point
+   * sampling (software) never mixes, so its textures are left alone.
+   */
+  private keyedMap(t: THREE.Texture): THREE.Texture {
+    if (this.control.options.device === "software") return t;
+    const done = this.keyedMaps.get(t);
+    if (done) return done;
+    const img = t.image as (CanvasImageSource & { width: number; height: number }) | undefined;
+    if (!img || !img.width || !img.height || typeof document === "undefined") return t;
+    const cv = document.createElement("canvas");
+    cv.width = img.width;
+    cv.height = img.height;
+    const g = cv.getContext("2d", { willReadFrequently: true });
+    if (!g) return t;
+    g.drawImage(img, 0, 0);
+    const data = new Uint8Array(g.getImageData(0, 0, cv.width, cv.height).data.buffer);
+    fillKeyTexels(data);
+    const k = new THREE.DataTexture(data, cv.width, cv.height, THREE.RGBAFormat);
+    k.colorSpace = THREE.NoColorSpace;
+    k.flipY = false;
+    k.wrapS = t.wrapS;
+    k.wrapT = t.wrapT;
+    // Keyed textures are not mipmapped (§5.5).
+    k.magFilter = THREE.LinearFilter;
+    k.minFilter = THREE.LinearFilter;
+    k.generateMipmaps = false;
+    k.needsUpdate = true;
+    this.keyedMaps.set(t, k);
+    return k;
+  }
+
   private texture(path: string): Promise<THREE.Texture> {
     const cached = this.textureCache.get(path);
     if (cached) return Promise.resolve(cached);
@@ -324,8 +361,9 @@ export class TourView {
       }
       this.deviceFilter(t);
       t.needsUpdate = true;
-      this.textureCache.set(path, t);
-      return t;
+      const out = path.endsWith(".key.png") ? this.keyedMap(t) : t;
+      this.textureCache.set(path, out);
+      return out;
     });
   }
 
@@ -386,7 +424,7 @@ export class TourView {
         if (this.clouds.some((cl) => cl.rt.texture === m.map)) continue;
         if (tex && m.map !== tex) {
           m.map = tex;
-          m.alphaTest = path?.endsWith(".key.png") ? 0.5 : (this.recordAlpha.get(record) ?? 0);
+          m.alphaTest = path?.endsWith(".key.png") ? KEY_ALPHA_REF : (this.recordAlpha.get(record) ?? 0);
           m.needsUpdate = true;
         }
       }
@@ -625,7 +663,9 @@ export class TourView {
       (u.uViewDeg as THREE.IUniform).value = phi * 57.29578 - 90;
       for (const other of this.clouds) other.points.visible = other === cl;
       this.renderer.setRenderTarget(cl.rt);
-      this.renderer.setClearColor(0x000000, 0);
+      // The cloud's surface is cleared to the colour key (§7.3.3), transparent until filtered (§5.10). Set
+      // through the state directly: setClearColor would premultiply it to transparent black.
+      this.renderer.state.buffers.color.setClear(KEY_RGB[0] / 255, KEY_RGB[1] / 255, KEY_RGB[2] / 255, 0, false);
       this.renderer.clear(true, true, false);
       this.renderer.render(this.pointsScene, this.pointsCamera);
     }
@@ -642,6 +682,7 @@ export class TourView {
   dispose(): void {
     for (const cl of this.clouds) cl.rt.dispose();
     for (const t of this.textureCache.values()) t.dispose();
+    for (const t of this.keyedMaps.values()) t.dispose();
     this.renderer.dispose();
   }
 }

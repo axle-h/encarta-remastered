@@ -20,7 +20,7 @@ export function AtlasPlaceholder() {
       {gid !== null && (
         <section>
           <h2>Place {gid}</h2>
-          {place.error && <p className="enc-muted">No information about this place.</p>}
+          {(place.error || place.data?.links.length === 0) && <p className="enc-muted">No information about this place.</p>}
           <ul>
             {place.data?.links.map((l) => (
               <li key={`${l.ordinal}-${l.ref_id}`}>

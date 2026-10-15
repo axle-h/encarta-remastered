@@ -80,6 +80,11 @@ export function printPage() {
   printWith("media");
 }
 
+/** Asks the print host (the Print dialog of whichever shell is on screen) to start File › Print. */
+export function requestPrint() {
+  window.dispatchEvent(new CustomEvent(PRINT_EVENT));
+}
+
 /** Events the menu bar listens to, fired by keyboard shortcuts. */
 export const PRINT_EVENT = "encarta:print";
 export const COPY_EVENT = "encarta:copy";
@@ -87,6 +92,27 @@ export const OPTIONS_EVENT = "encarta:options";
 export const FEATURES_EVENT = "encarta:features";
 
 export type ArticleScope = "text" | "media" | "selection";
+
+/** Everything the Print dialogs offer: the article scopes, the picture's two and the timeline's two. */
+export type PrintScope = ArticleScope | "picture" | "caption" | "timeline-page" | "timeline-all";
+
+/**
+ * Encarta asks "The article you are printing is longer than 5 pages" before printing. Which count it
+ * uses is not known (the VM only shows the prompt and the printed results: zebra text 16,300 characters
+ * on 5 pages, no prompt; with media 7 pages), so the pages are estimated from the printed length:
+ * about 3,300 characters of text per A4 page (zebra's 16,316 characters filled 5 pages) and a third
+ * of a page per picture (zebra's media print took 2 more pages for its pictures).
+ */
+export const LONG_PRINT_PAGES = 5;
+export const CHARS_PER_PAGE = 3300;
+export const PICTURE_PAGES = 0.35;
+
+/** Estimated printed pages of the article (or its selection) for a scope; 0 with no article on screen. */
+export function estimatePrintPages(scope: PrintScope): number {
+  const chars = scope === "selection" ? selectedText().length : articleText().length;
+  const pictures = scope === "media" ? document.querySelectorAll(".art-cols img").length : 0;
+  return chars / CHARS_PER_PAGE + pictures * PICTURE_PAGES;
+}
 
 /** The article's title and text (the reading column), or "" when the page has none. */
 export function articleText(): string {
@@ -151,7 +177,7 @@ export async function copySelectionOrArticle(): Promise<boolean> {
  * Prints with a copyright line after the content. `text` leaves the pictures out, `selection`
  * prints only what is selected (copied into a temporary block), `media` is the whole page.
  */
-export function printWith(scope: ArticleScope) {
+export function printWith(scope: PrintScope) {
   const root = document.documentElement;
   const added: HTMLElement[] = [];
   const line = document.createElement("p");

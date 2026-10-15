@@ -1,17 +1,20 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
-import type { AssocItem, Item } from "../api/types";
+import type { AssocItem, FileRef, Item } from "../api/types";
 import { useApi } from "../api/useApi";
 import { Html } from "../components/Html";
 import { Icon } from "../components/Icons";
 import { ArticleInline } from "../article/ArticleInline";
-import { fileUrl, galleryImage, largeImage, mediaClass, tourIdFor, uniqueByRef } from "./pick";
+import { fileUrl, galleryImage, isGenericIcon, largeImage, mediaClass, tourIdFor, uniqueByRef } from "./pick";
 import { FlashInteractive } from "./FlashPlayer";
 import { GameInteractive } from "../games/GameInteractive";
 import { AudioPlayer, VideoPlayer } from "./Players";
 import { itemHref } from "../content/links";
 import { isPanoramicTour } from "../pages/panorama";
+import { archiveUrl, webLinkUrl } from "../pages/ItemKinds";
+import { timelineHref, topicTerm } from "../pages/itemRoute";
+import { eventDateText } from "../pages/timelineDates";
 import { isPanoramaInteractive, SinglePanorama } from "../panorama/SinglePanorama";
 
 interface ViewerState {
@@ -208,11 +211,15 @@ export function MediaStage({ item, kids }: { item: Item; kids: boolean }) {
       const pic = item.kind === "audio-set" ? undefined : galleryImage(item);
       return (
         <div className="mv-audio">
-          {pic && <img src={fileUrl(pic)} alt="" />}
+          {pic && <img src={fileUrl(pic)} alt="" className={isGenericIcon(pic) ? "mv-generic" : undefined} />}
           <AudioPlayer item={item} autoPlay />
         </div>
       );
     }
+    case "timeline":
+      return <TimelineStage item={item} kids={kids} />;
+    case "weblink":
+      return <WebLinkStage item={item} />;
     case "table":
       if (item.data_table) return <Html className={`mv-table enc-dt-${item.data_table.kind}`} html={item.data_table.html} />;
       break;
@@ -260,7 +267,7 @@ export function MediaStage({ item, kids }: { item: Item; kids: boolean }) {
       const pic = largeImage(item);
       return (
         <div className="mv-interactive">
-          {pic && <img src={fileUrl(pic)} alt="" />}
+          {pic && <img src={fileUrl(pic)} alt="" className={isGenericIcon(pic) ? "mv-generic" : undefined} />}
           <p className="enc-muted">This interactive has no Flash definition on the disc.</p>
         </div>
       );
@@ -269,7 +276,7 @@ export function MediaStage({ item, kids }: { item: Item; kids: boolean }) {
       const pic = largeImage(item);
       return (
         <div className="mv-map">
-          {pic && <img src={fileUrl(pic)} alt="" />}
+          {pic && <img src={fileUrl(pic)} alt="" className={isGenericIcon(pic) ? "mv-generic" : undefined} />}
           <Link className="enc-button" to={item.geocode ? `/atlas/place/${item.geocode}` : "/atlas"}>
             Open in the World Atlas
           </Link>
@@ -280,6 +287,18 @@ export function MediaStage({ item, kids }: { item: Item; kids: boolean }) {
       break;
   }
   const img = largeImage(item);
+  const parts = compositeParts(item);
+  if (parts.length > 0 && (!img || isGenericIcon(img))) return <CompositeStage item={item} parts={parts} />;
+  if (img && isGenericIcon(img)) {
+    // A table or chart whose data is not on the disc: its kind icon, small, with a note, not a fake picture.
+    return (
+      <div className="mv-placeholder" data-expected-placeholder="">
+        <img className="mv-generic" src={fileUrl(img)} alt="" />
+        <p className="enc-muted">{item.has_article ? "" : `This ${mediaClass(item) === "table" ? "table" : "item"} has no picture or data on the disc.`}</p>
+        {item.has_article && <ArticleInline id={item.ref_id} kids={kids} />}
+      </div>
+    );
+  }
   if (img) {
     const wide = (img.width ?? 0) > 2 * (img.height ?? 1);
     return (
@@ -290,4 +309,91 @@ export function MediaStage({ item, kids }: { item: Item; kids: boolean }) {
   }
   if (item.has_article) return <ArticleInline id={item.ref_id} kids={kids} />;
   return <p className="enc-muted">Nothing to display for this item.</p>;
+}
+
+/** The pictures of a composite's children (a composite has none of its own), in disc order. */
+export function compositeParts(item: Item): { ref_id: number; title?: string; file: FileRef }[] {
+  if (item.kind !== "composite-media") return [];
+  return (item.children ?? []).flatMap((c) => {
+    const file = c.image ?? c.picon;
+    return file ? [{ ref_id: c.ref_id, title: c.title, file }] : [];
+  });
+}
+
+/** A composite media item (e.g. "Landscapes of France"): its photographs one after another. */
+function CompositeStage({ item, parts }: { item: Item; parts: ReturnType<typeof compositeParts> }) {
+  return (
+    <div className="mv-composite" aria-label={item.title}>
+      {parts.map((p) => (
+        <figure key={p.ref_id} className="mv-image">
+          <img src={fileUrl(p.file)} alt={p.title ?? ""} width={p.file.width} height={p.file.height} loading="lazy" />
+          {p.title && <figcaption className="enc-muted">{p.title}</figcaption>}
+        </figure>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * A timeline event or topic in a media list. Encarta opens these in its Timeline view
+ * (`msencarta://id=`, vm-findings.md), so the stage shows the entry itself and a button that does the same.
+ */
+export function TimelineStage({ item, kids }: { item: Item; kids: boolean }) {
+  const href = timelineHref(item) ?? "/timeline";
+  const isTopic = item.kind === "timeline-topic";
+  const term = isTopic ? topicTerm(item.sort_title || item.title || "") : "";
+  const topic = useApi(isTopic && term ? (s) => api.timeline({ term, limit: 12 }, s) : null, [term]);
+  const ev = item.timeline;
+  const thumb = fileUrl(galleryImage(item));
+  return (
+    <div className="mv-timeline">
+      {thumb && <img className="mv-generic" src={thumb} alt="" />}
+      <p className="mv-timeline-kicker">{isTopic ? "Topic timeline" : "Timeline event"}</p>
+      {ev?.start && <p className="mv-timeline-date">{eventDateText(ev)}</p>}
+      {ev?.start && item.has_article && <ArticleInline id={item.ref_id} kids={kids} />}
+      {isTopic && topic.data && topic.data.events.length > 0 && (
+        <>
+          <p className="enc-muted">
+            {topic.data.total.toLocaleString("en-US")} {topic.data.total === 1 ? "event" : "events"}
+          </p>
+          <ol className="mv-timeline-events">
+            {topic.data.events.map((e) => (
+              <li key={e.ref_id}>
+                <span className="mv-timeline-when">{eventDateText(e)}</span> {e.title}
+              </li>
+            ))}
+          </ol>
+          {topic.data.total > topic.data.events.length && <p className="enc-muted">and more</p>}
+        </>
+      )}
+      <Link className="enc-button" to={href}>
+        Open in Timeline
+      </Link>
+    </div>
+  );
+}
+
+/** A web link: Encarta handed it to the browser; we show the address and the 2008 archive copy. */
+export function WebLinkStage({ item }: { item: Item }) {
+  const url = webLinkUrl(item);
+  return (
+    <div className="mv-weblink">
+      <p className="mv-timeline-kicker">{item.kind === "live-link" ? "Live link" : "Web site"}</p>
+      {url ? (
+        <>
+          <a className="enc-button" href={url} target="_blank" rel="noopener noreferrer">
+            Open the web site
+          </a>
+          <p>
+            <a href={archiveUrl(url)} target="_blank" rel="noopener noreferrer">
+              The page as archived in 2008 (Internet Archive)
+            </a>
+          </p>
+          <p className="enc-muted">{url}</p>
+        </>
+      ) : (
+        <p className="enc-muted">This link has no address on the disc.</p>
+      )}
+    </div>
+  );
 }

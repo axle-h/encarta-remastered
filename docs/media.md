@@ -512,8 +512,8 @@ Written to `out/sounds/` as the unchanged RIFF files: `startup.wav`, `click.wav`
 
 | Sound | Ids | Plays |
 |---|---|---|
-| `tick` | 31971 (= 31914, 31915, 31935) | rollover: pointer enters an enabled adult toolbar button (Back, Forward, Home, Features, search Go, Back history ▾) or an atlas text button (Map Legend, About this Map); every highlight change in the menu-bar menus (pointer, arrow keys, Esc closing a menu); the push buttons of Encarta's own dialogs (Organize and Add to Favorites, Map Customizer; id 31914, their click 31916; their page tabs and Windows message boxes are silent). Disabled buttons are silent |
-| `click` | 31973 (= 31916, 31917, 31936, 31974, 31976, 31977) | round toolbar buttons (adult and Kids): on mouse-down and again on mouse-up; menu-bar titles, check boxes, dialog buttons, atlas tool buttons, zoom −, Map Legend, map-style list arrows and Kids home category panels: once on click |
+| `tick` | 31971 (= 31914, 31915, 31935) | rollover: pointer enters an enabled adult toolbar button (Back, Forward, Home, Features, search Go, Back history ▾) or an atlas text button (Map Legend, About this Map); pointer enters a menu-bar title (adult and Kids, menu open or not); every highlight change in the menu-bar menus (pointer, arrow keys, Esc closing a menu; disabled items and separators silent); the push buttons of Encarta's own dialogs (Organize and Add to Favorites, Map Customizer; id 31914, their click 31916; their page tabs and Windows message boxes are silent). Disabled buttons are silent |
+| `click` | 31973 (= 31916, 31917, 31936, 31974, 31976, 31977) | round toolbar buttons (adult and Kids; Kids 31976 down, 31977 up): on mouse-down and again on mouse-up; enabled menu-bar items (adult and Kids): 31973 on mouse-down and 31974 on mouse-up; menu-bar titles, check boxes, dialog buttons, atlas tool buttons, zoom −, Map Legend, map-style list arrows and Kids home category panels: once on click |
 | `kids-hover` | 31975 | rollover of the Kids round toolbar buttons (Home, Back, Forward, Copy, Print, search arrow), enabled ones only |
 | `timeline` | 575 | timeline controls: zoom in/out, era links (1600, PREHISTORY …), View as List, next/previous 25, Main Timeline, the Compare dialog opener |
 | `kids-N` | 31979-31988 | pointer enters the N-th Kids home category |
@@ -531,15 +531,46 @@ only data that does: 702 sits in two button style records (`RCDATA` 835, 860: th
 that nothing loads, 31913 in a dialog-frame child record (`RCDATA` 31940) under a key the frame loader skips. A
 debugger log of every play (breakpoints on the loader and on `winmm` `PlaySound*`/`sndPlaySound*`) over the tours,
 Virtual Tours, atlas (pushpins, Map Customizer, context menu), Organize/Add Favorites, menus and the Flash jigsaw
-games showed only the ids in the table. The Print dialogs could not be reached (no printer in the VM). The media players, Visual Browser, Map Trek dialog, Options page list and the Quick Search
+games showed only the ids in the table. The media players, Visual Browser, Map Trek dialog, Options page list and the Quick Search
 dialog's field are silent. In the Geography Quiz a correct answer plays a 2 s fanfare that is not an `ENCARTAR.DLL`
 resource (probably Windows' `tada.wav`, 1.94 s; not reproduced).
+
+**Print and the Kids process (VM pass 5, 2026-10-15, vm-findings.md).** With a print-to-file printer: Encarta's own
+Print dialog (article: Whole Article Text / With Media / Selected Text; picture: Picture / Picture plus caption;
+timeline: All events on this page / in current timeline; Kids: Whole Article Text) behaves like every Encarta dialog: push
+buttons (Print Setup, Print, Cancel) tick (31914) on rollover and click (31916) on release, radios click (31917) when clicked,
+release, radios and buttons used from the keyboard (arrows, Tab, Space, Enter) are silent, and the frameless "longer than
+5 pages" prompt clicks (31916) on Yes/No with no rollover tick. Everything after it is Windows' and silent: the Print and
+Printing Preferences dialogs, "Print to File", the atlas map's and the dictionary's direct Windows Print dialog, the
+print itself (the dictionary's Print link and printing play only Windows' navigation click). There is no Print Preview.
+The Options dialog's check boxes and radios are also silent from the keyboard. The Kids process plays only 31971,
+31973/31974, 31914/31916/31917, 31975, 31976/31977 and 31979-31988: none of the unheard ids. Kids' own "Menu and Button
+Sounds" switch is **on** by default (its settings key holds no value and the flag word reads 7), unlike the adult option.
+Flash games and Read Aloud make their own sound outside these APIs.
+
+**Print dialog (ours, `app/PrintDialog.tsx`).** Encarta's four Print dialogs are matched from `fixtures/ui/print2/`: a small
+pale-blue window titled Print with a big "print" banner, "What do you want to print?", the radios of its kind and the buttons
+Print Setup / Print / Cancel (article: Whole Article Text, Whole Article With Media, and Selected Text only while text is
+selected; picture: Picture, Picture plus caption; timeline: All events on this page, All events in current timeline; Kids:
+Whole Article Text). Sounds go through the delegate: buttons tick on rollover and click on release, radios click, keyboard use
+is silent, the window's close box is silent, and the frameless "longer than 5 pages" prompt (`.print-prompt`) clicks on Yes/No
+without a rollover tick. File › Print, Ctrl+P (adult and Kids) and the Kids Print button all go through `requestPrint()`;
+a page with nothing to choose (home, browse pages) prints at once. Deliberate differences: **Print Setup opens the browser's
+print flow** (the same `window.print()` as Print, after the same prompt), because a web page cannot open the OS page-setup
+dialog and the browser's own print dialog holds the paper, margins and printer; and the timeline's "All events in current
+timeline" prints the on-screen event list like "on this page" (the list pages 25 at a time and is not fetched whole). The
+prompt's trigger: how Encarta counts pages is **not known** (the VM shows only the prompt and the printed output), so the pages
+are estimated from the printed length, `chars / 3300 + 0.35 per picture` (calibrated on the zebra prints: 16,316 characters
+filled 5 pages without a prompt, and the media print took 2 more pages), and the prompt appears above 5. It is asked for
+article and Kids article prints, for Print and Print Setup alike; No cancels the print. Picture prints show only the open
+viewer's picture (plus its caption and credit).
 
 **Ours:** `web/src/settings/uiSounds.ts` has one document-level delegate that maps controls to the sounds above
 (`playUiSound('tick'|'click'|'kidsHover'|'timeline'|'tourHover'|'tourPick')`); the rules are selectors there, and
 `data-snd="timeline"` marks the timeline controls. The Virtual Tours site-map points (`.pano-site-pt`, not the current
 one) play `tourHover`/`tourPick` through a rule; the 3D tour's site map is a canvas, so `pages/TourView.tsx` plays them
-itself when the pointer enters a stop's box and on the click that moves there. Plain links and tabs are silent; `menuSounds` defaults to false (persisted choices are
-kept); the startup sound plays once per page load. The timeline's Compare / View as List / Main Timeline controls do
+itself when the pointer enters a stop's box and on the click that moves there. Plain links and tabs are silent; keyboard-generated clicks are silent; menu-bar titles tick on rollover and menu-bar
+items click on press and release (the Features flyout's items are silent); `menuSounds` defaults to false and
+the Kids shell uses its own `kidsMenuSounds` (Tools › Menu and Button Sounds), default true (persisted choices are
+kept); the Features flyout's items are silent (VM pass 2 listened to them and heard nothing; ours used to tick); the startup sound plays once per page load. The timeline's Compare / View as List / Main Timeline controls do
 not exist in our timeline page yet (so `timeline` plays for the era links, pan/zoom buttons and the list pager).
-

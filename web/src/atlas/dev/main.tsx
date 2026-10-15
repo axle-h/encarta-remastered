@@ -1,7 +1,8 @@
 /**
  * Dev page for the atlas (`/atlas.html`). Query: `?style=atlas-political&lat=50&lon=10&alt=3000`,
  * `?place=25262` (gazetteer entity), `?url=msencarta://view=MapView/cmd=map/…`, `?view=flat`,
- * `?quiz=1` (quiz mode), `?highlight=<entity>` (filled in yellow).
+ * `?quiz=1` (quiz mode), `?highlight=<entity>` (filled in yellow), `?placement=maplibre` (MapLibre's
+ * label collision instead of Encarta's placement, for comparison).
  * Opened articles are listed in a side strip instead of navigating away.
  */
 import { StrictMode, useState } from "react";
@@ -28,6 +29,7 @@ function Dev() {
           initialStyle={q.get("style") ?? undefined}
           initialProjection={q.get("view") === "flat" ? "flat" : "globe"}
           quizMode={q.get("quiz") === "1"}
+          labelPlacement={q.get("placement") !== "maplibre"}
           highlightEntity={num("highlight")}
           onPlaceClick={(hits) => console.log("atlas click:", hits.map((h) => h.name).join(", "))}
           onOpenArticle={(_, link) => setOpened((o) => [link, ...o].slice(0, 8))}

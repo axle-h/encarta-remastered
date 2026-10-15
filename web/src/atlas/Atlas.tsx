@@ -24,6 +24,7 @@ import {
   loadStyleIndex,
   makeTransformRequest,
   primaryArticle,
+  rasterArchive,
   type Endpoints,
   type Palettes,
   type PlaceHit,
@@ -47,7 +48,8 @@ import { LOOK_PROTOCOL, bakedLooks, createLookProtocol } from "./recolour";
 import { useSettings } from "../settings/settings";
 import { formatLatLong } from "./format";
 import { colourValues, DEFAULT_RAMP, statRamp } from "./stats";
-import { buildStyle, defaultVisibleClasses, styleMeta, type Projection, type StyleMeta } from "./style";
+import { buildStyle, defaultVisibleClasses, overlaySpecs, styleMeta, type Projection, type StyleMeta } from "./style";
+import { LabelPlacer, OVERLAY_SOURCE } from "./labelOverlay";
 import { altitudeForView, altitudeForZoom, formatAltitude, maxZoomAt, pOverMForPane, parseMsEncartaUrl, quantiseShift, zoomForView, zoomShift, DEFAULT_P_OVER_M } from "./zoom";
 import { LocatorGlobe } from "./ui/LocatorGlobe";
 import { CustomizerPanel, LegendPanel, Panel } from "./ui/Panels";
@@ -107,6 +109,11 @@ export interface AtlasProps {
    * `onPlaceClick` only. The symbols and the map styling stay.
    */
   quizMode?: boolean;
+  /**
+   * Encarta's label placement (labelOverlay.ts, default) or MapLibre's own collision over the converted
+   * layers (`false`; for comparison).
+   */
+  labelPlacement?: boolean;
   /** Every click on the map, with the places under the point (in the hit list's order). */
   onPlaceClick?: (hits: HitPlace[], lngLat: { lat: number; lon: number }) => void;
   /** Move the view to this box (`[[west, south], [east, north]]`) or point (with `zoom`); a new object each time re-centres. */
@@ -185,6 +192,7 @@ export function Atlas({
   highlightEntity,
   highlightColor = "#ffd400",
   quizMode = false,
+  labelPlacement = true,
   onPlaceClick,
   focus,
   markerAt,
@@ -345,9 +353,10 @@ export function Atlas({
             stats: statsOn,
             shift,
             highlight: highlightEntity != null ? { entity: highlightEntity, color: highlightColor } : null,
+            placement: labelPlacement,
           })
         : null,
-    [raw, ep, projection, overrides, labelScale, look, palettes, statsOn, shift, quizMode, highlightEntity, highlightColor],
+    [raw, ep, projection, overrides, labelScale, look, palettes, statsOn, shift, quizMode, highlightEntity, highlightColor, labelPlacement],
   );
   live.current.built = built;
   const ramp = useMemo(() => {
@@ -387,13 +396,15 @@ export function Atlas({
     const s = map?.getStyle();
     if (!map || !s) return [];
     const ids = s.layers.filter((l) => l.id.startsWith(HIT_PREFIX) || l.type === "symbol" || l.type === "line").map((l) => l.id);
-    return map.queryRenderedFeatures(
+    const found = map.queryRenderedFeatures(
       [
         [point.x - pad, point.y - pad],
         [point.x + pad, point.y + pad],
       ],
       { layers: ids },
     ) as unknown as QueriedFeature[];
+    // Labels drawn by the placement come from its GeoJSON source; they stand for their tile features.
+    return found.map((f) => (f.source === OVERLAY_SOURCE ? { ...f, sourceLayer: String(f.properties?._sl ?? ""), source: undefined } : f));
   }, []);
 
   const iconOf = useCallback((f: QueriedFeature) => {
@@ -608,6 +619,44 @@ export function Atlas({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady]);
+
+  // Encarta's label placement (labelOverlay.ts): one placer per map, told about every new style.
+  const placer = useRef<LabelPlacer | null>(null);
+  const placerKey = useRef("");
+  useEffect(() => {
+    const map = mapReady;
+    if (!map) return;
+    return () => {
+      placer.current?.dispose();
+      placer.current = null;
+    };
+  }, [mapReady]);
+  useEffect(() => {
+    const map = mapReady;
+    if (!map || !built) return;
+    const specs = overlaySpecs(built);
+    if (!specs.length || !built.glyphs) {
+      placer.current?.dispose();
+      placer.current = null;
+      return;
+    }
+    const pal = meta?.raster && palettes ? palettes[meta.raster.toUpperCase()] : undefined;
+    const kinds = pal && (pal.looks[(meta?.look ?? "").toUpperCase()] ?? Object.values(pal.looks)[0])?.pixel_class;
+    const key = `${built.glyphs}|${meta?.raster ?? ""}|${kinds ? "k" : ""}`;
+    if (placer.current && placerKey.current === key) {
+      placer.current.update(specs);
+      return;
+    }
+    placer.current?.dispose();
+    placerKey.current = key;
+    placer.current = new LabelPlacer(map, specs, built.glyphs, {
+      fromMapLat,
+      raster: meta?.raster && kinds ? { archive: rasterArchive(meta.raster, "index", ep), kinds, maxZoom: (pal?.max_level ?? 8) + 1 } : undefined,
+      selected: () => live.current.selected,
+    });
+    if (typeof window !== "undefined") (window as unknown as { __encartaLabels?: LabelPlacer }).__encartaLabels = placer.current;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [built, mapReady]);
 
   // Scale bar with the chosen units.
   useEffect(() => {

@@ -83,6 +83,67 @@ describe("interface sounds", () => {
     expect(take()).toEqual([]);
   });
 
+  it("plays the menu-bar and print-dialog sounds measured in VM pass 5", () => {
+    configureUiSounds(true, true);
+    const off = installUiSoundDelegates();
+    document.body.innerHTML = `<div class=menu><button id=title></button><ul role=menu><li><button role=menuitem id=item></button></li>
+      <li><button role=menuitem id=dis disabled></button></li></ul></div>
+      <div class="menu-popup features-flyout" role=menu><a role=menuitem id=feat href="#f"></a></div>
+      <div class=dlg-backdrop><input type=radio id=radio><button id=print></button>
+      <div class=print-prompt><button id=yes></button></div></div>`;
+    const el = (id: string) => document.getElementById(id)!;
+    const fire = (id: string, type: string) => el(id).dispatchEvent(new Event(type, { bubbles: true }));
+    const mouseClick = (id: string) => el(id).dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    const keyClick = (id: string) => {
+      el(id).dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+      el(id).dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+    };
+    const take = () => played.splice(0).map((s) => s.replace("/sounds/", "").replace(".wav", ""));
+    // Menu-bar title: tick on rollover, click on click; an item: tick, then click on press and on release.
+    fire("title", "pointerover");
+    fire("title", "pointerdown");
+    mouseClick("title");
+    expect(take()).toEqual(["tick", "click"]);
+    fire("item", "pointerover");
+    fire("item", "pointerdown");
+    fire("item", "pointerup");
+    mouseClick("item");
+    expect(take()).toEqual(["tick", "click", "click"]);
+    for (const t of ["pointerover", "pointerdown", "pointerup", "click"]) fire("dis", t);
+    fire("feat", "pointerover");
+    fire("feat", "pointerdown");
+    fire("feat", "pointerup");
+    mouseClick("feat");
+    expect(take()).toEqual([]); // the Features flyout's items are silent (VM pass 2)
+    // Print dialog: radio and button click once with the mouse; keyboard activation is silent.
+    fire("radio", "pointerdown");
+    mouseClick("radio");
+    fire("print", "pointerdown");
+    mouseClick("print");
+    expect(take()).toEqual(["click", "click"]);
+    // The prompt's Yes clicks but does not tick.
+    fire("yes", "pointerover");
+    mouseClick("yes");
+    expect(take()).toEqual(["click"]);
+    keyClick("radio");
+    keyClick("print");
+    keyClick("yes");
+    expect(take()).toEqual([]);
+    off();
+  });
+
+  it("uses the Kids switch while the Kids shell is shown", () => {
+    configureUiSounds(true, false, true);
+    playUiSound("click");
+    expect(played).toEqual([]);
+    document.body.innerHTML = `<div class=kids-shell></div>`;
+    playUiSound("click");
+    configureUiSounds(true, true, false);
+    playUiSound("click");
+    expect(played).toEqual(["/sounds/click.wav"]);
+    document.body.innerHTML = "";
+  });
+
   it("plays the dialog button and tour site-map sounds", () => {
     configureUiSounds(true, true);
     const off = installUiSoundDelegates();

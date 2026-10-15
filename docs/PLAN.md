@@ -27,14 +27,43 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 
 ## Next (priority order)
 
-Nothing queued; what is left (mostly blocked: no printer, unread code) is under "Needs the VM" below.
+Nothing queued; what is left for the VM is under "Needs the VM" below.
+
+Done 2026-10-15 (print dialog): `app/PrintDialog.tsx` matches the four captured variants (article, picture, timeline,
+Kids) with Print Setup (the browser's print, the deliberate difference) and the "longer than 5 pages" prompt for
+article and Kids prints, whose page count is our estimate (chars/3300 + 0.35 a picture, media.md §9); the Features
+flyout items are silent (UI pass 2); Kids' "AudioContext used after close" was Ruffle playing on after its element was
+removed (`stopFlashPlayer` mutes and pauses first). Web tests 408 pass.
+
+Done 2026-10-15 (VM pass 5 and the app explorer): **Explorer**: `tools/explore/explore.mjs` (Playwright, seeded
+journeys and random clicks over every area; console and React errors, failed requests, broken or placeholder images;
+`out/explore/<ts>/report.md`) and the `app-explorer` agent (`.claude/agents/app-explorer.md`). Its first run found the
+bugs below. **Atlas**: the "Maximum update depth" crash was `PlaceMenu` re-positioning itself through state on every
+render (fixed, regression test); label placement is now our own pass at rest (`labelOverlay.ts`, `placement.ts`) with
+Encarta's costs: what lies under each box, drawn lines, neighbours' reserved boxes, the alternative-name layout costs
+(about 12 characters a line plus short- and long-line penalties, groups tried in order) and one shield per run; all
+labels share one list by b13, with no pass per kind (mad-styling.md §7.3, §7.4; `?placement=maplibre` for comparison);
+`/api/place` answers `[]` for a place without links. **Gallery**: timeline topics and events show the entry with "Open
+in Timeline" instead of the enlarged `timegp` icon; web links get an open/archive stage; composites show their parts;
+shared icons are drawn at their own size; topic timelines without a start date no longer crash; links to items no
+package defines (10 media, 7,593 `hsbg` to 701712244) are dropped by the server. **Tours** (no 2009 driver will be
+had, so inferred): a real driver keyed texels before filtering, so the hardware device now draws a one-texel key
+fringe and far-off pink shimmer (§5.10); full screen *is* reachable through the 4×4 `_dot` button in five tours on
+the hardware device (§4.0.1, implemented from the code); the control computes in float32, which replays the fall log
+bit for bit, and snap mode drifts too, on 39 of 12,036 ground cells (gravity: 146; §6.9). **Sounds**: Print dialogs
+and the 5-page prompt sound like the other dialogs, Windows' own print dialogs are silent, there is no Print Preview;
+menu titles tick on hover and items click on press and release; keyboard use is silent; Kids plays no new ids and its
+own menu-sounds option is on by default (media.md §9). **Data**: LEX copyright trailing u16 and body +0x04, and
+TIMELINE offset A, are never read (ghidra and hardware watchpoints agree); the header stamp is copied out but never
+used; body +0x20 is the count of a table empty in every file; the stream offset comes from +0x28 (lex.md,
+timeline.md). Web tests 401 pass, server tests pass. Not checked by eye in a browser beyond the explorer.
 
 Done 2026-10-15 (VM pass 4, 3D device): WineD3D 1.7.55 (wine9x) over Mesa9x 23.1.9 llvmpipe, app-local in `C:\d3d`
 (`vm/d3d.sh`, snapshot `d3d-ready`; the control needs three in-memory cdb patches on WineD3D, vm.md). **Cloud step**
 confirmed: 0.09 rad from the last render (5.1° kept, 5.2° re-rendered), forced at the unwrapped 2π crossing (§7.3.4).
 **Ground mode corrected**: every walk step rewrites the walker flag, so hardware is gravity throughout and software
 snaps after the first walk step (§6.8). **MaxView** is the normal tour page (control fixed 616×420 beside a 172-px
-panel, FOV 80, §4.0), not a hardware mode; `TRYFULLSCREEN` is unreachable in 2009. Hardware filters textures
+panel, FOV 80, §4.0), not a hardware mode (full screen is the `_dot` button, VM pass 5). Hardware filters textures
 (bilinear, mipmaps), software point-samples (§5.10). The runtime now defaults to the hardware device (Encarta
 installs `DxHardware` = 1), with the ground mode and texture filtering following `device`; the dev page has a
 Device selector (tour-runtime.md).
@@ -141,13 +170,9 @@ sprites), area-pen draw-over masks, flat-view tiles in Web Workers, time zones o
 134), symbol layers stacked by priority (mad-styling.md §7.3, §8.1, §5.2, §16; atlas-output.md; atlas-client.md).
 
 ### Needs the VM
-Left after VM pass 3 (vm-findings "VM pass 3"):
-- Tours: colour-key fringes on a real 2009 driver and the control's full-screen look (WineD3D shows neither);
-  whether the pitch-limit drift (§6.9) is the same in snap mode.
-- Sounds: Print's dialogs (no printer in the guest); the Kids process was not logged (its code names none of the
-  unheard ids).
-- Data: LEX body u32s +0x04/+0x20, the header stamp's meaning and the copyright's trailing u16 (not read on the search
-  path); TIMELINE offset A is never read by the viewer.
-- Atlas: the costs of the alternative-name layouts and which label kinds are placed first (code not read). MapLibre
-  cannot weigh candidate costs or place one shield per run, so both stay approximated.
+Left after VM pass 5 (vm-findings "VM pass 5"):
+- Sounds: whether a menu item that opens a submenu (▸) also plays the press and release clicks.
+- Data: the LEX header stamp's meaning, which nothing in Encarta uses, so it cannot be recovered (ignored).
+- Tours: the colour-key fringe and the full-screen look are inferred, not observed (no 2009 driver; decided by Alex
+  2026-10-15).
 - Music: MindMaze music cannot be observed (no MIDI playback path in 2009).

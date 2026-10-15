@@ -1652,3 +1652,68 @@
   font: 12px var(--ui);
   max-width: 150px;
 }
+
+/* Timeline entries, web links and placeholder icons in the media viewer */
+.mv-timeline,
+.mv-weblink,
+.mv-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(560px, 100%);
+  text-align: center;
+}
+
+.mv-timeline img.mv-generic,
+.mv-placeholder img.mv-generic,
+.mv-audio img.mv-generic,
+.mv-map img.mv-generic,
+.mv-interactive img.mv-generic {
+  width: auto;
+  max-width: 244px;
+  max-height: 68px;
+  opacity: 0.85;
+}
+
+.mv-timeline-kicker {
+  margin: 0;
+  font-size: 0.8em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--enc-muted, #777);
+}
+
+.mv-timeline-date {
+  margin: 0;
+  font-size: 1.15em;
+  font-weight: bold;
+}
+
+.mv-timeline-events {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 30vh;
+  overflow: auto;
+  text-align: left;
+  width: 100%;
+}
+
+.mv-timeline-when {
+  font-weight: bold;
+  margin-right: 0.4em;
+}
+
+.mv-composite {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 62vh;
+  overflow-y: auto;
+}
+
+.mv-composite figure {
+  margin: 0;
+  text-align: center;
+}

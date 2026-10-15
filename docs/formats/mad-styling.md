@@ -467,9 +467,51 @@ a name into the main name (before the first control character), the alternative 
 abbreviation (after U+0002). It tries three layouts in this order: (0) the main name on 1–3 lines in the `w5`
 style plus the alternative as an extra last line in the `w6` style, only when `w6` ≠ none and there is an
 alternative; (1) the main name alone on 1–4 lines; (2) the abbreviation alone, only when there is one. The
-alternative is put in brackets only when the main name starts with kana or a CJK ideograph. How it chooses among
-the layouts that fit (overlap cost) is not fully read. Example (style 0, 3000 km): Mumbai (class 2) in GeoLabel
-106 (14 px bold), "Bombay" under it in GeoLabel 36 (12 px regular).
+alternative is put in brackets only when the main name starts with kana or a CJK ideograph. Example (style 0,
+3000 km): Mumbai (class 2) in GeoLabel 106 (14 px bold), "Bombay" under it in GeoLabel 36 (12 px regular).
+
+**Layouts and their cost** (code: FUN_6356e2db break list, FUN_6356e6c0 split, FUN_6356ea10 layout,
+FUN_6356e8f0 cost, FUN_63541930 driver; read 2026-10-15). A layout is a list of at most 4 lines. Its box is as
+wide as its widest line and as high as the sum of the line heights.
+
+- *Break opportunities* in a text: the positions of a space, U+2010 (hyphen), U+2013 and U+2014 (dashes). The
+  ASCII hyphen-minus is **not** one. A line that ends at a break keeps the break character, except a space.
+- *A bracket tail*: when the text has `(` at a position `p > 0`, only the breaks before `p` count, and the last of
+  them (normally the space before the bracket) is dropped. When more than one line is asked for, the tail from
+  `p` to the end is a line of its own (the last), the text before it loses a trailing space and is split into
+  the other lines.
+- *Splitting a text of `L` characters into `n` lines*: impossible when there are fewer than `n − 1` breaks, or
+  when `n > 1` and `⌊L / n⌋ < 5`. Otherwise every line but the last aims at `t = ⌊L / n⌋` characters: from the
+  line's start `s`, walk the breaks in order (keeping one break for each line still to come) and stop at the
+  first break `b` with `b − s ≥ t`, or earlier at a break `b` whose successor `b′` lies beyond the target and
+  is farther from it (`t − (b − s) < (b′ − s) − t`). The next line starts after `b`. The last line is the rest.
+- *Letter spacing* (GeoLabel byte 10) is added after every character of a line except the last, a character
+  followed by `.` or U+2019, and U+2018.
+- *Cost of a layout* with `n` lines holding `T` characters in all (the alternative line included):
+  `250 · |n − ⌈T / 12⌉|`, plus 250 when some line has 3 or 4 characters, plus 500 when some line has fewer than
+  3, plus 250 when some line has 13 to 20, plus 500 when some line has 21 or more. So about 12 characters per
+  line is ideal. Worked examples (our arithmetic): "Mumbai" + "Bombay" (2 lines, 12 characters) costs 250, the
+  only layout of its group; "San Pancrazio" alone costs 500 on one line (13 characters: one line too few, a
+  13-character line) and 500 on two ("San", "Pancrazio": one line too many, a 3-character line), so the tie goes
+  to one line; "Caldaro sulla strada del vino" (29) alone is best on 3 lines ("Caldaro", "sulla strada",
+  "del vino") at 0. With its alternative "Kaltern an der Weinstrasse" (26) the layouts cost 1250 (main on 1 or 2
+  lines) and 750 (main on 3 lines); V15 shows the main name on two lines, so there the background or neighbour
+  costs of the taller box must have outweighed the 500 (not checked).
+- *Which layouts* (point labels): three groups, tried in this order: (A) the main name on 1–3 lines plus the
+  alternative (whole, on one line, in the `w6` style) as the last line, when `w6` ≠ none and there is an
+  alternative; (B) the main name alone on 1–3 lines; (C) the abbreviation alone on 1–3 lines, when there is one.
+  Within a group the line counts are tried upwards and the group stops at the first count that cannot be split.
+- *Choice* (§7.4): every layout of a group is tried at every candidate position; the candidates of the group
+  compete on their total cost (position step + background + neighbours + layout cost), ties going to the
+  smaller line count and then to the earlier position. The next group is tried **only when every candidate of
+  the group was rejected outright** (outside the pane or over a placed label). So "Mumbai / Bombay" falls back to
+  "Mumbai" alone only where no two-line box fits at all, and a long name falls back to its abbreviation only
+  when neither layout fits.
+- Line alignment in the box: centred for the centred candidate and for names in kana or CJK; otherwise left
+  aligned right of the symbol and right aligned left of it (as V15 shows). The 1-px rule (V15) is drawn under
+  the last line of the main name only.
+- Area labels (FUN_63535290 and the routines of §7.2 byte 11, FUN_635375fe, FUN_635381ae, FUN_63538eff) build the
+  same layouts and add the layout cost to their own span costs; those span costs are not read.
 
 **Confirmed in the VM (V15, 2026-10-14):** a name with an alternative is drawn on two lines, "Mumbai" over
 "Bombay" (main larger and bold, alternative smaller and regular), "Merano"/"Meran", "Bolzano"/"Bozen". A
@@ -504,8 +546,12 @@ What is established (code and renders):
   | 4 | above left | bottom at the point's y, right edge at `x − r − 1` | 750 |
   | 5 | below left | top at `y + r`, right edge at `x − r` | 1000 |
 
-  Each position is tried for every text layout of the name (with or without the alternative-name line, §7.3;
-  each layout adds its own cost).
+  Each position is tried for every text layout of the name (§7.3 "Layouts and their cost": each layout adds
+  its own cost, and a later group of layouts is tried only when nothing of the earlier one fits).
+- **The symbol** (FUN_63541ef0, read 2026-10-15): a point's symbol box is tested first. When it overlaps a placed
+  label, the symbol is not drawn and the name is placed as for a point without a symbol (centred candidate
+  first, `r` = 0). A drawn symbol enters the collision list enlarged by a quarter of its size on every side. A
+  symbol whose label is off is drawn when its box is free.
 - **Rejected outright** (FUN_63533cf0): a box not wholly inside the map pane (on the globe: inside the disc),
   and a box that intersects any label or shield already placed. Labels never overlap each other.
 - **Cost** of a candidate = added cost + background cost + neighbour cost:
@@ -524,15 +570,29 @@ What is established (code and renders):
   box (a coast, a neighbour's reserved box, a road) outweighs the 250 steps. In dense areas (Morbihan, 300 km)
   about 18 of 30 labels are above left, 5 below right, 5 below left: the costs, not the order. Lambina, with
   "SOUTH AUSTRALIA" above it, is below right (presumably the above candidates intersect that placed label).
-- Priority: `PDCAttribute.b13` (mad.md §8.1, 1…255) orders the candidates. Lower values win: million+ cities
-  have 23, sovereign capital towns 35, towns 80, villages 100. (**Hypothesis**, consistent with the renders.)
+- **Placement order** (code: list built by FUN_6355523d, sorted with FUN_635546be; placed by FUN_6356425b →
+  FUN_6353c390; read 2026-10-15). All labels of the frame, **of every kind**, are in one list: points and
+  radius points (symbol and name, FUN_63541ef0), lines (along-the-line names and shields, §8.1) and areas.
+  There is no pass per kind. The list is sorted by:
+  1. labels the caller flags first (a per-object flag and a list of selected or highlighted objects; within the
+     flagged ones, those with a second flag first; what sets the flags is not fully read);
+  2. `PDCAttribute.b13` ascending (mad.md §8.1, 1…255: million+ cities 23, sovereign capital towns 35, towns
+     80, villages 100, so lower values are placed first and win);
+  3. the GeoObj entry's `cls` byte (0 in the shipped data, then counted as 128: no effect);
+  4. the rule's `w23` icon id ascending (none = 65535 last);
+  5. the entity id's range in the GeoObj grid index (which record range it falls in);
+  6. the object's GeoObj (record key, entry), ascending.
+  Then runs of labels with the same `w23` (and flag) are scanned for pieces of one object to merge (the merged
+  pieces are labelled once). The labels are placed in list order in slices of about 250 ms (GetTickCount), the
+  next slice continuing where the last stopped, so every label is tried. A label that cannot be placed is
+  skipped; for a point its symbol is then not drawn either (§7.4 first point). The reserved neighbour boxes
+  above are made from the **points** of the same sorted list (only point kinds, only those whose label is on),
+  before any is placed, so a lower-priority town still pushes a city's label away from itself.
 
-MapLibre: `symbol-sort-key = b13` within a layer, and symbol layers stacked by descending b13 (MapLibre places
-the top layer's symbols first). MapLibre has no costs, only "first candidate that does not collide": use
-`text-variable-anchor` [bottom-left, top-left, bottom-right, top-right] (MOBB's order) with a small
-`text-radial-offset` for points with a symbol, and [center, …the same] with offset 0 for points without one,
-`symbol-placement: line` for line classes, and `text-allow-overlap: false` with `icon-optional: false` so that
-symbol and label appear together.
+MapLibre has no costs, only "first candidate that does not collide", and no fallback to another text. The
+converted styles keep a MapLibre-only form (`symbol-sort-key = b13`, layers stacked by descending b13,
+`text-variable-anchor` [bottom-left, top-left, bottom-right, top-right] in MOBB's order, `icon-optional: false`),
+which the client replaces with this section's placement (atlas-client.md "Label placement").
 
 ## 8. Symbols: bitmaps, shields, legend icons
 
@@ -596,12 +656,10 @@ object, type code or number field:
   E25, E30, E31 (class 206, blue rectangles, as V8 shows for both A- and E-roads).
 
 MapLibre has no costs and no "one per run near the middle" (`line-center` gives the middle but no
-alternative when it collides, and no same-text test): one symbol layer per shield road class with
-`symbol-placement: line`, whose anchors repeat at `symbol-spacing` from near the line's start and which drops
-an anchor whose text repeats within half the spacing in the tile (400 → 200 px, against MOBB's 160 px for the
-reference pane), `text-field` = name,
-`icon-image` = a sprite per GeoLabel shape and colours stretched with `icon-text-fit: both`, `text-rotation-alignment`
-and `icon-rotation-alignment: viewport`, `symbol-spacing` large and `text-allow-overlap: false`.
+alternative when it collides, and no same-text test). The converted styles keep a MapLibre-only form (one
+symbol layer per shield road class with `symbol-placement: line`, `symbol-spacing` 400, the sprite of the
+GeoLabel shape stretched with `icon-text-fit: both`, upright), which the client replaces with this section's
+placement (atlas-client.md "Label placement").
 
 ## 9. Draw order and the drawing passes
 
@@ -942,8 +1000,9 @@ Open, in priority order:
     confirm on the Time Zones map.
 4. Whether areas are always drawn before lines (§9). ~~Label candidates~~ (§7.4, code): above right, below
    right, above left, below left (centred first without a symbol), each with a fixed added cost, cheapest total
-   wins. Open: the text layouts' own costs (FUN_6356ea10, offset 0x498 of a layout) and which label kinds
-   (points, lines, areas, shields) are placed first.
+   wins. ~~The text layouts' own costs~~ (§7.3: about 12 characters per line, groups with the alternative,
+   alone, abbreviated) and ~~which label kinds are placed first~~ (§7.4: none; one list of every kind by b13).
+   Open: the area-label span costs, and what sets the "flagged first" bits of the label sort.
 4a. ~~The click menu's order~~ (§4.5, code, checked against every VM menu).
 5. The Miller `y0` at levels 2–3 (§12.3), and the flat-view scale relation (§2.1).
 6. The meaning of MapStyle colour 1/2 and flags (§3); LegendGrid (§13.1).
@@ -971,6 +1030,7 @@ Provenance (MOBB200.DLL, same build as mad.md §10):
 | Icons from w23/w24 | FUN_63519a2d, FUN_63519add |
 | GeoObj "go to" point | FUN_635226dc (reader), FUN_6351bb2f, FUN_6351bcf6 |
 | ShieldId | reader FUN_6355780e; users (GeoTag/GeoStreet only) FUN_63563df4, FUN_63563ed9, FUN_635153a0; lookup FUN_63515240 |
+| Label layouts and order | break list FUN_6356e2db (break characters FUN_635422d6, kept character FUN_63542308); split FUN_6356e6c0; line metrics FUN_6356ecb0, FUN_6356ed30; layout FUN_6356ea10, box FUN_6356e860, cost FUN_6356e8f0 (offset 0x498); point driver FUN_63541930; label list FUN_6355523d, label record FUN_63533560, sort FUN_635546be, merge runs FUN_63554790 → FUN_63554457; reserved boxes FUN_63554fdb; placement loop FUN_6356425b → FUN_6353c390 (250 ms slices) |
 | `w6` alternative-name style | name split FUN_6356e587 (components FUN_6356e375, FUN_6356e4c8); layouts FUN_6356ea10 from FUN_635375fe, FUN_635381ae, FUN_63538eff, FUN_6353aedc; accessors FUN_63535170, FUN_6353ecd0; line labels FUN_63540710 |
 | GeoLabel record in memory (byte 12 → shape, 26 → upper case) | FUN_63522439; upper case FUN_6356e2c1, FUN_6358353d, FUN_63583492 |
 | Line-label dispatch (byte 11 high nibble, shield) | FUN_6353c390 → FUN_6353dc50, FUN_6353de50, FUN_63540fe0, FUN_63540710 |

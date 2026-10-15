@@ -8,6 +8,7 @@ import { cursorZone, followGround, lookPitch, mouseVector, newCamera, setPitch, 
 import { collide, slideMove } from "./sim/collision";
 import { chunkVisible, cloudPhi, Filmstrip, flickerColour, flickerFactor, FlickerLight, lcg, rasteriseCloud, Ripple, rippleSkip } from "./sim/effects";
 import { WalkMap, WalkMapSet, type Segment } from "./sim/walkmap";
+import { fillKeyTexels, KEY_ALPHA_REF } from "./render/materials";
 import { markerMoved, parseWorldLoaded, siteMapMarker, wedgeAngles } from "./sitemap";
 import type { Cell, ElementDef, LayerFile, Step, StepOf, WalkMapFile } from "./types";
 
@@ -318,6 +319,48 @@ describe("camera step and tick (§6.8–§6.9)", () => {
     expect(c.pitchDeg).toBeLessThan(45);
   });
 
+  it("snap mode: no drift on level ground, so the fourth 6° step from 21.000036 is refused", () => {
+    const set = new WalkMapSet(() => map("g.3wm", [{ index: 0, kind: "ground", polygons: [square(-5, -5, 5, 5)], plane: [0, 1, 0, 0.485825] }]));
+    set.load("g.3wm", { x: 0, z: 0 });
+    set.on = 1;
+    const c = newCamera();
+    c.x = 0; c.z = 0; c.height = 0.1; c.y = Math.fround(-0.3); c.pitchSpeed = 6;
+    setPitch(c, 21.000036);
+    for (let i = 0; i < 3; i++) followGround(c, set, "snap", 0.003);
+    const settled = [c.y, c.lookY];
+    for (let i = 0; i < 3000; i++) followGround(c, set, "snap", 0.003);
+    expect([c.y, c.lookY]).toEqual(settled);
+    for (let i = 0; i < 6; i++) stepPitch(c, { ...NO_INPUT, pitchUp: true });
+    expect(c.pitchDeg).toBeCloseTo(39.000036, 4);
+  });
+
+  it("snap mode drifts where the eye alternates between two float32 heights on a slope (§6.9)", () => {
+    // Synthetic slope: the ground point depends on E.y, the eye never settles, and each landing rounds the
+    // target point differently from the eye. Gravity at the same place lands on a fixed point.
+    const f = Math.fround;
+    const [a, cz, d] = [f(-0.074), f(0.08), f(-0.001)];
+    const plane: [number, number, number, number] = [a, f(Math.sqrt(1 - a * a - cz * cz)), cz, d];
+    const set = new WalkMapSet(() => map("g.3wm", [{ index: 0, kind: "ground", polygons: [square(-5, -5, 5, 5)], plane }]));
+    set.load("g.3wm", { x: 0, z: 0 });
+    set.on = 1;
+    const run = (mode: "snap" | "gravity") => {
+      const c = newCamera();
+      c.x = f(-2.67); c.z = f(-2.67); c.height = 0.1; c.y = 0.2;
+      setPitch(c, 21.000036);
+      const out: number[] = [];
+      for (let i = 1; i <= 3000; i++) {
+        followGround(c, set, mode, 0.003);
+        if (i % 1000 === 0) out.push(lookPitch(c));
+      }
+      return out;
+    };
+    const [s1, s2, s3] = run("snap");
+    expect(s2! - s1!).toBeLessThan(-1e-4);
+    expect(s3! - s2!).toBeCloseTo(s2! - s1!, 5);
+    const [g1, , g3] = run("gravity");
+    expect(g3).toBe(g1);
+  });
+
   it("mouse vector has dead zones and a v·|v|^0.5 curve; cursor zones", () => {
     expect(mouseVector(320, 240, 640, 480)).toEqual({ turn: 0, move: 0 });
     const v = mouseVector(640, 0, 640, 480);
@@ -332,6 +375,18 @@ describe("camera step and tick (§6.8–§6.9)", () => {
 });
 
 // ------------------------------------------------------------------ lights and effects
+
+describe("colour-keyed textures (§5.10, inferred)", () => {
+  it("transparent texels carry the key colour; the alpha test drops only fully keyed footprints", () => {
+    const px = new Uint8Array([10, 20, 30, 255, 0, 0, 0, 0, 1, 2, 3, 0]);
+    expect(fillKeyTexels(px)).toBe(2);
+    expect([...px]).toEqual([10, 20, 30, 255, 255, 0, 255, 0, 255, 0, 255, 0]);
+    // A bilinear footprint with one opaque texel of four (alpha 0.25) is drawn, with 75 % magenta.
+    expect(0.25).toBeGreaterThan(KEY_ALPHA_REF);
+    expect(0).toBeLessThan(KEY_ALPHA_REF);
+    expect(1 / 255).toBeGreaterThan(KEY_ALPHA_REF);
+  });
+});
 
 describe("flicker (§7.2.6)", () => {
   it("draws k in [0.4, 1.0] and holds it for the period", () => {

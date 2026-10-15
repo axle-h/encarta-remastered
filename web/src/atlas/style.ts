@@ -9,6 +9,7 @@ import { rasterArchive, resolveStyleUrls, type Endpoints, type Palettes } from "
 import { firstAboveFills, hitLayers, hitRanges, layerClasses, layerState, statLayer, vectorSources, type ClassOverrides } from "./layers";
 import { millerRasterTiles, millerVectorTiles } from "./miller";
 import { lookSource } from "./recolour";
+import { overlayStyle, type OverlaySpec } from "./labelOverlay";
 
 export type Projection = "globe" | "flat";
 
@@ -27,6 +28,22 @@ export interface BuildOptions {
   shift?: number;
   /** Fill and outline one entity in a colour (e.g. the Geography Quiz's country). */
   highlight?: { entity: number; color: string } | null;
+  /**
+   * Encarta's own label placement (labelOverlay.ts): point, area and shield labels drawn from the
+   * placement's GeoJSON source. Off: MapLibre places the converted layers as they are. Never with
+   * `labelScale` 0.
+   */
+  placement?: boolean;
+}
+
+/** The rewritten label layers of a built style (`metadata["encarta:overlay"]`). */
+export function overlaySpecs(style: StyleSpecification): OverlaySpec[] {
+  const out: OverlaySpec[] = [];
+  for (const l of style.layers) {
+    const spec = (l as { metadata?: Record<string, unknown> }).metadata?.["encarta:overlay"];
+    if (spec) out.push(spec as OverlaySpec);
+  }
+  return out;
 }
 
 export const HIGHLIGHT_PREFIX = "encarta-highlight-";
@@ -125,6 +142,15 @@ export function buildStyle(raw: StyleSpecification, o: BuildOptions): StyleSpeci
   }
   layers.push(...hitLayers(raw, hitRanges(raw, o.overrides)));
   style.layers = o.shift ? layers.map((l) => shiftLayer(l, o.shift!)) : layers;
+  if (o.placement && o.labelScale !== 0) {
+    const { style: placed, specs } = overlayStyle(style);
+    const byId = new Map(specs.map((s) => [s.id, s]));
+    placed.layers = placed.layers.map((l) => {
+      const spec = byId.get(l.id);
+      return spec ? ({ ...l, metadata: { ...((l as { metadata?: object }).metadata ?? {}), "encarta:overlay": spec } } as LayerSpecification) : l;
+    });
+    return placed;
+  }
   return style;
 }
 

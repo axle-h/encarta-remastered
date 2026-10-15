@@ -119,7 +119,8 @@ export async function mountTour(container: HTMLElement, options: MountOptions): 
   const fixed = options.controlSize ?? null;
   const resize = () => {
     const r = root.getBoundingClientRect();
-    if (fixed) {
+    // The control's full screen renders at the display's size, so the fixed size does not apply (§4.0).
+    if (fixed && !control.fullScreen) {
       [cssW, cssH] = fixed;
       scale = Math.max(0.1, Math.min(r.width / cssW, r.height / cssH));
       const fw = cssW * scale, fh = cssH * scale;
@@ -130,6 +131,10 @@ export async function mountTour(container: HTMLElement, options: MountOptions): 
     } else {
       cssW = Math.max(1, Math.round(r.width));
       cssH = Math.max(1, Math.round(r.height));
+      scale = 1;
+      offX = offY = 0;
+      for (const c of [glCanvas, hud]) c.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block";
+      view.renderer.setPixelRatio(dpr);
     }
     hudScale = dpr * scale;
     control.viewport = { w: cssW, h: cssH };
@@ -140,6 +145,31 @@ export async function mountTour(container: HTMLElement, options: MountOptions): 
   resize();
   const ro = new ResizeObserver(resize);
   ro.observe(root);
+
+  // ------------------------------------------------------------ full screen (§4.0; inferred, not observed)
+  // The control's own full screen (the `_dot` button's `TRYHARDWAREFULLSCREEN`) takes the whole display
+  // until Esc. The browser's full screen stands in for DirectDraw's exclusive mode; where it is refused,
+  // the control covers the window instead.
+  let shownFullScreen = false;
+  let rootCss = root.style.cssText;
+  const syncFullScreen = () => {
+    if (control.fullScreen === shownFullScreen) return;
+    shownFullScreen = control.fullScreen;
+    if (shownFullScreen) {
+      rootCss = root.style.cssText;
+      root.style.cssText = `${rootCss};position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647`;
+      root.requestFullscreen?.().catch(() => undefined);
+    } else {
+      root.style.cssText = rootCss;
+      if (document.fullscreenElement === root) document.exitFullscreen().catch(() => undefined);
+    }
+    resize();
+  };
+  const onFullScreenChange = () => {
+    if (document.fullscreenElement !== root && control.fullScreen) control.do("SCENE.KILLFULLSCREEN");
+    syncFullScreen();
+  };
+  document.addEventListener("fullscreenchange", onFullScreenChange);
 
   // ------------------------------------------------------------ input
   const local = (e: PointerEvent | MouseEvent) => {
@@ -156,6 +186,8 @@ export async function mountTour(container: HTMLElement, options: MountOptions): 
       // Synthetic or already-released pointers cannot be captured; dragging still works inside.
     }
     control.pointer(p.x, p.y, true);
+    // Inside the click, so the browser grants full screen to a `_dot` press.
+    syncFullScreen();
     e.preventDefault();
   };
   const onMove = (e: PointerEvent) => {
@@ -170,6 +202,11 @@ export async function mountTour(container: HTMLElement, options: MountOptions): 
   };
   const onLeave = () => (control.mouse.inside = false);
   const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && control.fullScreen) {
+      control.do("SCENE.KILLFULLSCREEN");
+      e.preventDefault();
+      return;
+    }
     if (!NAV_KEYS.has(e.key)) return;
     control.keys.add(e.key);
     e.preventDefault();
@@ -200,6 +237,7 @@ export async function mountTour(container: HTMLElement, options: MountOptions): 
     const n = ticker.frame((now - last) / 1000);
     last = now;
     for (let i = 0; i < n; i++) control.tick();
+    syncFullScreen();
     draw(now);
   };
   const draw = (now: number) => {
@@ -226,13 +264,14 @@ export async function mountTour(container: HTMLElement, options: MountOptions): 
       frames = 0;
       fpsT = now;
     }
-    // Cursors (§6.9, §8.5.3).
+    // Cursors (§6.9, §8.5.3). Full screen takes the mouse through exclusive DirectInput, which hides the
+    // Windows cursor (§4.0).
     const slot = control.cursorSlot();
     const c = slot === null ? null : control.cursorSlots[slot];
-    const key = c?.image ? `${c.image}|${c.hotspot?.join(",")}` : "default";
+    const key = control.fullScreen ? "none" : c?.image ? `${c.image}|${c.hotspot?.join(",")}` : "default";
     if (key !== cursorKey) {
       cursorKey = key;
-      root.style.cursor = c?.image ? `url("${url(c.image)}") ${c.hotspot?.[0] ?? 0} ${c.hotspot?.[1] ?? 0}, auto` : "default";
+      root.style.cursor = key === "none" ? "none" : c?.image ? `url("${url(c.image)}") ${c.hotspot?.[0] ?? 0} ${c.hotspot?.[1] ?? 0}, auto` : "default";
     }
   };
   raf = requestAnimationFrame(frame);
@@ -262,11 +301,14 @@ export async function mountTour(container: HTMLElement, options: MountOptions): 
     },
     advance: (ticks) => {
       for (let i = 0; i < ticks; i++) control.tick();
+      syncFullScreen();
       draw(performance.now());
     },
     destroy: () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      document.removeEventListener("fullscreenchange", onFullScreenChange);
+      if (document.fullscreenElement === root) document.exitFullscreen().catch(() => undefined);
       view.dispose();
       root.remove();
       const live = (devHandle.__encartaTours ?? []).filter((x) => x !== handle);

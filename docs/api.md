@@ -139,8 +139,8 @@ layout to use, content-schema §2/§8). `body` is schema 2 (content-schema §8):
 nodes carry `title` and `alt` parts.
 
 `GET /api/place/{gid}` → `{ "place_id": 12, "links": [ { "ordinal", "kind", "kind_label", "ref_id", "title", "item_kind" } ] }`
-(P2MTBL place → content links from `content.sqlite`; `gid` as in `/atlas/place/{gid}` links; `404` when the place
-has no links). Only targets on this disc are listed: DATA items and `atlas_media` rows (titled from there, `item_kind`
+(P2MTBL place → content links from `content.sqlite`; `gid` as in `/atlas/place/{gid}` links; `links` is `[]` when
+the place has none). Only targets on this disc are listed: DATA items and `atlas_media` rows (titled from there, `item_kind`
 `media` or `audio`); P2MTBL is shared with other editions and 2,656 of its targets are on none of this disc's. `kind_label` (p2mtbl.md): `article`, `flag-and-anthem`, `facts-and-figures`, `photo:<theme>`, `music`,
 `maptrek-stop` (13), `flag` (14), `anthem` (15), `about-map` (16). The atlas gazetteer has the place itself: `GET /api/atlas/place/{gid}` below.
 

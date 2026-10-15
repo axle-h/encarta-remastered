@@ -6,19 +6,13 @@ export interface ScopeChoice {
   label: string;
 }
 
-export const PRINT_CHOICES: ScopeChoice[] = [
-  { scope: "text", label: "Whole Article Text" },
-  { scope: "media", label: "Whole Article with Media" },
-  { scope: "selection", label: "Selected Text" },
-];
-
 export const COPY_CHOICES: ScopeChoice[] = [
   { scope: "text", label: "Whole Article Text" },
   { scope: "media", label: "Whole Article With Media" },
   { scope: "selection", label: "Selected Text" },
 ];
 
-/** The "what to print / copy" dialog; Selected Text is enabled only with a selection. */
+/** The "what to copy" dialog (Print has its own, `PrintDialog.tsx`); Selected Text is enabled only with a selection. */
 export function ScopeDialog({
   title,
   action,

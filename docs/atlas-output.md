@@ -124,7 +124,7 @@ Every feature has the MVT id = entity id (so `feature-state` hover works per ent
 `class` (PDCAttribute row), `class_name`, `entity`, `name` (display name: the first U+0004 alternative without
 its U+0002 abbreviation), `abbr`, `alt_names` ("; "-joined), `name_0009` (the LCID 0x0009 name where it
 differs), `anonymous` (`{RESERVED}` placeholder names, which are dropped), and on points/labels `priority`
-(PDCAttribute b13, the `symbol-sort-key`) and on labels `goto_km`; `width_z10` on the labels of areas with an
+(PDCAttribute b13, the `symbol-sort-key`; line-name and shield layers, whose features carry none, use the class's b13 as a constant key) and on labels `goto_km`; `width_z10` on the labels of areas with an
 abbreviation (the area's east–west extent in px at zoom 10, for the abbreviation fallback); `water: true` on
 the line runs and polygon parts over water (draw-over masks, below); `geoobj` on named features, the object's
 GeoObj `(record key, entry)` as `key · 65536 + entry` (the click menu's last tie-break, descending:

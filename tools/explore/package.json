@@ -1,0 +1,8 @@
+{
+  "name": "encarta-explore",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": { "explore": "node explore.mjs" },
+  "devDependencies": { "playwright-core": "1.64.1" }
+}

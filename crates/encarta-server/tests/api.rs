@@ -113,6 +113,10 @@ async fn content_endpoints() {
     assert!(links.iter().all(|l| l["ref_id"] != 999001));
     assert_eq!(links[3]["title"], "Kenyan Herders");
     assert_eq!(links[3]["item_kind"], "media");
+    // A place without links is an empty list, not a 404.
+    let (s, p) = json(&app, "/api/place/43").await;
+    assert_eq!(s, 200);
+    assert_eq!(p["links"], serde_json::json!([]));
     assert_eq!(links[4]["item_kind"], "audio");
     // … and open as items.
     let (s, am) = json(&app, "/api/item/800").await;

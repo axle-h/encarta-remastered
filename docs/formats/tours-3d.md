@@ -74,7 +74,8 @@ The full per-extension catalog of all 892 files (textures, cursors, scripts, bin
 
 The control has one event, **`Event3DX(LPCSTR text)`** (event dispid 1). It is fired by
 `SCENE.EVENT(...)`/`SCRIPT.EVENT(...)` (§3.6) and once, by the control itself, with the text
-`FinishedInitializing` on its first paint. Events are suppressed while a full-screen mode switch is in progress.
+`FinishedInitializing` on its first paint. Events are not fired while the control is in its full-screen mode (§4.0;
+the fire routine tests the renderer's exclusive-mode flag, 0x1011BAEC).
 
 A modern runtime does not need COM. It needs: a `do(command) -> string` entry point, an event callback, and a
 tick. The rest of this document describes what `do` does.
@@ -227,7 +228,7 @@ The *rest* (the text after `SCENE.`) is matched by **prefix** in this order. The
 | Command | Seen on disc | Semantics |
 |---|---|---|
 | `WORLDINFO?` | – | Returns `<largest bbox extent>;<bbox centre x,y,z>` of the loaded model. |
-| `FORCESOFTWARE` / `TRYHARDWARE` / `TRYFULLSCREEN` / `TRYHARDWAREFULLSCREEN` / `KILLFULLSCREEN` | `TRYHARDWARE` (Colosseum macro `LARGE`, never run) | Device selection. A web runtime treats these as no-ops that return `Success`. |
+| `FORCESOFTWARE` / `TRYHARDWARE` / `TRYFULLSCREEN` / `TRYHARDWAREFULLSCREEN` / `KILLFULLSCREEN` | `TRYHARDWARE` (Colosseum macro `LARGE`, never run); `TRYHARDWAREFULLSCREEN` (`_dot` mouse-down, §8.2) | Device selection and full screen (§4.0). A web runtime keeps its device and returns `Success`, except that the full-screen commands enter and leave its full-screen mode and `TRYHARDWAREFULLSCREEN` fails without a hardware device. |
 | `DELETEALL` | yes, 7 tours (3 as `SCRIPT.DELETEALL`) | Full reset: aborts any suspended load; deletes the model, lights, point clouds, walk maps (a fresh empty walk-map set is created), 2D layer, camera state, all alarms and all macros; sets 3D drawing on; resets fog to colour `0x4B96E6`, start 0, end 20, fog off. |
 | `FOGCOLOR=r,g,b`, `FOGCOLOR?` | – | Fog colour (integers 0–255). |
 | `FOGSTART=f`, `FOGEND=f` | – | Linear fog range. Fog is enabled iff `FOGEND > 0.01`. |
@@ -443,12 +444,38 @@ the 3D picture. A port needs exactly one tour page:
 window keeps 616 × 420 and re-centres it. The FOV is the scripts' (80). The page is left like any other (Back, Home,
 links); it has no exit of its own.
 
+#### 4.0.1 The control's full-screen mode (static; look inferred, not observed)
+
 The control has a separate full-screen mode (`SCENE.TRYFULLSCREEN`, `TRYHARDWAREFULLSCREEN`, `KILLFULLSCREEN`;
-`FUN_1000dec0`), reachable in 2009 only through the hidden `_dot` button (§8.2) and the never-run `LARGE` macro: a
-modal loop inside `Do` that hides and maximises the host's top-level window, renders at the display mode's size and
-returns on Esc (read through DirectInput) or `KILLFULLSCREEN`; `TRYHARDWAREFULLSCREEN` returns to the software device
-afterwards if that was the device before. **(VM)** Entered and left with Esc on WineD3D (`Do` then returns `Success`);
-its picture was not observable there. A port ignores all three.
+`FUN_1000dec0`). **It is reachable in 2009, as an easter egg.** The only caller on the disc is the `_dot` element of
+`lh.32d` (§8.2): a 4×4 black square at the control's top-left corner whose mouse-down macro is
+`SCENE.TRYHARDWAREFULLSCREEN` in Acropolis, Roman Forum, Beaumaris, Colosseum and Abu Simbel (Persepolis:
+`WALKMAP.LOAD=stair1.3wm`; Azuchi: none). `HIDEALL` hides it, but each tour has exactly one walk-map hotspot cell whose
+enter macro is `2D._dot.VISIBLE=1` and whose exit hides it again (acr `acr.3wm` 1709, rom `1stFloor.3wm` 672, bea
+`level1.3wm` 845, per `per.3wm`/`stair1.3wm` 1251, col `level1.3wm` 1114, abu `abu.3wm` 615, azu `Floor1.3wm` 115), a
+small strip of walkable ground (0.05–1.4 × 0.02–2 units). Standing there and pressing the mouse button on those
+pixels runs the macro (the 2D hit test needs only `VISIBLE` and the layer on, §8.5.3). The Colosseum `LARGE` macro is
+never run. What it does (static reading of `FUN_1000dec0` and the `SCENE` handler):
+
+- `TRYHARDWAREFULLSCREEN` first runs `Try3DHardware`; only when that succeeds does it enter full screen, and afterwards
+  it goes back to the software device (`Force3DSoftware`) if that was the device before. Without a D3D device
+  (the reference VM) nothing happens. `TRYFULLSCREEN` enters full screen on the current device.
+- Inside, a modal loop in the calling command: the host's main window is hidden and maximised; DirectDraw takes
+  exclusive full-screen cooperation (`DDSCL_EXCLUSIVE | FULLSCREEN | ALLOWREBOOT | NOWINDOWCHANGES`) at the current
+  display mode (no mode change was found); the viewport becomes (0, 0, display width, height); DirectInput keyboard and
+  mouse go exclusive. Each pass reads the input (mouse button through DirectInput, position with `GetCursorPos`, so
+  the drag vector is relative to the screen centre), runs the tick and draws.
+- Esc (DirectInput) or `KILLFULLSCREEN` ends it; the window is restored (`SW_RESTORE`, so a maximised Encarta comes
+  back restored), the cooperative levels and the old viewport return. `Do` then answers `Success`.
+- While it lasts no event reaches the host (§2.1): no `HOTSPOTCLICKED`, `USERLOCUPDATE` or `USERLEVELCHANGE`.
+
+**(VM)** Entered and left with Esc in tourhost on WineD3D (`Do` returned `Success`), but the picture was broken (the
+three patches assume 616 × 420), so the look was not observed, and there is no 2009 driver to observe it on.
+**Inferred look** (what a port implements): the 3D view fills the screen at the display's resolution with the same
+horizontal FOV (80° across the screen width, so 1024×768 shows 64.3° vertically), the 2D layer at its pixel positions
+from the top-left (hotspot boxes and captions anchored as usual), no Windows cursor (exclusive DirectInput hides it),
+and the hardware device's filtering (§5.10). Reasoning: the projection is built from the viewport (§6.10), the
+viewport is set to the display size, and nothing else in the loop changes the renderer.
 
 ### 4.1 `WORLDLOADED` payload
 
@@ -760,7 +787,9 @@ is a BMP, and rom's `ioban3.bmp` is a GIF. A converter must sniff the content to
 and fire are cut-outs. The engine converts each pixel to 16-bit. The format is RGB555, or RGB565 when the
 display mode is 565. If any pixel quantises to **pure magenta** (R≥248, B≥248, and G<8 in 555 or G<4 in
 565), the texture is marked as colour-keyed. The engine then sets a source colour key of magenta, so those
-texels are not drawn. Keyed textures are not mipmapped. Only the **BMP path** can produce a key. JPEG and GIF
+texels are not drawn. Keyed textures are not mipmapped. The device setup (0x10067390–0x10067648) sets
+`D3DRENDERSTATE_COLORKEYENABLE` = 1, `ALPHATESTENABLE` = 0 and `ALPHABLENDENABLE` = 0; how keyed texels look under
+the hardware device's bilinear filter is in §5.10. Only the **BMP path** can produce a key. JPEG and GIF
 textures are always opaque, so any GIF transparency is ignored (to be confirmed in the VM). On disc, 113 BMP
 files contain key pixels (acr 18, rom 4, bea 21, per 50, col 10, abu 4, azuchi 6; including `fireAnm.bmp`
 in every tour that has it; Persepolis has no `fireAnm.bmp`). *Correction (implementation):* the total was
@@ -862,9 +891,20 @@ For each tour, write one `.glb`:
 ### 5.10 Unknowns
 - How material colours, specular and power combine with `.3lt` lighting (§7).
 - What `3D.CALC64BIT` does (not read by the loader).
-- Whether colour-keyed textures are filtered bilinearly in hardware mode, which would give magenta fringes in the original.
-  **(VM)** On WineD3D (which applies the key before filtering) there is no fringe and the other textures are bilinear
-  with mipmaps; a 2009 driver may still differ.
+- *Decided, inferred, not observed:* **colour-keyed textures on the hardware device show a magenta fringe.**
+  Evidence: the control enables D3D colour keying with alpha test and alpha blending off (§5.5) and does not mipmap
+  keyed textures; the hardware device filters bilinearly (VM pass 4). Microsoft's D3D pixel pipeline for drivers
+  (DDK, quoted in NVIDIA's "Color Key in Direct3D", D. Rogers, 2000) applies the key per texel *before* filtering:
+  a matching texel gets alpha 0 and keeps its colour, the four texels are filtered as RGBA, and with alpha test off
+  the driver turns it on itself with reference 0 (`GREATER`), so only pixels whose whole bilinear footprint is key
+  are dropped; NVIDIA's TNT-and-later drivers implement colour key this way. So every cut-out edge pixel that touches
+  an opaque texel is drawn with the key colour mixed in at its filter weight (up to 75 % magenta): a pink-magenta
+  fringe about one texel wide, wide where the texture is magnified (statues, the cloud impostors, fire close up),
+  and pink shimmer on keyed lattices seen from afar (no mipmaps). The key texel's colour is magenta because the
+  surface holds the 16-bit key value (0xF81F or 0x7C1F). A dark halo would need a driver that zeroes keyed texels;
+  nothing in the control asks for that, so the documented pipeline is the better guess. WineD3D (VM pass 4) shows
+  neither fringe nor halo, so it does not follow that pipeline and is no evidence either way. The software device
+  point-samples, so its cut-outs are hard-edged.
 
 
 ---
@@ -1154,12 +1194,18 @@ After the move, FUN_10026320 runs **every tick, even when not moving**:
   * If `E.y ≥ targetY`: `vfall += GRAVITY; E.y −= vfall; T.y −= vfall` (per tick, not time-scaled).
   * If `E.y < targetY` (also after the step above): `vfall = 0`, and the eye and target are raised to `targetY`
     (instant step-up).
-* **Snap mode** (walker +0x54 = 0): `E.y = targetY` and T is shifted by the same amount every tick, so stepping down
+* **Snap mode** (walker +0x54 = 0): `δ = targetY − E.y` is added to E.y and to T.y every tick, so stepping down
   is instant too. **(VM)** On the software device after walking: an eye raised 0.6 is back on the ground by the next
   20-ms sample.
-* Each fall and each landing writes E.y and T.y as float32 (the landing adds `targetY − E.y` to both). The rounding
-  differs between the two values, so T.y − E.y, and with it the pitch derived from the look vector, drifts a little
-  every tick even when standing still (§6.9, pitch keys).
+* After either branch, in both modes: if `targetY` is still above E.y, `vfall = 0` and `δ = targetY − E.y` is added
+  to both once more (the landing; in snap mode it fires when the rounded E.y came out just below the target).
+* **Arithmetic (0x10026543–0x100265C3, VM pass 5).** `targetY = HEIGHT + g.y` stays on the x87 stack; g.y itself was
+  stored as float32. The x87 runs at **single precision** in the control (DirectDraw/Direct3D set the FPU to 24-bit
+  precision when the device is created), so every operation rounds to float32: a model with float32 rounding at each
+  step (g.y as `s = Σ (−d·nᵢ − Eᵢ)·nᵢ`, `g.y = s·n.y + E.y`, left to right) replays the VM's gravity log of the eye
+  (1,090 writes of E.y, T.y and vfall in two runs) bit for bit, while 53- or 64-bit intermediates fail at the first
+  write. Each fall and each landing writes E.y and T.y as float32, and the rounding differs between the two values,
+  so T.y − E.y, and with it the pitch derived from the look vector, can drift every tick while standing still (§6.9).
 * Encarta's Colosseum script has a `LARGE` macro that calls `SCENE.TRYHARDWARE`.
   **(VM)** `SCENE.TRYHARDWARE` and `Try3DHardware` return `Failed` in the VM without a D3D device, so Encarta runs the
   software device, in gravity mode until the first walk step (2026-10-15, cdb in the guest: walker +0x54 = 1 in
@@ -1226,7 +1272,20 @@ nominal step per tick and at most five.
   and E.y each rounded after subtracting `vfall`, then after adding `targetY − E.y` computed in higher precision)
   reproduced 1,133 consecutive logged ticks bit for bit, and the drift rate (−1.5·10⁻⁵° over 31 ticks) to within
   10 %. So a step that lands on 45 in real arithmetic is accepted when the look vector has drifted below the stored
-  value, which at the Acropolis start is always after the first tick.
+  value, which at the Acropolis start is always after the first tick. *Correction (VM pass 5):* the landing's
+  `targetY − E.y` is not computed in higher precision; everything runs at float32 (§6.8 "Arithmetic").
+  **Snap mode (VM pass 5, from the tick model).** The drift comes from the landing, which both modes share, so snap
+  mode drifts too, but less often. On level ground (plane normal straight up) the ground point does not depend on
+  E.y: after the first tick E.y equals the target, δ is exactly 0 and the look vector never moves again. On a slope
+  g.y depends on E.y; mostly the eye still settles on a fixed point, but at some places it alternates between two
+  float32 heights, and the up and down δs round differently on T.y, which then walks steadily. Over every ground
+  cell of the seven tours (cell centroids, pitch 21°, 2,000 ticks at rest) 39 of 12,036 places drift in snap mode
+  and 146 in gravity mode, at up to 1.8·10⁻⁶ and 2.9·10⁻⁶° per tick; a synthetic slope drifts by 4·10⁻⁷° per tick in snap
+  mode while gravity mode sits on a fixed point there. At the Acropolis start pose snap mode is drift-free, so the
+  four 6° steps from 21.000036 would stop at 39.000036 (the fourth makes 45.000036), unlike gravity's 44.999359.
+  Snap mode only exists on the software device after the first walk step, where the walk itself has already moved
+  eye and target by rounded amounts. Not checked in the VM: the model already reproduces the gravity log bit for
+  bit, and snap differs only in which branch of the same instructions runs.
 * While the mouse is pressed on an active 2D item, no camera step happens (it is a HUD interaction).
 
 **Cursors** (when `SCENE.CURSORS=TRUE`): over a 2D hotspot item the cursor is index 5 (`vthot360.cur`).
@@ -2022,7 +2081,7 @@ text colour 0xC0D1E3, text `ERS HotSpot`. `_dot` at 0x4259: 4×4 black square at
 | `_0` `_1` `_2` `_3` | `begin.32d` (identical file in all 7 tours, MD5 800c9356…) | Loading screen: `_1` dir.gif 541×381 at (45,25) colour-keyed; `_0` loadanim.gif 128×128 at (39,6); `_2` loadtxt.gif 86×29 at (62,72); `_3` dirTxt.gif 286×294 at (250,88). Drawn in that order (array order). |
 | `_L<n>` | `lh.32d` | Place-name caption, anchored to a 3D point. Outlined bold white text, transparent background, not clickable (captures_mouse 0, no macros). |
 | `_H<n>` | `lh.32d` | Hotspot: black box with icon + text, frame, hover highlight; `MACRO.MOUSEUP` raises the host event. |
-| `_dot` | `lh.32d` | 3–7 px black square in the top-left corner; a hidden debug button (mouse-down switches to hardware full screen). Scripts hide it. |
+| `_dot` | `lh.32d` | 3–7 px black square in the top-left corner; a debug button (mouse-down switches to hardware full screen, §4.0.1). `HIDEALL` hides it; one walk-map hotspot cell per tour shows it while the eye is in that cell. |
 
 ### 8.3 Layer commands (`2D.<cmd>`)
 
@@ -2388,12 +2447,13 @@ Resolved in the fourth pass (WineD3D + Mesa as the 3D device, cdb):
 
 - [x] **Hardware cloud step**: 0.09 rad from the last render (5.1° skipped, 5.2° renders), forced at the 2π wrap;
   behind-eye and 0.9 × FOGEND unchanged (§7.3.4).
-- [x] **MaxView** is the normal tour page (`CMax3DVTView`), control 616 × 420, independent of the device; the
-  control's own full-screen mode is unreachable in 2009 (§4.0). Hardware mode is chosen by the `DxHardware` profile
-  value, 1 by default (§2.2).
+- [x] **MaxView** is the normal tour page (`CMax3DVTView`), control 616 × 420, independent of the device (§4.0).
+  Hardware mode is chosen by the `DxHardware` profile value, 1 by default (§2.2). *Correction (pass 5):* the
+  control's own full-screen mode is reachable through the `_dot` button in one walk-map cell per tour (§4.0.1).
 - [x] **Second gravity flag** never set; ground mode follows the device (§6.8, §6.14).
 
-Still open: what a real 2009 driver did with colour-keyed textures (§5.10); the control's full-screen picture.
+Decided in the fifth pass without a 2009 driver (inferred, not observed): the colour-key fringe (§5.10) and the
+full-screen picture (§4.0.1). Snap-mode pitch drift answered from the tick model (§6.9).
 
 How to capture: a debugger breakpoint on the control's `Do` method (`FUN_1000d0f0`) and on the event fire
 (`FUN_1000e720`) logs every command and event (cdb is in the VM's `flash-ready` snapshot; `vm/dbg.sh`, docs/vm.md;
@@ -2412,7 +2472,7 @@ the control is `ACTIVEX3DX3`, at 10000000 in tourhost and relocated in ENCARTA.E
 - `3D.LODDISTANCE` (picking-only per §7, additive switch distance per §5). It is 0 on the disc, so there is no visible effect.
 - `3D.CALC64BIT` (software-rasteriser precision only, per §7.5; the `.x` loader never reads it).
 - A few `.32d` struct fields that are never read (§8.1).
-- Colour-key filtering artefacts in hardware mode (§5.10).
+- *Inferred, not observed:* colour-key filtering artefacts in hardware mode (§5.10) and the full-screen picture (§4.0.1).
 
 ---
 
