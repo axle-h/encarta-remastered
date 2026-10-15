@@ -366,6 +366,13 @@ never changes under a running server). Errors, unknown routes, `/api/games/…` 
 `-` only, else 404); `Cache-Control: public, max-age=3600`. `encarta-convert content` extracts them from the disc's DLL
 resources (media.md §9).
 
+`GET /ui/{name}` — interface artwork of `out/ui/` (`.png`, `.gif` or `.jpg`, same name rules and caching): the Kids
+toolbar from `ENCARTAR.DLL` (`kids-home`, `kids-back`, `kids-forward`, `kids-copy`, `kids-print` and `kids-search-go`
+as strips of four states, `kids-bar`, `kids-bar-left`, `kids-joint`, `kids-gap-copy`, `kids-gap-print`,
+`kids-search-label`, `kids-search-box`, `kids-logo`), the subcategory and tile highlights (`kids-subcat-selected.gif`,
+`kids-topic-selected.gif`) and the "book" tile (`kids-no-picture.jpg`). Written by `encarta-convert content` or
+`encarta-convert ui` (media.md §9).
+
 ## Fonts
 
 `GET /fonts/{file}` — a font of `out/fonts/` (`.ttf`, `.otf`, `.woff`, `.woff2`, name case-insensitive), listed in

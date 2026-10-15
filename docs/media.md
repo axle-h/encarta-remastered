@@ -508,6 +508,12 @@ Written to `out/sounds/` as the unchanged RIFF files: `startup.wav`, `click.wav`
 `kids-hover.wav` (31975), `timeline.wav` (575), `tour-hover.wav` (578), `tour-pick.wav` (579), `kids-1..10.wav`
 (31979-31988 in order; the XSL's `GetSoundRes(position)` is `31978 + position`). The server serves them at `/sounds/{name}.wav` (api.md).
 
+The Kids artwork comes from the same DLL (`EE/ENCARTA` and `EE/KIDS` hold the same file) into `out/ui/`: bitmaps
+(resource type 2, DIBs without a file header) are written as PNG, `GIF` and `JPEG` resources unchanged with the
+extension of what they hold (the `KIDS_SUBHS_*` highlights are GIFs filed under `JPEG`). Toolbar bitmaps 15050-15062,
+15071 and 15072 (positions in vm-findings.md, Kids chrome); `KIDS_SUBHS_SUBCAT_SEL`, `KIDS_SUBHS_TOPIC_SEL`,
+`KIDS_UNKNOWN_BG`. Served at `/ui/{name}` (api.md).
+
 **Mapping (measured in the XP reference VM** with "Play menu and button sounds" ticked; ids with identical audio grouped):
 
 | Sound | Ids | Plays |

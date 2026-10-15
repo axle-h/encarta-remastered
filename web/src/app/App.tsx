@@ -14,6 +14,7 @@ import { TimelinePage } from "../pages/TimelinePage";
 import { ToursPage } from "../pages/ToursPage";
 import { KidsShell } from "../kids/KidsShell";
 import { KidsHome } from "../kids/KidsHome";
+import { KidsBrowsePage } from "../kids/KidsBrowse";
 import { MediaViewerProvider } from "../media/MediaViewer";
 import { Shell } from "./Shell";
 import { SettingsProvider } from "../settings/settings";
@@ -145,7 +146,7 @@ export function App() {
       </Route>
       <Route path="kids" element={<Kids />}>
         <Route index element={<KidsHome />} />
-        <Route path="browse/:id" element={<BrowsePage kids />} />
+        <Route path="browse/:id" element={<KidsBrowsePage />} />
         <Route path="item/:id" element={<ItemPage kids />} />
         <Route path="item/:id/media" element={<ArticleMediaPage kids />} />
         <Route path="search" element={<SearchPage kids />} />

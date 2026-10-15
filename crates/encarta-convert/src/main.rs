@@ -1,7 +1,8 @@
 //! encarta-convert [--extracted DIR] [--out DIR] <all|content|media|tours|atlas>
 //!
 //! `atlas-media` re-resolves the atlas's photos and sounds into the manifest (also the last step of `media`).
-//! `content` writes out/content.sqlite (`content-survey` writes the XML survey to out/report/); `media` writes out/media/ and out/media/manifest.sqlite;
+//! `content` writes out/content.sqlite (`content-survey` writes the XML survey to out/report/; `ui` only the interface
+//! sounds and Kids artwork of out/sounds/ and out/ui/, which `content` also writes); `media` writes out/media/ and out/media/manifest.sqlite;
 //! `tours` writes out/tours/; `atlas` writes out/atlas/; `soundfont [--sf2 FILE]` writes out/soundfont/ (the MIDI synth's GM soundfont).
 
 mod atlas;
@@ -45,6 +46,7 @@ fn main() -> Result<()> {
             media::atlas::run(&paths.out.join("content.sqlite"), &media_dir, &paths.out.join("report"), &|l| eprintln!("{l}"))
         }
         Some("content-survey") => content::survey::run(&paths),
+        Some("ui") => content::run_ui(&paths),
         Some("tours") => tours::run(&paths),
         Some("atlas") => atlas::run(&paths),
         Some("search") => search::run(&paths),
@@ -55,6 +57,6 @@ fn main() -> Result<()> {
             tours::run(&paths)?;
             atlas::run(&paths)
         }
-        _ => bail!("usage: encarta-convert [--extracted DIR] [--out DIR] <all|content|media|atlas-media|tours|atlas|search|soundfont>"),
+        _ => bail!("usage: encarta-convert [--extracted DIR] [--out DIR] <all|content|ui|media|atlas-media|tours|atlas|search|soundfont>"),
     }
 }

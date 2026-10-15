@@ -61,7 +61,7 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
 | `src/pages/` | home, browse, item dispatcher (+ `itemRoute.ts`: feature records, topic timelines, panoramas, Map Trek stops), views of the other item kinds (`ItemKinds.tsx`: web links, contributors, quotation authors, tour nodes, Map Trek, online features), panoramic tours (`PanoramaTour.tsx`, `panorama.ts`), search, media gallery, dictionary (+ `wordWheel.ts`), timeline (+ pure layout/date helpers), tours, favorites, help, atlas placeholder |
 | `src/panorama/` | the native panorama player ([Panoramas](#panoramas)): cylinder geometry, WebGL and Canvas 2D renderers, `PanoramaView`, parameters from the data, the image-SWF reader, single panoramas in the media viewer |
 | `src/components/Menu.tsx` | the accessible menu button (arrows, Home/End, Esc, ←/→ along a `menubar`) used by every menu; `ArrowTip.tsx`, the tool-button tooltips |
-| `src/kids/` | Kids shell, home screen and article view |
+| `src/kids/` | Kids shell (toolbar from the disc's bitmaps, menu bar), home screen, category and subcategory screens (`KidsBrowse.tsx`) and article view |
 | `src/styles/` | CSS by area; tokens in `base.css` |
 | `src/tours/` | the tour runtime (Step 6), unchanged |
 | `src/atlas/` | the atlas (Step 5), owned separately; loaded with `import.meta.glob` so the client builds without it |
@@ -123,6 +123,13 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
 - **Kids home**: the 1024×600 background has ten panels; each category page's `hthm` "(top category)"
   picture is drawn on its panel (slot positions measured from the background), with the mouse-over
   picture on hover.
+- **Kids chrome and category screens** (`kids/KidsShell.tsx`, `kids/KidsBrowse.tsx`): the bar is the disc's own
+  bitmaps (`/ui/kids-*`, api.md) at the VM's pixel positions, buttons as four-state strips; Copy and Print are
+  greyed out off item pages. `/kids/browse/{id}` is a top category (it appears on the Kids home: its own
+  background with the other nine panels and the subcategories, with their `hthm` icons, on the board) or a
+  subcategory (title of the category it was opened from, kept in the history state since Critter Corner and
+  Science Zone are in two; sibling list with the arrow highlight; grid of 106×120 tiles). Positions and
+  colours: vm-findings.md, Kids chrome.
 - **Audio**: Opus, then AAC, from the item's `audio` file; captions (`cc` → WebVTT) are shown as text
   under the player. Audio sets (`audionested`) are children: a picture plus audio items. **MIDI** (236
   music files, e.g. national anthems) plays through our own SMF reader and General MIDI soundfont synth

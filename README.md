@@ -42,6 +42,7 @@ target/release/smallfmt timeline extracted/iso/EE/ENCARTA/TIMELINE.DAT
 target/release/tour check extracted/eit/CONTENT/WORLD/7015/
 
 target/release/encarta-convert all            # extracted/ → out/ (content, media, tours, atlas, search)
+target/release/encarta-convert ui             # only the interface sounds and Kids artwork (also part of `content`)
 target/release/encarta-convert soundfont      # GM soundfont for the MIDI synth → out/soundfont/ (needs an SF2,
                                               #   default /usr/share/soundfonts/FluidR3_GM.sf2; --sf2 FILE)
 (cd web && npm ci && npm run build)

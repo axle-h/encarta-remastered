@@ -289,6 +289,7 @@ pub fn router(st: Arc<AppState>) -> Router {
         .route("/media/disc/{edition}/{*path}", get(media::disc).post(media::disc))
         .route("/fonts/{name}", get(files::font))
         .route("/sounds/{name}", get(files::sound))
+        .route("/ui/{name}", get(files::ui_art))
         .route("/atlas/{*path}", get(files::atlas))
         .route("/out/atlas/{*path}", get(files::out_atlas))
         .route("/out/tours/{*path}", get(files::out_tours))

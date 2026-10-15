@@ -165,9 +165,21 @@ describe("KidsShell", () => {
     for (const n of ["Home", "Back", "Forward", "Copy", "Print"]) expect(screen.getAllByRole(n === "Home" ? "link" : "button", { name: n }).length).toBeGreaterThan(0);
   });
 
+  it("greys out Copy and Print outside an article, as the original does", () => {
+    render(
+      <MemoryRouter initialEntries={["/kids/browse/1"]}>
+        <Routes>
+          <Route path="*" element={<KidsShell>x</KidsShell>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect((screen.getByRole("button", { name: "Copy" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Print" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("shows the arrow tooltip on a tool button after a short hover", async () => {
     render(
-      <MemoryRouter initialEntries={["/kids"]}>
+      <MemoryRouter initialEntries={["/kids/item/1"]}>
         <Routes>
           <Route path="*" element={<KidsShell>x</KidsShell>} />
         </Routes>

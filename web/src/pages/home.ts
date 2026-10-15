@@ -33,6 +33,11 @@ export interface HomeSection {
 
 const LINK_GROUPS = new Set(["home", "article", "feat", "kids", "maps", "media", "video", "virttour", "sidebar", "table", "audio", "audionested", "flash", "composite", "quotation", "timetopic", "timeevent", "archive", "aart", "litguide"]);
 
+/** A home page's links in `sequence` order, without its theme pieces and background. */
+export function homeLinks(item: Item): AssocItem[] {
+  return [...(item.media ?? [])].filter((m) => LINK_GROUPS.has(m.group)).sort(bySequence);
+}
+
 /** Splits a home page's links at its separators (`hthm` items with a Separator subgroup). */
 export function homeSections(item: Item, separators: Map<number, Item> = new Map()): HomeSection[] {
   const media = [...(item.media ?? [])].sort(bySequence);

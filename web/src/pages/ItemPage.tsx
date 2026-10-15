@@ -37,7 +37,7 @@ export function ItemPage({ kids = false }: { kids?: boolean }) {
   // An item only in Encarta Kids opens in Kids mode; a Premium-only item outside it.
   const eds = item.editions ?? [];
   if (!kids && eds.length === 1 && eds[0] === "kids") return <Navigate to={`/kids/item/${id}`} replace />;
-  if (item.kind === "home-page") return <BrowseContent item={item} kids={kids} />;
+  if (item.kind === "home-page") return kids ? <Navigate to={`/kids/browse/${id}`} replace /> : <BrowseContent item={item} />;
   const to = itemRedirect(item);
   if (to) return <Navigate to={to} replace />;
   switch (item.kind) {

@@ -9,7 +9,7 @@ mod entities;
 mod extras;
 mod inline;
 mod model;
-mod pe_wave;
+mod pe_res;
 mod render;
 mod report;
 mod searchx;
@@ -127,6 +127,15 @@ struct Ctx<'a> {
     index_titles: HashMap<u32, String>,
 }
 
+/// `encarta-convert ui`: only the interface sounds (`out/sounds/`) and artwork (`out/ui/`), which
+/// `content` also writes.
+pub fn run_ui(paths: &Paths) -> Result<()> {
+    let sounds = write_ui_sounds(&paths.extracted, &paths.out.join("sounds"))?;
+    let art = write_ui_art(&paths.extracted, &paths.out.join("ui"))?;
+    eprintln!("{sounds} sounds, {art} pictures");
+    Ok(())
+}
+
 pub fn run(paths: &Paths) -> Result<()> {
     let t0 = Instant::now();
     std::fs::create_dir_all(&paths.out)?;
@@ -195,6 +204,11 @@ pub fn run(paths: &Paths) -> Result<()> {
     step(&mut cx, "ui sounds", |cx| {
         let n = write_ui_sounds(cx.extracted, &paths.out.join("sounds"))?;
         cx.rep.counts.insert("sounds.written".into(), n as u64);
+        Ok(())
+    })?;
+    step(&mut cx, "ui art", |cx| {
+        let n = write_ui_art(cx.extracted, &paths.out.join("ui"))?;
+        cx.rep.counts.insert("ui_art.written".into(), n as u64);
         Ok(())
     })?;
     step(&mut cx, "items without data", |cx| {
@@ -1122,8 +1136,8 @@ mod font_tests {
 /// `tour-hover` / `tour-pick` the pointer entering / clicking a tour site map's stop (the mapping
 /// was measured in the VM, docs/media.md §9); `kids-N` plays when the pointer enters the N-th Kids
 /// home category.
-fn ui_sound_sources() -> Vec<(String, &'static str, pe_wave::ResName)> {
-    use pe_wave::ResName::{Id, Name};
+fn ui_sound_sources() -> Vec<(String, &'static str, pe_res::ResName)> {
+    use pe_res::ResName::{Id, Name};
     let mut v = vec![
         ("startup".to_string(), "EE/ENCARTA/ENCSPLSH.DLL", Name("INTROSOUND".into())),
         ("click".to_string(), "EE/ENCARTA/ENCARTAR.DLL", Id(31973)),
@@ -1142,12 +1156,12 @@ fn ui_sound_sources() -> Vec<(String, &'static str, pe_wave::ResName)> {
 /// Writes the sounds of [`ui_sound_sources`] to `dir` (temporary name, then rename); returns how
 /// many. A missing DLL or resource is skipped.
 fn write_ui_sounds(extracted: &Path, dir: &Path) -> Result<usize> {
-    let mut waves: HashMap<&str, Vec<(pe_wave::ResName, Vec<u8>)>> = HashMap::new();
+    let mut waves: HashMap<&str, pe_res::Resources> = HashMap::new();
     let mut n = 0;
     for (file, dll, res) in ui_sound_sources() {
         if !waves.contains_key(dll) {
             let found = match std::fs::read(extracted.join("iso").join(dll)) {
-                Ok(d) => pe_wave::wave_resources(&d).with_context(|| format!("resources of {dll}"))?,
+                Ok(d) => pe_res::resources(&d, &pe_res::ResName::Name("WAVE".into())).with_context(|| format!("resources of {dll}"))?,
                 Err(_) => Vec::new(),
             };
             waves.insert(dll, found);
@@ -1157,6 +1171,72 @@ fn write_ui_sounds(extracted: &Path, dir: &Path) -> Result<usize> {
         let tmp = dir.join(format!("{file}.wav.partial"));
         std::fs::write(&tmp, bytes)?;
         std::fs::rename(&tmp, dir.join(format!("{file}.wav")))?;
+        n += 1;
+    }
+    Ok(n)
+}
+
+/// The Kids artwork written to `out/ui/` from `ENCARTAR.DLL` (the same file in `EE/ENCARTA` and
+/// `EE/KIDS`): `(file stem, resource type, resource)`. Bitmaps (type 2, headerless DIBs) become PNG;
+/// the `GIF` and `JPEG` resources are copied with the extension of what they hold (the `KIDS_SUBHS_*`
+/// arrows are GIFs under `JPEG`). Toolbar buttons are horizontal strips of four states: normal, mouse-over,
+/// disabled, pressed (docs/vm-findings.md, Kids chrome).
+fn ui_art_sources() -> Vec<(&'static str, pe_res::ResName, pe_res::ResName)> {
+    use pe_res::ResName::{Id, Name};
+    let bmp = |stem, id| (stem, Id(2), Id(id));
+    vec![
+        bmp("kids-bar", 15050),
+        bmp("kids-home", 15051),
+        bmp("kids-back", 15052),
+        bmp("kids-forward", 15053),
+        bmp("kids-joint", 15054),
+        bmp("kids-copy", 15055),
+        bmp("kids-print", 15056),
+        bmp("kids-search-label", 15057),
+        bmp("kids-search-go", 15058),
+        bmp("kids-logo", 15059),
+        bmp("kids-bar-left", 15060),
+        bmp("kids-search-box", 15062),
+        bmp("kids-gap-copy", 15071),
+        bmp("kids-gap-print", 15072),
+        ("kids-subcat-selected", Name("JPEG".into()), Name("KIDS_SUBHS_SUBCAT_SEL".into())),
+        ("kids-topic-selected", Name("JPEG".into()), Name("KIDS_SUBHS_TOPIC_SEL".into())),
+        ("kids-no-picture", Name("JPEG".into()), Name("KIDS_UNKNOWN_BG".into())),
+    ]
+}
+
+/// A bitmap resource (a DIB without its file header) as PNG bytes.
+fn dib_to_png(dib: &[u8]) -> Result<Vec<u8>> {
+    let dec = image::codecs::bmp::BmpDecoder::new_without_file_header(std::io::Cursor::new(dib))?;
+    let img = image::DynamicImage::from_decoder(dec)?;
+    let mut out = Vec::new();
+    img.write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)?;
+    Ok(out)
+}
+
+/// Writes the artwork of [`ui_art_sources`] to `dir` (temporary name, then rename); returns how many
+/// files. A missing DLL or resource is skipped.
+fn write_ui_art(extracted: &Path, dir: &Path) -> Result<usize> {
+    let dll = "EE/ENCARTA/ENCARTAR.DLL";
+    let Ok(d) = std::fs::read(extracted.join("iso").join(dll)) else { return Ok(0) };
+    let mut by_type: Vec<(pe_res::ResName, pe_res::Resources)> = Vec::new();
+    let mut n = 0;
+    for (stem, kind, res) in ui_art_sources() {
+        if !by_type.iter().any(|(k, _)| *k == kind) {
+            let found = pe_res::resources(&d, &kind).with_context(|| format!("resources of {dll}"))?;
+            by_type.push((kind.clone(), found));
+        }
+        let all = &by_type.iter().find(|(k, _)| *k == kind).expect("just added").1;
+        let Some((_, bytes)) = all.iter().find(|(r, _)| *r == res) else { continue };
+        let (ext, out) = match bytes.get(..4) {
+            Some(b"GIF8") => ("gif", bytes.clone()),
+            Some([0xff, 0xd8, 0xff, _]) => ("jpg", bytes.clone()),
+            _ => ("png", dib_to_png(bytes).with_context(|| format!("bitmap {res:?} of {dll}"))?),
+        };
+        std::fs::create_dir_all(dir)?;
+        let tmp = dir.join(format!("{stem}.{ext}.partial"));
+        std::fs::write(&tmp, out)?;
+        std::fs::rename(&tmp, dir.join(format!("{stem}.{ext}")))?;
         n += 1;
     }
     Ok(n)
@@ -1275,6 +1355,19 @@ mod disc_tests {
             assert_eq!(&std::fs::read(dir.join(format!("{f}.wav"))).unwrap()[..4], b"RIFF", "{f}");
         }
         assert_eq!(std::fs::read(dir.join("kids-1.wav")).unwrap().len(), 125_480);
+    }
+
+    #[test]
+    fn ui_art_extract() {
+        let Some(x) = extracted() else { return };
+        let dir = root().join("target/test-ui-art");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(write_ui_art(&x, &dir).unwrap(), 17);
+        let home = image::open(dir.join("kids-home.png")).unwrap();
+        assert_eq!((home.width(), home.height()), (264, 71));
+        let sel = std::fs::read(dir.join("kids-subcat-selected.gif")).unwrap();
+        assert_eq!(&sel[..4], b"GIF8");
+        assert!(dir.join("kids-no-picture.jpg").is_file());
     }
 
     fn convert(lib: &Library, id: u32) -> (data::DataItem, article::Article, String) {

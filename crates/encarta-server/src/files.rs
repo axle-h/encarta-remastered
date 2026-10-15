@@ -337,7 +337,25 @@ pub async fn sound(State(st): State<Arc<AppState>>, UrlPath(name): UrlPath<Strin
 }
 
 fn is_sound_name(name: &str) -> bool {
-    name.strip_suffix(".wav").is_some_and(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'))
+    name.strip_suffix(".wav").is_some_and(is_plain_stem)
+}
+
+/// `/ui/{name}`: interface artwork of `out/ui/` (`encarta-convert content` or `ui`: the Kids toolbar
+/// button strips, search box and logo, the subcategory and tile highlights and the "no picture" tile).
+pub async fn ui_art(State(st): State<Arc<AppState>>, UrlPath(name): UrlPath<String>, req: Request) -> Response {
+    let req = Req::from(req);
+    if !is_ui_art_name(&name) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    serve_tree(&req, &st.out.join("ui"), &name, DATA_CACHE).await.unwrap_or_else(|| StatusCode::NOT_FOUND.into_response())
+}
+
+fn is_ui_art_name(name: &str) -> bool {
+    [".png", ".gif", ".jpg"].iter().any(|e| name.strip_suffix(e).is_some_and(is_plain_stem))
+}
+
+fn is_plain_stem(s: &str) -> bool {
+    !s.is_empty() && s.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 /// `/assets/{*path}`: hashed build assets, cached forever.
@@ -405,6 +423,14 @@ mod tests {
         assert!(super::is_sound_name("kids-10.wav") && super::is_sound_name("kids-hover.wav") && super::is_sound_name("tick.wav"));
         for n in ["", ".wav", "../x.wav", "a/b.wav", "click.wav.partial", "Click.wav", "click.mp3"] {
             assert!(!super::is_sound_name(n), "{n}");
+        }
+    }
+
+    #[test]
+    fn ui_art_names() {
+        assert!(super::is_ui_art_name("kids-home.png") && super::is_ui_art_name("kids-subcat-selected.gif") && super::is_ui_art_name("kids-no-picture.jpg"));
+        for n in ["", ".png", "../x.png", "a/b.png", "kids-home.png.partial", "Kids.png", "kids.bmp"] {
+            assert!(!super::is_ui_art_name(n), "{n}");
         }
     }
 

@@ -34,7 +34,7 @@ export function KidsHome() {
  * Where the ten category buttons sit on the 1024×600 home background: two columns of five panels
  * (measured from the background picture).
  */
-const SLOTS: [number, number][] = [
+export const SLOTS: [number, number][] = [
   [8, 8],
   [8, 97],
   [8, 186],
@@ -51,7 +51,7 @@ const SLOTS: [number, number][] = [
  * A category button: the category page's own theme picture (`hthm` "… (top category)"), with its
  * mouse-over picture on hover. The picture carries the label; the text is for screen readers.
  */
-function KidsCategory({ c, slot, sound }: { c: AssocItem; slot?: [number, number]; sound: number }) {
+export function KidsCategory({ c, slot, sound }: { c: AssocItem; slot?: [number, number]; sound: number }) {
   const page = useApi((s) => api.item(c.ref_id, s), [c.ref_id]);
   const theme = page.data?.media?.find((m) => m.group === "hthm");
   const themeItem = useApi(theme ? (s) => api.item(theme.ref_id, s) : null, [theme?.ref_id]);

@@ -649,6 +649,27 @@ Measured on Westminster Abbey (461545486), Mont-Saint-Michel (461549315) and Alc
   Clicking a panel highlights it blue and opens a blue rounded list of subcategories with icons in the middle; a
   subcategory opens a page with the category title in orange, the subcategory list at left (current one highlighted)
   and a 7-column grid of 64-px tiles (photo or a generic "book" icon) with captions.
+- **Bar layout** (client pixels, matched against `ENCARTAR.DLL` bitmaps at < 1 % RMSE; 2026-10-15): 71 px tall, #9CE721
+  for the top 21 px (the menu band) over the 2×50 tile 15050. Left cap 15060 at x 0; Home 15051 at 10, Back 15052 at
+  76, Forward 15053 at 142 (all from y 0, 71 tall); joint 15054 at 178; Copy 15055 at 184 and Print 15056 at 237 (y 21,
+  50 tall) with the fillers 15071 (230) and 15072 (283) between and after them; the "search" label 15057 at 307, the
+  box (the middle of 15062 stretched over 417-611) and the arrow 15058 at 611, y 22; logo 15059 at the right edge.
+  Button bitmaps are strips of four states: normal, mouse-over, disabled, pressed. Back, Forward, Copy and Print are
+  disabled (third state) on the home and category screens. Menu titles: Tahoma 11 px at x 194-470, the open one on
+  #B5F331 with no border.
+- **Category screen** (`02-animals.png`): the category's own 1024×600 `hsbg` already shows its panel highlighted and
+  the blue board; the other nine panels carry their pictures as on the home screen. Subcategory icons (each
+  subcategory's `hthm` picture, 44×42) at x 249 from y 27, 42 px apart, titles 3 px after them, white, regular 15 px
+  (the template `mainhome_kids.xsl` says bold; the VM draws it regular), #FFB400 under the pointer.
+- **Subcategory screen** (`03-mammals.png`, template `homescreens.xsl`): white page with the 800×520 "Subcategory
+  Background" at the top left; title 40 px #FF8400 at (9, 10); subcategories with icons at x 10 from y 74, 44 px
+  apart, text from x 63 (176 px cell); the current one, and the one under the pointer, on the 241×42
+  `KIDS_SUBHS_SUBCAT_SEL` arrow in #FF9600. Grid from (239, 66): tiles 106×120, the 64-px picture with a 1-px black
+  frame 18 px in and 5 px down, a 13 px black caption (100 px wide, at most 3 lines); under the pointer the tile gets
+  the `KIDS_SUBHS_TOPIC_SEL` card and a white frame. The scroll bar is green (face #8EE01E, track #A7EC2B). Every tile
+  starts as the `KIDS_UNKNOWN_BG` "book" and swaps in its thumbnail once that has loaded, so the capture's books on
+  Aardvark, Armadillo, Lemurs, Big Cats … are thumbnails not yet loaded (all of them have one). Clicking another
+  subcategory switches the grid inside the page (no history entry).
 
 ### Other item views (`items/`)
 - Web link (762518793): opens Internet Explorer on `encartaupdate.msn.com/teleport/teleport.aspx?…&tname=weblinks&…&ud=<id>`

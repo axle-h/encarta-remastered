@@ -197,11 +197,11 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
 | Kids home with ten panels, mouse-over pictures | done | | — |
-| Kids category screens | done | | — |
+| Kids category screens | done | `kids/KidsBrowse.tsx` (2026-10-15): category screen on its own 1024×600 background with the other nine panels and the subcategory icons; subcategory screen with the arrow-highlighted list and the 106×120 tile grid, "book" picture until a thumbnail loads (vm-findings, Kids chrome) | — |
 | Kids articles (orange title, tile grid, no numbers) | done | VM `kids-*` | — |
 | Kids search, Kids dictionary | done | | — |
 | Kids interactives and games (264, Flash) | done | Ruffle (18 Kids copies in the test pass); match games native | — |
-| Kids' own menu bar, Favorites, Help | done | `kids/KidsShell.tsx` (2026-10-14): lime bar with Home/Back/Forward/Copy/Print orbs and File / Edit / View / Favorites / Tools / Help with the VM's submenus (Go to, Closed Captioning, Read Aloud, Menu and Button Sounds, Startup Sound, Troubleshooting; `fixtures/ui/kids/sub-*.png`) | Read Aloud uses the browser's speech synthesis (no highlighting while reading, as in the VM); yellow-arrow tooltips (`ArrowTip.tsx`, also on the adult orbs; Back says "Back to <page>"; position checked through the DOM only); Kids Copy copies the selection or the whole article without a dialog (UI pass 2) |
+| Kids' own menu bar, Favorites, Help | done | `kids/KidsShell.tsx` (2026-10-14; bar from the disc's bitmaps 2026-10-15): lime bar with Home/Back/Forward/Copy/Print orbs and File / Edit / View / Favorites / Tools / Help with the VM's submenus (Go to, Closed Captioning, Read Aloud, Menu and Button Sounds, Startup Sound, Troubleshooting; `fixtures/ui/kids/sub-*.png`) | Read Aloud uses the browser's speech synthesis (no highlighting while reading, as in the VM); yellow-arrow tooltips (`ArrowTip.tsx`, also on the adult orbs; Back says "Back to <page>"; position checked through the DOM only); Kids Copy copies the selection or the whole article without a dialog (UI pass 2) |
 
 ## Interactives
 

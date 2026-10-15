@@ -1,6 +1,6 @@
-//! `WAVE` resources of a Windows executable (the UI sounds in `ENCARTAR.DLL`, the startup sound in
-//! `ENCSPLSH.DLL`): walks the PE resource directory (type, name, language) and returns each
-//! `WAVE` resource's bytes by its numeric id or its name.
+//! Resources of a Windows executable (the UI sounds and Kids artwork in `ENCARTAR.DLL`, the startup
+//! sound in `ENCSPLSH.DLL`): walks the PE resource directory (type, name, language) and returns each
+//! resource of one type with its numeric id or its name.
 
 use anyhow::{Result, bail};
 
@@ -19,8 +19,12 @@ fn u32_at(d: &[u8], o: usize) -> Option<usize> {
     Some(u32::from_le_bytes(d.get(o..o + 4)?.try_into().ok()?) as usize)
 }
 
-/// Every `WAVE` resource of the PE file `d` as `(name, RIFF bytes)`.
-pub fn wave_resources(d: &[u8]) -> Result<Vec<(ResName, Vec<u8>)>> {
+/// Resources of one type as `(name, bytes)`.
+pub type Resources = Vec<(ResName, Vec<u8>)>;
+
+/// Every resource of type `kind` (`Id(2)` bitmaps, `Name("WAVE")` sounds …) of the PE file `d` as
+/// `(name, bytes)`.
+pub fn resources(d: &[u8], kind: &ResName) -> Result<Resources> {
     let bad = || anyhow::anyhow!("truncated PE file");
     let pe = u32_at(d, 0x3c).ok_or_else(bad)?;
     if d.get(pe..pe + 4) != Some(b"PE\0\0") {
@@ -63,7 +67,7 @@ pub fn wave_resources(d: &[u8]) -> Result<Vec<(ResName, Vec<u8>)>> {
 
     let mut out = Vec::new();
     for (ty, ty_ptr) in entries(0).ok_or_else(bad)? {
-        if name_of(ty) != Some(ResName::Name("WAVE".into())) || ty_ptr & 0x8000_0000 == 0 {
+        if name_of(ty).as_ref() != Some(kind) || ty_ptr & 0x8000_0000 == 0 {
             continue;
         }
         for (name, name_ptr) in entries(ty_ptr & 0x7fff_ffff).ok_or_else(bad)? {
@@ -89,9 +93,10 @@ mod tests {
 
     #[test]
     fn rejects_non_pe() {
-        assert!(wave_resources(&[0u8; 8]).is_err());
+        let wave = ResName::Name("WAVE".into());
+        assert!(resources(&[0u8; 8], &wave).is_err());
         let mut d = vec![0u8; 0x100];
         d[0x3c] = 0x40;
-        assert!(wave_resources(&d).is_err());
+        assert!(resources(&d, &wave).is_err());
     }
 }

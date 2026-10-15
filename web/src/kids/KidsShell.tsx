@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { MenuButton, type MenuEntry } from "../components/Menu";
 import { SearchBox } from "../components/SearchBox";
-import { NavButtons, favoritesMenu } from "../app/Shell";
+import { favoritesMenu } from "../app/Shell";
 import { ArrowTip } from "../components/ArrowTip";
 import { PrintHost } from "../app/PrintDialog";
 import { AddFavoriteDialog, defaultFavoriteName } from "../app/AddFavoriteDialog";
@@ -162,36 +162,49 @@ export function KidsMenuBar() {
   );
 }
 
-/** Encarta Kids: its own bright chrome, search limited to the Kids edition, links stay in /kids. */
+/**
+ * The Kids round buttons, drawn from the disc's button strips (`/ui/kids-*.png`: normal, mouse-over,
+ * disabled, pressed; docs/vm-findings.md "Kids chrome"). Disabled ones get no tooltip, as in Encarta.
+ */
+function KidsButton({ name, label, tip, disabled = false, onClick, to }: { name: string; label: string; tip: string; disabled?: boolean; onClick?: () => void; to?: string }) {
+  const cls = `orb kids-btn kids-btn-${name}`;
+  const el = to ? (
+    <Link to={to} className={cls} aria-label={label} />
+  ) : (
+    <button type="button" className={cls} aria-label={label} disabled={disabled} onClick={onClick} />
+  );
+  return disabled ? el : <ArrowTip text={tip}>{el}</ArrowTip>;
+}
+
+/** Encarta Kids: its own lime chrome, search limited to the Kids edition, links stay in /kids. */
 export function KidsShell({ children }: { children: ReactNode }) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { canBack, canForward, backTitle, forwardTitle } = useHistoryButtons();
   const [note, setNote] = useState("");
   const copy = () => void copySelectionOrArticle().then((ok) => setNote(ok ? "Copied." : "Nothing was copied."));
+  // Copy and Print are greyed out on the home and category screens (VM captures).
+  const onItem = location.pathname.startsWith("/kids/item/");
   useEffect(installCopySourceLine, []);
   useDoubleClickLookup(true);
   return (
     <div className="shell kids-shell">
       <header className="kids-bar">
-        <NavButtons homeTo="/kids" homeTip="Open the Encarta Kids home page." />
-        <ArrowTip text="Copy the article or picture.">
-          <button type="button" className="orb kids-tool" aria-label="Copy" onClick={copy}>
-            <span aria-hidden="true">⎘</span>
-          </button>
-        </ArrowTip>
-        <ArrowTip text="Print the article or picture.">
-          <button type="button" className="orb kids-tool" aria-label="Print" onClick={requestPrint}>
-            <span aria-hidden="true">⎙</span>
-          </button>
-        </ArrowTip>
+        <span className="kids-bar-left" aria-hidden="true" />
+        <KidsButton name="home" label="Home" tip="Open the Encarta Kids home page." to="/kids" />
+        <KidsButton name="back" label="Back" tip={backTitle ? `Back to ${backTitle}` : "Back"} disabled={!canBack} onClick={() => navigate(-1)} />
+        <KidsButton name="forward" label="Forward" tip={forwardTitle ? `Forward to ${forwardTitle}` : "Forward"} disabled={!canForward} onClick={() => navigate(1)} />
+        <span className="kids-bar-joint" aria-hidden="true" />
+        <KidsButton name="copy" label="Copy" tip="Copy the article or picture." disabled={!onItem} onClick={copy} />
+        <span className="kids-bar-gap-copy" aria-hidden="true" />
+        <KidsButton name="print" label="Print" tip="Print the article or picture." disabled={!onItem} onClick={requestPrint} />
+        <span className="kids-bar-gap-print" aria-hidden="true" />
         <KidsMenuBar />
         <div className="kids-search">
-          <span className="kids-search-label">search</span>
+          <span className="kids-search-label" aria-hidden="true" />
           <SearchBox kids placeholder="" />
         </div>
-        <Link to="/kids" className="kids-logo" aria-label="Encarta Kids home">
-          <span className="kids-logo-small">Encarta</span>
-          <span className="kids-logo-big">kids</span>
-        </Link>
+        <Link to="/kids" className="kids-logo" aria-label="Encarta Kids home" />
         <span className="sr-only" role="status" aria-live="polite">{note}</span>
       </header>
       <main className="page kids-page">

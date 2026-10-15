@@ -6,51 +6,151 @@
   font-family: var(--ui);
 }
 
+/*
+ * The bar is laid out at the original's pixel positions (VM capture, 1024 wide): a 21 px menu band
+ * over the 50 px bar tile, the button strips from the disc (`/ui/`, four states side by side).
+ */
+.kids-shell {
+  min-width: 1024px;
+}
+
 .kids-bar {
   position: sticky;
   top: 0;
   z-index: 50;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  min-height: 78px;
-  padding: 6px 16px 6px 10px;
-  background: linear-gradient(#9ce721, #b5f331);
-  border-bottom: 4px solid var(--kids-lime);
+  height: 71px;
+  background: url(/ui/kids-bar.png) 0 21px / 2px 50px repeat-x, #9ce721;
 }
 
-.kids-bar .orb {
-  width: 46px;
-  height: 46px;
-  border: 3px solid #fff;
-  box-shadow: 0 0 0 2px #7fb40c, 0 2px 4px rgba(0, 0, 0, 0.3);
+.kids-bar > * {
+  position: absolute;
 }
 
-.kids-bar .orb-home {
-  background: radial-gradient(circle at 50% 30%, #c5f06b, #7fc21c 60%, #4f8d07);
+.kids-bar-left {
+  left: 0;
+  top: 0;
+  width: 10px;
+  height: 71px;
+  background: url(/ui/kids-bar-left.png);
 }
 
-.kids-bar .orb-fwd {
-  width: 34px;
-  height: 34px;
+.kids-bar-joint {
+  left: 178px;
+  top: 0;
+  width: 7px;
+  height: 71px;
+  background: url(/ui/kids-joint.png);
 }
 
-.kids-bar .nav-pair {
-  background: none;
+.kids-bar-gap-copy {
+  left: 230px;
+  top: 21px;
+  width: 7px;
+  height: 50px;
+  background: url(/ui/kids-gap-copy.png);
+}
+
+.kids-bar-gap-print {
+  left: 283px;
+  top: 21px;
+  width: 24px;
+  height: 50px;
+  background: url(/ui/kids-gap-print.png);
+}
+
+.kids-bar .kids-btn {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   box-shadow: none;
-  gap: 8px;
+  filter: none;
+  background: var(--strip) 0 0 no-repeat;
+  cursor: pointer;
 }
 
-.kids-menu {
-  display: flex;
-  gap: 4px;
-  font-size: 13px;
+.kids-bar .kids-btn:hover {
+  background-position: calc(-1 * var(--w)) 0;
+}
+
+.kids-bar .kids-btn:active {
+  background-position: calc(-3 * var(--w)) 0;
+}
+
+.kids-bar .kids-btn:disabled {
+  background: var(--strip) calc(-2 * var(--w)) 0 no-repeat;
+  cursor: default;
+}
+
+.kids-btn-home {
+  --strip: url(/ui/kids-home.png);
+  --w: 66px;
+  left: 10px;
+  top: 0;
+  width: 66px;
+  height: 71px;
+}
+
+.kids-btn-back {
+  --strip: url(/ui/kids-back.png);
+  --w: 66px;
+  left: 76px;
+  top: 0;
+  width: 66px;
+  height: 71px;
+}
+
+.kids-btn-forward {
+  --strip: url(/ui/kids-forward.png);
+  --w: 36px;
+  left: 142px;
+  top: 0;
+  width: 36px;
+  height: 71px;
+}
+
+.kids-btn-copy {
+  --strip: url(/ui/kids-copy.png);
+  --w: 46px;
+  left: 184px;
+  top: 21px;
+  width: 46px;
+  height: 50px;
+}
+
+.kids-btn-print {
+  --strip: url(/ui/kids-print.png);
+  --w: 46px;
+  left: 237px;
+  top: 21px;
+  width: 46px;
+  height: 50px;
+}
+
+.kids-bar .kids-menu {
+  left: 184px;
+  top: 0;
+  height: 21px;
+  padding: 0;
+  gap: 1px;
+  border: 0;
+  background: none;
+  font: 11px Tahoma, var(--ui);
   color: #006500;
 }
 
 .kids-menu .menubar-btn {
+  height: 19px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 0;
   color: #006500;
   background: none;
+}
+
+.kids-menu .menubar-btn:hover,
+.kids-menu .menubar-btn[aria-expanded="true"] {
+  background: #b5f331;
 }
 
 .kids-menu .menubar-note {
@@ -91,55 +191,93 @@
   font-weight: bold;
 }
 
-.kids-bar .kids-tool {
-  width: 38px;
-  height: 38px;
-  border: 3px solid #fff;
-  background: radial-gradient(circle at 50% 30%, #c5f06b, #7fc21c 60%, #4f8d07);
-  color: #006500;
-  cursor: pointer;
-}
-
 .kids-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  max-width: 340px;
+  left: 307px;
+  top: 21px;
+  width: 336px;
+  height: 50px;
 }
 
 .kids-search-label {
-  font-size: 20px;
-  color: #577d0a;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 110px;
+  height: 50px;
+  background: url(/ui/kids-search-label.png);
 }
 
+/* The box: the plain middle of the disc's search-field picture stretched across 194 px. */
 .kids-search .searchbox {
-  flex: 1;
+  position: absolute;
+  left: 110px;
+  top: 0;
+  width: 226px;
+  height: 50px;
+}
+
+.kids-search .searchbox-field {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 194px;
+  height: 38px;
+  border-image: url(/ui/kids-search-box.png) 0 10 12 190 fill / 0;
 }
 
 .searchbox.kids input {
-  height: 30px;
-  padding-left: 12px;
-  border: 2px solid #8cc11c;
-  border-radius: 6px;
+  position: absolute;
+  left: 0;
+  top: 11px;
+  width: 190px;
+  height: 23px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font: 13px var(--ui);
+}
+
+.kids-search .suggest {
+  top: 38px;
+}
+
+.searchbox.kids input:focus {
+  outline: none;
+}
+
+.kids-search .searchbox-go {
+  position: absolute;
+  left: 194px;
+  top: 1px;
+  width: 32px;
+  height: 47px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: url(/ui/kids-search-go.png) 0 0 no-repeat;
+  color: transparent;
+}
+
+.kids-search .searchbox-go:hover {
+  background-position: -32px 0;
+}
+
+.kids-search .searchbox-go:active {
+  background-position: -96px 0;
+}
+
+.kids-search .searchbox-go svg {
+  display: none;
 }
 
 .kids-logo {
-  margin-left: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  line-height: 0.9;
-  color: #2f5b0a;
-}
-
-.kids-logo-small {
-  font-size: 11px;
-}
-
-.kids-logo-big {
-  font: bold 34px var(--ui);
-  letter-spacing: -1px;
+  right: 0;
+  top: 0;
+  width: 120px;
+  height: 70px;
+  background: url(/ui/kids-logo.png);
 }
 
 .kids-page {
@@ -148,7 +286,7 @@
 
 /* Kids home: the disc's 1024×600 background with the category buttons on its panels */
 .kids-home {
-  min-height: calc(100vh - 82px);
+  min-height: calc(100vh - 71px);
   background: #fff;
   overflow-x: auto;
 }
@@ -207,6 +345,153 @@
   border: 3px solid var(--kids-orange);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.92);
+}
+
+/*
+ * Top category: the subcategories on the blue board of its background (VM: icons at 249,27, 42 px
+ * apart; #FFB400 under the pointer). The disc's template asks for bold 15 px, but the VM draws them
+ * regular, as here.
+ */
+.kids-topics {
+  position: absolute;
+  left: 249px;
+  top: 27px;
+  width: 320px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.kids-topics a,
+.kids-sub-list a {
+  display: flex;
+  align-items: center;
+  height: 42px;
+  color: #fff;
+  font: 15px/19px var(--sans);
+}
+
+.kids-topics a {
+  gap: 3px;
+}
+
+.kids-topics a:hover {
+  color: #ffb400;
+}
+
+.kids-topic-icon {
+  flex: none;
+  display: block;
+  width: 44px;
+  height: 42px;
+}
+
+/*
+ * Subcategory: the 800×520 "Subcategory Background" at the top left, the top category's title on its
+ * white band, the subcategories down the left (44 px apart; the current one and the one under the
+ * pointer on the blue arrow in #FF9600) and the scrolling grid of 106×120 tiles, 7 to a row at 1024 px
+ * (VM capture, Animals › Mammals). Under the pointer a tile gets the orange card and a white frame.
+ */
+.kids-sub {
+  position: relative;
+  width: 1024px;
+  height: calc(100vh - 71px);
+  min-height: 520px;
+  margin: 0 auto;
+  background: #fff 0 0 / 800px 520px no-repeat;
+}
+
+.kids-sub-title {
+  position: absolute;
+  left: 9px;
+  top: 3px;
+  margin: 0;
+  font: normal 40px/1 Verdana, var(--sans);
+  color: #ff8400;
+}
+
+.kids-sub-list {
+  position: absolute;
+  left: 5px;
+  top: 74px;
+  width: 241px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.kids-sub-list li {
+  height: 44px;
+}
+
+.kids-sub-list a {
+  gap: 9px;
+  padding-left: 5px;
+}
+
+.kids-sub-list span {
+  max-width: 176px;
+}
+
+.kids-sub-list a:hover,
+.kids-sub-list .current a {
+  background: url(/ui/kids-subcat-selected.gif) no-repeat;
+  color: #ff9600;
+}
+
+.kids-grid-scroll {
+  position: absolute;
+  left: 239px;
+  top: 66px;
+  right: 14px;
+  bottom: 0;
+  overflow-y: auto;
+  scrollbar-color: #8ee01e #a7ec2b;
+}
+
+.kids-grid {
+  display: flex;
+  flex-wrap: wrap;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.kids-grid li {
+  width: 106px;
+  height: 120px;
+}
+
+.kids-grid a {
+  display: block;
+  width: 100px;
+  height: 120px;
+  padding-top: 5px;
+  color: #000;
+  font: 13px/16px var(--sans);
+  text-align: center;
+}
+
+.kids-grid a:hover {
+  background: url(/ui/kids-topic-selected.gif) no-repeat;
+}
+
+.kids-grid img {
+  display: block;
+  margin-left: 18px;
+  border: 1px solid #000;
+  background: url(/ui/kids-no-picture.jpg);
+}
+
+.kids-grid a:hover img {
+  border-color: #fff;
+}
+
+.kids-grid span {
+  display: block;
+  max-height: 48px;
+  margin-top: 2px;
+  overflow: hidden;
 }
 
 /* Kids article */
@@ -354,16 +639,8 @@
   display: none;
 }
 
-.browse.kids .browse-title {
-  color: var(--kids-orange);
-  font-family: var(--ui);
-}
-
 @media (max-width: 800px) {
   .kids-art-cols {
     grid-template-columns: 1fr;
-  }
-  .kids-bar {
-    flex-wrap: wrap;
   }
 }
