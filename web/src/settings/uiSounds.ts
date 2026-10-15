@@ -1,7 +1,7 @@
 /**
  * Interface sounds (Tools > Options > Sounds). The converter writes them from the disc's DLL
- * resources to `out/sounds/`; the server serves `/sounds/{name}.wav`. Browsers refuse sound before
- * the first user gesture, so a startup sound that is refused plays on the first click or key.
+ * resources to `out/sounds/`; the server serves `/sounds/{name}.wav`. The startup jingle is
+ * deliberately not played.
  *
  * Which control plays what was measured in the XP reference VM (docs/media.md section 9):
  * `tick` is the rollover of toolbar buttons, menu-bar titles, atlas text buttons and menu highlights;
@@ -14,17 +14,15 @@
  * One document-level delegate ({@link installUiSoundDelegates}) maps controls to sounds;
  * `data-snd="timeline"` (or `"none"`) on an element or ancestor overrides the built-in rules.
  */
-export type UiSound = "startup" | "click" | "tick" | "kidsHover" | "timeline" | "tourHover" | "tourPick" | `kids-${number}`;
+export type UiSound = "click" | "tick" | "kidsHover" | "timeline" | "tourHover" | "tourPick" | `kids-${number}`;
 
 const FILES: Record<string, string> = { kidsHover: "kids-hover", tourHover: "tour-hover", tourPick: "tour-pick" };
 
-const flags = { startup: true, menu: false, kidsMenu: true };
+const flags = { menu: false, kidsMenu: true };
 const players = new Map<string, HTMLAudioElement>();
-let startupDone = false;
 
 /** Called by the settings provider whenever the sound settings change (`kidsMenu`: the Kids switch). */
-export function configureUiSounds(startup: boolean, menu: boolean, kidsMenu = menu) {
-  flags.startup = startup;
+export function configureUiSounds(menu: boolean, kidsMenu = menu) {
   flags.menu = menu;
   flags.kidsMenu = kidsMenu;
 }
@@ -148,20 +146,4 @@ export function installUiSoundDelegates(): () => void {
     }),
   ];
   return () => offs.forEach((f) => f());
-}
-
-/** The startup sound, once per page load, when the option is on. */
-export function playStartupSound() {
-  if (startupDone || !flags.startup || typeof document === "undefined") return;
-  startupDone = true;
-  play("startup", 0.8).catch(() => {
-    // Refused before any gesture: play at the first one.
-    const again = () => {
-      document.removeEventListener("pointerdown", again, true);
-      document.removeEventListener("keydown", again, true);
-      if (flags.startup) void play("startup", 0.8).catch(() => {});
-    };
-    document.addEventListener("pointerdown", again, true);
-    document.addEventListener("keydown", again, true);
-  });
 }

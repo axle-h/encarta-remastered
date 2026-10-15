@@ -1,8 +1,11 @@
 /**
  * Commands of the File and Edit menus. Copy and print end with Encarta's source line
  * (docs/vm-findings.md, "Copy source line"): a selection gets it on the next line, a whole
- * article or dictionary entry after a blank line.
+ * article or dictionary entry after a blank line. Article copies differ on purpose: their plain
+ * text is Markdown (the source line its own paragraph) and no-break spaces become plain ones.
  */
+
+import { plainSpaces, rangeToMarkdown, toMarkdown } from "./markdown";
 
 /** Event the article reader listens to for Edit › Find in Article. */
 export const FIND_EVENT = "encarta:find";
@@ -11,6 +14,8 @@ export const FIND_EVENT = "encarta:find";
 export const SOURCE_NAME = "Microsoft® Encarta® 2009.";
 export const COPYRIGHT = "© 1993-2008 Microsoft Corporation. All rights reserved.";
 export const SOURCE_LINE = `${SOURCE_NAME} ${COPYRIGHT}`;
+/** The source line in Markdown, its name in bold as in the HTML flavour. */
+export const SOURCE_LINE_MD = `**${SOURCE_NAME}** ${COPYRIGHT}`;
 
 /** Selector of the elements whose text is "the article" (adult reader, Kids reader). */
 export const ARTICLE_TEXT = ".art-text, .kids-text";
@@ -20,13 +25,39 @@ export const ARTICLE_TEXT = ".art-text, .kids-text";
  * a selection only a line break. Null when there is nothing to copy.
  */
 export function withSourceLine(text: string, whole = false): string | null {
-  const s = text.trim();
+  const s = plainSpaces(text).trim();
   return s ? `${s}${whole ? "\n\n" : "\n"}${SOURCE_LINE}` : null;
 }
 
 /** The same as HTML: the copied markup, then the source line with its name in bold. */
 export function sourceLineHtml(): string {
   return `<p><b>${SOURCE_NAME}</b> ${COPYRIGHT}</p>`;
+}
+
+/** Markdown with the source line as its last paragraph; null when there is nothing to copy. */
+export function withSourceLineMd(md: string): string | null {
+  const s = md.trim();
+  return s ? `${s}\n\n${SOURCE_LINE_MD}` : null;
+}
+
+/** Copied HTML with plain spaces for the no-break ones. */
+function plainHtml(html: string): string {
+  return plainSpaces(html.replace(/&nbsp;/g, " "));
+}
+
+/** The selection's first range, or null when nothing is selected. */
+function selectionRange(): Range | null {
+  const sel = window.getSelection?.();
+  return sel && sel.rangeCount > 0 && !sel.isCollapsed ? sel.getRangeAt(0) : null;
+}
+
+/** The selection as clipboard flavours: Markdown for plain text, the markup for HTML, each with the source line. */
+function selectionFlavours(range: Range): { text: string; html: string } | null {
+  const text = withSourceLineMd(rangeToMarkdown(range));
+  if (!text) return null;
+  const box = document.createElement("div");
+  box.appendChild(range.cloneContents());
+  return { text, html: `${plainHtml(box.innerHTML)}${sourceLineHtml()}` };
 }
 
 export function selectedText(): string {
@@ -45,8 +76,9 @@ export async function writeClipboard(text: string): Promise<boolean> {
 
 /** Edit › Copy with a selection: the selection and the source line. Resolves false when nothing is selected. */
 export async function copySelection(): Promise<boolean> {
-  const text = withSourceLine(selectedText());
-  return text ? writeClipboard(text) : false;
+  const range = selectionRange();
+  const copy = range && selectedText().trim() ? selectionFlavours(range) : null;
+  return copy ? writeClipboardHtml(copy.html, copy.text) : false;
 }
 
 /**
@@ -58,12 +90,10 @@ export function addSourceToCopy(e: ClipboardEvent): boolean {
   if (!e.clipboardData || !sel || sel.isCollapsed || sel.rangeCount === 0) return false;
   const anchor = sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode?.parentElement;
   if (!anchor?.closest(ARTICLE_TEXT)) return false;
-  const text = withSourceLine(sel.toString());
-  if (!text) return false;
-  const box = document.createElement("div");
-  box.appendChild(sel.getRangeAt(0).cloneContents());
-  e.clipboardData.setData("text/plain", text);
-  e.clipboardData.setData("text/html", `${box.innerHTML}${sourceLineHtml()}`);
+  const copy = sel.toString().trim() ? selectionFlavours(sel.getRangeAt(0)) : null;
+  if (!copy) return false;
+  e.clipboardData.setData("text/plain", copy.text);
+  e.clipboardData.setData("text/html", copy.html);
   return true;
 }
 
@@ -123,23 +153,49 @@ export function articleText(): string {
   return title && !body.startsWith(title) ? `${title}\n\n${body}` : body;
 }
 
+/** The article's title, "" when the page has none. */
+function articleTitle(): string {
+  return (document.querySelector<HTMLElement>("main h1")?.innerText ?? "").trim();
+}
+
+/** The article (title and reading column) as Markdown, "" when the page has none. */
+export function articleMarkdown(): string {
+  const el = document.querySelector<HTMLElement>(ARTICLE_TEXT);
+  if (!el) return "";
+  const body = toMarkdown(el);
+  const title = plainSpaces(articleTitle());
+  return title && !el.querySelector("h1") ? `# ${title}\n\n${body}` : body;
+}
+
+/** A copy of `el` without what is hidden on screen (the clone has no style sheet to hide it). */
+function visibleClone(el: HTMLElement): HTMLElement {
+  const box = el.cloneNode(true) as HTMLElement;
+  const live = el.querySelectorAll("*");
+  const copies = box.querySelectorAll("*");
+  live.forEach((n, i) => {
+    if (getComputedStyle(n).display === "none") copies[i]!.remove();
+  });
+  return box;
+}
+
 /**
- * The article as HTML with its pictures (the text column and the side column beside it), links
- * made absolute and controls dropped; "" when the page has no article.
+ * The article as HTML (the text column, or with `media` the text and side columns with their
+ * pictures), links made absolute and controls dropped; "" when the page has no article.
  */
-export function articleHtmlWithMedia(): string {
-  const cols = document.querySelector<HTMLElement>(".art-cols");
+export function articleHtml(media: boolean): string {
+  const cols = document.querySelector<HTMLElement>(media ? ".art-cols" : ARTICLE_TEXT);
   if (!cols) return "";
-  const box = cols.cloneNode(true) as HTMLElement;
+  const box = visibleClone(cols);
   box.querySelectorAll("button, script, style, audio, video, canvas, iframe").forEach((n) => n.remove());
+  if (!media) box.querySelectorAll("img, .enc-media, .enc-mbox").forEach((n) => n.remove());
   box.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
     const src = img.getAttribute("src");
     if (src) img.setAttribute("src", new URL(src, document.baseURI).href);
   });
   box.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((a) => a.setAttribute("href", new URL(a.getAttribute("href")!, document.baseURI).href));
-  const title = (document.querySelector<HTMLElement>("main h1")?.innerText ?? "").trim();
-  const head = title ? `<h1>${title.replace(/[&<]/g, (c) => (c === "&" ? "&amp;" : "&lt;"))}</h1>` : "";
-  return `${head}${box.innerHTML}${sourceLineHtml()}`;
+  const title = articleTitle();
+  const head = title && !box.querySelector("h1") ? `<h1>${title.replace(/[&<]/g, (c) => (c === "&" ? "&amp;" : "&lt;"))}</h1>` : "";
+  return plainHtml(`${head}${box.innerHTML}${sourceLineHtml()}`);
 }
 
 /** Puts HTML and its plain text on the clipboard; falls back to the text alone. */
@@ -157,15 +213,15 @@ export async function writeClipboardHtml(html: string, text: string): Promise<bo
   return writeClipboard(text);
 }
 
-/** Edit › Copy for a scope: the selection, the whole article text, or the whole article with its pictures. */
+/**
+ * Edit › Copy for a scope: the selection, the whole article text, or the whole article with its
+ * pictures. The plain-text flavour is Markdown, the HTML flavour the article's markup.
+ */
 export async function copyScope(scope: ArticleScope): Promise<boolean> {
-  if (scope === "media") {
-    const text = withSourceLine(articleText(), true);
-    const html = articleHtmlWithMedia();
-    return text && html ? writeClipboardHtml(html, text) : false;
-  }
-  const text = scope === "selection" ? withSourceLine(selectedText()) : withSourceLine(articleText(), true);
-  return text ? writeClipboard(text) : false;
+  if (scope === "selection") return copySelection();
+  const text = withSourceLineMd(articleMarkdown());
+  const html = articleHtml(scope === "media");
+  return text && html ? writeClipboardHtml(html, text) : false;
 }
 
 /** The Kids Copy button: the selection if there is one, else the whole article (VM: no dialog). */

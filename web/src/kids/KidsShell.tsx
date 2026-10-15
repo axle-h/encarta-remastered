@@ -172,7 +172,6 @@ export function KidsMenuBar() {
       },
       { separator: true, key: "s2" },
       { label: "Menu and Button Sounds", key: "ms", submenu: onOff(settings.kidsMenuSounds, (v) => update({ kidsMenuSounds: v }), "ms") },
-      { label: "Startup Sound", key: "ss", submenu: onOff(settings.startupSound, (v) => update({ startupSound: v }), "ss") },
     ];
   };
   const help = (): MenuEntry[] => [

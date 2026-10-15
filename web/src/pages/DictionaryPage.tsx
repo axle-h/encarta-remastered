@@ -9,6 +9,7 @@ import { Icon } from "../components/Icons";
 import { useDocumentTitle } from "../components/useDocumentTitle";
 import { expandGrammarCodes } from "./dictCodes";
 import { printPage, withSourceLine } from "../app/commands";
+import { plainSpaces } from "../app/markdown";
 import { WHEEL_BEFORE, wheelRows } from "./wordWheel";
 
 type Tab = "dictionary" | "thesaurus" | "bilingual";
@@ -249,7 +250,7 @@ function EntryTools({ box }: { box: React.RefObject<HTMLDivElement> }) {
     const inside = sel && sel.rangeCount > 0 && !sel.isCollapsed && el.contains(sel.anchorNode) ? sel.toString() : "";
     // VM: a selection is copied alone; the whole entry gets a blank line and the source line.
     const entry = (el.querySelector(".dict-hw")?.textContent ?? "") + "\n" + ((el.querySelector(".dict-html") as HTMLElement | null)?.innerText ?? "");
-    const text = inside.trim() ? inside : withSourceLine(entry, true);
+    const text = inside.trim() ? plainSpaces(inside) : withSourceLine(entry, true);
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);

@@ -86,8 +86,28 @@ fn layout_break_between_entities(cx: &Ctx, ns: &[Node], i: usize) -> bool {
         && is_entity(ns.get(i + 1))
 }
 
-/// Converts the children of `el` to inline nodes.
+/// Converts the children of `el` to inline nodes; with `squash`, whitespace is collapsed across the
+/// whole run (as HTML does) and trimmed only at its two ends, never at a nested element's edges
+/// ("HOW<em> </em>ARE" keeps its space).
 pub fn children(cx: &mut Ctx, el: &Element) -> Vec<Inline> {
+    let mut out = inner(cx, el);
+    if cx.squash {
+        model::squash_inlines(&mut out);
+    }
+    out
+}
+
+/// Converts a list of nodes (not necessarily one element's children), squashed as [`children`].
+pub fn nodes(cx: &mut Ctx, ns: &[Node]) -> Vec<Inline> {
+    let mut out = inner_nodes(cx, ns);
+    if cx.squash {
+        model::squash_inlines(&mut out);
+    }
+    out
+}
+
+/// The children of a nested element, left for the outermost run to squash.
+fn inner(cx: &mut Ctx, el: &Element) -> Vec<Inline> {
     let mut out = Vec::new();
     for (i, c) in el.children.iter().enumerate() {
         match c {
@@ -96,14 +116,10 @@ pub fn children(cx: &mut Ctx, el: &Element) -> Vec<Inline> {
             Node::El(e) => element(cx, e, &mut out),
         }
     }
-    if cx.squash {
-        model::squash_inlines(&mut out);
-    }
     out
 }
 
-/// Converts a list of nodes (not necessarily one element's children).
-pub fn nodes(cx: &mut Ctx, ns: &[Node]) -> Vec<Inline> {
+fn inner_nodes(cx: &mut Ctx, ns: &[Node]) -> Vec<Inline> {
     let mut out = Vec::new();
     for c in ns {
         match c {
@@ -111,15 +127,12 @@ pub fn nodes(cx: &mut Ctx, ns: &[Node]) -> Vec<Inline> {
             Node::El(e) => element(cx, e, &mut out),
         }
     }
-    if cx.squash {
-        model::squash_inlines(&mut out);
-    }
     out
 }
 
 fn styled(cx: &mut Ctx, e: &Element, s: Style, out: &mut Vec<Inline>) {
     cx.t.el(e);
-    let c = children(cx, e);
+    let c = inner(cx, e);
     out.push(Inline::Style(s, c));
 }
 
@@ -147,7 +160,7 @@ pub fn element(cx: &mut Ctx, e: &Element, out: &mut Vec<Inline>) {
                 styled(cx, e, Style::SmallCaps, out)
             } else {
                 cx.t.note("inline", &format!("span style {st}"));
-                let c = children(cx, e);
+                let c = inner(cx, e);
                 out.extend(c);
             }
         }
@@ -166,7 +179,7 @@ pub fn element(cx: &mut Ctx, e: &Element, out: &mut Vec<Inline>) {
             let ref_id = cx.t.attr_u32(e, "RefID").filter(|&r| r != 0);
             let para = cx.t.attr_u32(e, "paraID");
             let url = cx.t.attr(e, "URL").map(str::to_string);
-            let c = children(cx, e);
+            let c = inner(cx, e);
             out.push(Inline::Link(Link {
                 kind,
                 ref_id,
@@ -193,7 +206,7 @@ pub fn element(cx: &mut Ctx, e: &Element, out: &mut Vec<Inline>) {
                     other => rest.push(other.clone()),
                 }
             }
-            let c = nodes(cx, &rest);
+            let c = inner_nodes(cx, &rest);
             let (kind, ref_id, url) = match (ty.as_str(), target) {
                 ("url", Some(u)) => (LinkKind::Web, None, Some(u)),
                 (_, Some(t)) => match t.parse::<u32>() {
@@ -282,7 +295,7 @@ pub fn element(cx: &mut Ctx, e: &Element, out: &mut Vec<Inline>) {
         "quote" => {
             cx.t.el(e);
             let align = quote_align(cx.t.attr_u32(e, "type"));
-            let mut c = children(cx, e);
+            let mut c = inner(cx, e);
             model::trim_ends(&mut c);
             out.push(Inline::Quote { align, c });
         }
@@ -299,7 +312,7 @@ pub fn element(cx: &mut Ctx, e: &Element, out: &mut Vec<Inline>) {
                 match c.name.as_str() {
                     "listitem" | "li" => {
                         cx.t.el(c);
-                        let mut it = children(cx, c);
+                        let mut it = inner(cx, c);
                         model::trim_ends(&mut it);
                         items.push(it);
                     }
@@ -316,7 +329,7 @@ pub fn element(cx: &mut Ctx, e: &Element, out: &mut Vec<Inline>) {
         }
         "fl" => {
             cx.t.el(e);
-            let mut c = children(cx, e);
+            let mut c = inner(cx, e);
             model::trim_ends(&mut c);
             out.push(Inline::Formula(c));
         }
@@ -342,14 +355,14 @@ pub fn element(cx: &mut Ctx, e: &Element, out: &mut Vec<Inline>) {
             cx.t.el(e);
             let gid = cx.t.attr_u32(e, "gid");
             let rid = cx.t.attr_u32(e, "rid");
-            let c = children(cx, e);
+            let c = inner(cx, e);
             out.push(Inline::Place { gid, rid, c });
         }
         "au" | "ti" | "pub" | "pubn" | "fdt" | "edt" | "voln" | "ser" | "ann" => {
             // A bibliography field nested inside another field (two sidebar files): flattened.
             cx.t.el(e);
             cx.t.note("bib", "nested field flattened");
-            let c = children(cx, e);
+            let c = inner(cx, e);
             for n in c {
                 match n {
                     Inline::Text(s) => model::push_text(out, &s),
@@ -365,7 +378,7 @@ pub fn element(cx: &mut Ctx, e: &Element, out: &mut Vec<Inline>) {
         "ENC" => {
             // Editorial note attached to a quotation's context ("An Escort is a … Ford").
             cx.t.el(e);
-            let c = children(cx, e);
+            let c = inner(cx, e);
             out.push(Inline::Unknown {
                 name: "note".into(),
                 c,
@@ -373,7 +386,7 @@ pub fn element(cx: &mut Ctx, e: &Element, out: &mut Vec<Inline>) {
         }
         _ => {
             cx.t.note("unmapped inline", &e.name);
-            let c = children(cx, e);
+            let c = inner(cx, e);
             out.push(Inline::Unknown {
                 name: e.name.clone(),
                 c,
@@ -514,6 +527,33 @@ mod tests {
         let d = xml::parse("<title>\r\n  <entity tag=\"Lstrok\"/>\r\n  <entity tag=\"oacute\"/>d<entity tag=\"zacute\"/> x</title>").unwrap();
         let mut t = Tracker::default();
         assert_eq!(model::plain(&title(&mut t, &d.root)), "Łódź x");
+    }
+
+    /// Titles squash whitespace across the whole run: a space inside an element's edge is a real space.
+    #[test]
+    fn title_spaces_at_element_edges() {
+        let t = |s: &str| {
+            let d = xml::parse(s).unwrap();
+            let mut tr = Tracker::default();
+            title(&mut tr, &d.root)
+        };
+        let em = |s: &str| Inline::Style(Style::Em, vec![Inline::Text(s.into())]);
+        let text = |s: &str| Inline::Text(s.into());
+        // Kids "HOW ARE THEY DIFFERENT?": the space is the whole of an <i>.
+        assert_eq!(t("<title>HOW<i> </i>ARE THEY</title>"), vec![text("HOW ARE THEY")]);
+        // A space at the start or end of an <i> moves out beside it.
+        assert_eq!(t("<title>Sheet Music for<i> La Bohème</i></title>"), vec![text("Sheet Music for "), em("La Bohème")]);
+        assert_eq!(t("<title><i>Eureka! </i>I have</title>"), vec![em("Eureka!"), text(" I have")]);
+        // Spaces both inside and after collapse to one, outside.
+        assert_eq!(t("<title>a <i>far right, </i> in\r\n  b</title>"), vec![text("a "), em("far right,"), text(" in b")]);
+        // Beside brackets and before closing punctuation the space was only layout.
+        assert_eq!(t("<title>Harry (<i> left </i>) is</title>"), vec![text("Harry ("), em("left"), text(") is")]);
+        assert_eq!(t("<title><i>Mata Hari </i>, and</title>"), vec![em("Mata Hari"), text(", and")]);
+        // Nested elements and the run's ends.
+        assert_eq!(
+            t("<title> <b><i>x </i></b>y <i> </i></title>"),
+            vec![Inline::Style(Style::Strong, vec![em("x")]), text(" y")]
+        );
     }
 
     #[test]

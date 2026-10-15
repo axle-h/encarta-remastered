@@ -580,5 +580,5 @@ one) play `tourHover`/`tourPick` through a rule; the 3D tour's site map is a can
 itself when the pointer enters a stop's box and on the click that moves there. Plain links and tabs are silent; keyboard-generated clicks are silent; menu-bar titles tick on rollover and menu-bar
 items click on press and release (the Features flyout's items are silent); `menuSounds` defaults to false and
 the Kids shell uses its own `kidsMenuSounds` (Tools › Menu and Button Sounds), default true (persisted choices are
-kept); the Features flyout's items are silent (VM pass 2 listened to them and heard nothing; ours used to tick); the startup sound plays once per page load. The timeline's Compare / View as List / Main Timeline controls do
+kept); the Features flyout's items are silent (VM pass 2 listened to them and heard nothing; ours used to tick); the startup sound is deliberately not played (removed 2026-10-15, with its Options check box and the Kids Tools › Startup Sound menu). The timeline's Compare / View as List / Main Timeline controls do
 not exist in our timeline page yet (so `timeline` plays for the era links, pan/zoom buttons and the list pager).

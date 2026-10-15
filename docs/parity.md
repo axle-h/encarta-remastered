@@ -203,7 +203,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Kids search | done | `kids/KidsSearch.tsx` (2026-10-15): the disc's result cards, "Sorry!" card, no suggestion list | whole words are filtered client-side from the first 50 hits |
 | Kids dictionary | done | | not reachable from Kids in the VM (no double-click lookup there) |
 | Kids interactives and games (264, Flash) | done | Ruffle (18 Kids copies in the test pass); match games native | — |
-| Kids' own menu bar, Favorites, Help | done | `kids/KidsShell.tsx` (2026-10-14; bar from the disc's bitmaps 2026-10-15): lime bar with Home/Back/Forward/Copy/Print orbs and File / Edit / View / Favorites / Tools / Help with the VM's submenus (Go to, Closed Captioning, Read Aloud, Menu and Button Sounds, Startup Sound, Troubleshooting; `fixtures/ui/kids/sub-*.png`) | Read Aloud uses the browser's speech synthesis (no highlighting while reading, as in the VM); yellow-arrow tooltips (`ArrowTip.tsx`, also on the adult orbs; Back says "Back to <page>"; position checked through the DOM only); Kids Copy copies the selection or the whole article without a dialog (UI pass 2) |
+| Kids' own menu bar, Favorites, Help | done | `kids/KidsShell.tsx` (2026-10-14; bar from the disc's bitmaps 2026-10-15): lime bar with Home/Back/Forward/Copy/Print orbs and File / Edit / View / Favorites / Tools / Help with the VM's submenus (Go to, Closed Captioning, Read Aloud, Menu and Button Sounds, Troubleshooting; Startup Sound left out with the jingle; `fixtures/ui/kids/sub-*.png`) | Read Aloud uses the browser's speech synthesis (no highlighting while reading, as in the VM); yellow-arrow tooltips (`ArrowTip.tsx`, also on the adult orbs; Back says "Back to <page>"; position checked through the DOM only); Kids Copy copies the selection or the whole article without a dialog (UI pass 2) |
 
 ## Interactives
 
@@ -226,7 +226,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| Options dialog (5 pages: General, Encarta Updates, Closed Captioning, World Atlas, Quality) | done | `app/OptionsDialog.tsx`, `settings/settings.tsx` (VM 2026-10-14): text size, captions (audio and video), atlas crosshairs, lat/long format, units, linear stats are wired | startup sound, rollover tick, press/release click, Kids rollover and timeline sounds play as measured in the VM (`settings/uiSounds.ts`; media.md §9); menu and button sounds default to off, as the original's Default button sets; 578/579 play on tour site-map stops (3D tour canvas and Virtual Tour points), dialog buttons tick on rollover; the other unheard ids are never played by the original (media.md §9) |
+| Options dialog (5 pages: General, Encarta Updates, Closed Captioning, World Atlas, Quality) | done | `app/OptionsDialog.tsx`, `settings/settings.tsx` (VM 2026-10-14): text size, captions (audio and video), atlas crosshairs, lat/long format, units, linear stats are wired | the startup sound is deliberately not played (no Options check box, 2026-10-15); rollover tick, press/release click, Kids rollover and timeline sounds play as measured in the VM (`settings/uiSounds.ts`; media.md §9); menu and button sounds default to off, as the original's Default button sets; 578/579 play on tour site-map stops (3D tour canvas and Virtual Tour points), dialog buttons tick on rollover; the other unheard ids are never played by the original (media.md §9) |
 | Kids / Premium switch | done | `/kids` | — |
 
 ## Accessibility

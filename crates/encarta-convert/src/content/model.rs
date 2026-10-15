@@ -287,24 +287,28 @@ pub fn squash(s: &str) -> String {
     out
 }
 
-/// Trims leading/trailing whitespace of an inline run and collapses internal whitespace runs
-/// (used for titles and table cells, where the source is pretty-printed).
+/// Collapses the whitespace of an inline run as HTML does: runs of it become one space, also across
+/// element boundaries (`"a "` + em`" b"` is `"a "` + em`"b"`), and the run's two ends are trimmed,
+/// descending into elements there. Spaces at a nested element's edges inside the run are kept
+/// ("HOW" + em`" "` + "ARE"). For titles and table cells, where the source is pretty-printed.
 pub fn squash_inlines(v: &mut Vec<Inline>) {
-    fn walk(v: &mut [Inline]) {
+    let is_space = |c: char| c.is_whitespace() && c != '\u{A0}';
+    /// `space`: the run so far ends in a collapsible space (true at its start).
+    fn walk(v: &mut Vec<Inline>, space: &mut bool, is_space: &dyn Fn(char) -> bool) {
         for n in v.iter_mut() {
             match n {
                 Inline::Text(t) => {
-                    let lead = t.starts_with(|c: char| c.is_whitespace() && c != '\u{A0}');
-                    let trail = t.ends_with(|c: char| c.is_whitespace() && c != '\u{A0}');
-                    let mut s = squash(t);
-                    if lead && !s.is_empty() {
-                        s.insert(0, ' ');
-                    }
-                    if trail && !s.is_empty() {
-                        s.push(' ');
-                    }
-                    if s.is_empty() && !t.is_empty() {
-                        s.push(' ');
+                    let mut s = String::with_capacity(t.len());
+                    for ch in t.chars() {
+                        if is_space(ch) {
+                            if !*space {
+                                s.push(' ');
+                                *space = true;
+                            }
+                        } else {
+                            s.push(ch);
+                            *space = false;
+                        }
                     }
                     *t = s;
                 }
@@ -312,19 +316,152 @@ pub fn squash_inlines(v: &mut Vec<Inline>) {
                 | Inline::Place { c, .. }
                 | Inline::Formula(c)
                 | Inline::Unknown { c, .. }
-                | Inline::Quote { c, .. } => walk(c),
+                | Inline::Quote { c, .. } => walk(c, space, is_space),
+                Inline::Link(l) => walk(&mut l.c, space, is_space),
                 Inline::TitleRef { title, alt } => {
-                    walk(title);
-                    walk(alt);
+                    walk(title, space, is_space);
+                    let mut s = true;
+                    walk(alt, &mut s, is_space);
+                    trim_end_deep(alt);
                 }
-                Inline::Link(l) => walk(&mut l.c),
-                Inline::List { items, .. } => items.iter_mut().for_each(|i| walk(i)),
-                _ => {}
+                Inline::List { items, .. } => {
+                    for i in items.iter_mut() {
+                        let mut s = true;
+                        walk(i, &mut s, is_space);
+                        trim_end_deep(i);
+                    }
+                    *space = true;
+                }
+                Inline::Break => *space = true,
+                _ => *space = false,
+            }
+        }
+        v.retain(|n| !matches!(n, Inline::Text(t) if t.is_empty()) && !matches!(n, Inline::Style(_, c) if c.is_empty()));
+        // Texts that met where an empty element was go back together.
+        let mut i = 1;
+        while i < v.len() {
+            if let (Inline::Text(_), Inline::Text(b)) = (&v[i - 1], &v[i]) {
+                let b = b.clone();
+                v.remove(i);
+                if let Inline::Text(a) = &mut v[i - 1] {
+                    a.push_str(&b);
+                }
+            } else {
+                i += 1;
             }
         }
     }
-    walk(v);
-    trim_ends(v);
+    let mut space = true;
+    walk(v, &mut space, &is_space);
+    hoist_spaces(v);
+    trim_end_deep(v);
+}
+
+/// Moves the space at either edge of a style, link or place out beside it (`em"far right, "` + "in"
+/// becomes `em"far right,"` + " in"), so emphasis and underlines stop at the words; elements left
+/// empty go. Beside an opening bracket or quote, or before closing punctuation, the space was only
+/// layout and is dropped ("(" + `em" left "` + ")" is "(left)"). Expects a squashed run.
+fn hoist_spaces(v: &mut Vec<Inline>) {
+    const OPENING: &[char] = &['(', '[', '{', '\u{201C}', '\u{2018}'];
+    const CLOSING: &[char] = &[')', ']', '}', ',', '.', ';', ':', '!', '?', '\u{201D}', '\u{2019}'];
+    let mut i = 0;
+    while i < v.len() {
+        let c = match &mut v[i] {
+            Inline::Style(_, c) | Inline::Place { c, .. } => c,
+            Inline::Link(l) => &mut l.c,
+            _ => {
+                i += 1;
+                continue;
+            }
+        };
+        hoist_spaces(c);
+        let lead = matches!(c.first_mut(), Some(Inline::Text(t)) if t.starts_with(' '));
+        if lead {
+            if let Some(Inline::Text(t)) = c.first_mut() {
+                t.remove(0);
+                if t.is_empty() {
+                    c.remove(0);
+                }
+            }
+        }
+        let trail = matches!(c.last_mut(), Some(Inline::Text(t)) if t.ends_with(' '));
+        if trail {
+            if let Some(Inline::Text(t)) = c.last_mut() {
+                t.pop();
+                if t.is_empty() {
+                    c.pop();
+                }
+            }
+        }
+        let empty_style = matches!(&v[i], Inline::Style(_, c) if c.is_empty());
+        if lead {
+            match i.checked_sub(1).map(|j| &mut v[j]) {
+                Some(Inline::Text(t)) => {
+                    if !t.ends_with(' ') && !t.ends_with(OPENING) {
+                        t.push(' ');
+                    }
+                }
+                _ => {
+                    v.insert(i, Inline::Text(" ".into()));
+                    i += 1;
+                }
+            }
+        }
+        if trail {
+            match v.get_mut(i + 1) {
+                Some(Inline::Text(t)) => {
+                    if !t.starts_with(' ') && !t.starts_with(CLOSING) {
+                        t.insert(0, ' ');
+                    }
+                }
+                _ => v.insert(i + 1, Inline::Text(" ".into())),
+            }
+        }
+        if empty_style {
+            v.remove(i);
+            // Two texts now meet: join them, keeping one space between.
+            if i > 0 && i < v.len() {
+                if let (Inline::Text(_), Inline::Text(b)) = (&v[i - 1], &v[i]) {
+                    let b = b.clone();
+                    v.remove(i);
+                    if let Inline::Text(a) = &mut v[i - 1] {
+                        let b = if a.ends_with(' ') { b.trim_start_matches(' ') } else { &b[..] };
+                        a.push_str(b);
+                    }
+                }
+            }
+            continue;
+        }
+        i += 1;
+    }
+}
+
+/// Trims trailing whitespace at the end of a run, inside the elements that end it; elements left
+/// empty by that go too.
+fn trim_end_deep(v: &mut Vec<Inline>) {
+    while let Some(last) = v.last_mut() {
+        match last {
+            Inline::Text(t) => {
+                let s = t.trim_end_matches(|c: char| c.is_whitespace() && c != '\u{A0}');
+                if s.is_empty() {
+                    v.pop();
+                    continue;
+                }
+                t.truncate(s.len());
+            }
+            Inline::Style(_, c) => {
+                trim_end_deep(c);
+                if c.is_empty() {
+                    v.pop();
+                    continue;
+                }
+            }
+            Inline::Link(l) => trim_end_deep(&mut l.c),
+            Inline::Place { c, .. } => trim_end_deep(c),
+            _ => {}
+        }
+        break;
+    }
 }
 
 /// Removes leading and trailing whitespace from the first and last text nodes.

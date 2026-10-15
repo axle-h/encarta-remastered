@@ -32,7 +32,7 @@ export function OptionsDialog({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener("keydown", key);
   }, [onClose]);
 
-  const check = (k: "startupSound" | "menuSounds" | "captions" | "atlasLinearStats" | "atlasCrosshairs", label: string) => (
+  const check = (k: "menuSounds" | "captions" | "atlasLinearStats" | "atlasCrosshairs", label: string) => (
     <label>
       <input type="checkbox" checked={draft[k]} onChange={(e) => set(k, e.target.checked)} /> {label}
     </label>
@@ -58,7 +58,6 @@ export function OptionsDialog({ onClose }: { onClose: () => void }) {
             <>
               <fieldset className="dlg-group">
                 <legend>Sounds</legend>
-                {check("startupSound", "Play startup sound")}
                 {check("menuSounds", "Play menu and button sounds")}
               </fieldset>
               <fieldset className="dlg-group">

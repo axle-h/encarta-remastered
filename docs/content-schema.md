@@ -270,7 +270,11 @@ contains `DLX` (VM: Related Articles of Horse and Lillehammer match `DLX`, not `
   1 in every article without sections). The 2009 reader has no pages and jumps by `paragraphid`, so `pn` is kept
   but unused.
 - `<entity tag="sortattop"/>` at the start of a title is a sort marker (keep this node first) → `sort_top`.
-- Titles are pretty-printed; we collapse white space.
+- Titles are pretty-printed; we collapse white space across the whole title as HTML does, trimming only its two
+  ends: a space at the edge of a tag is a real space (`HOW<i> </i>ARE`, `for<i> La Bohème</i>`, `<i>Eureka! </i>I`;
+  2026-10-15: 21 item titles, 16 articles' headings, 121 captions and 359 tables had lost one). It is moved out
+  beside the tag, and dropped next to an opening bracket or before closing punctuation (`(<i> left </i>)` is
+  "(left)"). Table cells and bibliography fields follow the same rule.
 
 Our tree JSON: `[{"title": [inline], "ref": id, "group": "...", "para": n, "pn": n, "node": nodeid,
 "list": true, "sort_top": true, "children": [...]}]`.

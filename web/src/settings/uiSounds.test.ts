@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { configureUiSounds, installUiSoundDelegates, playMenuSound, playUiSound, playStartupSound } from "./uiSounds";
+import { configureUiSounds, installUiSoundDelegates, playMenuSound, playUiSound } from "./uiSounds";
 
 const played: string[] = [];
 let refuse = false;
@@ -30,31 +30,17 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("interface sounds", () => {
   it("plays menu sounds only when the option is on", () => {
-    configureUiSounds(true, false);
+    configureUiSounds(false);
     playMenuSound();
     expect(played).toEqual([]);
-    configureUiSounds(true, true);
+    configureUiSounds(true);
     playMenuSound();
     playMenuSound("kids-3");
     expect(played).toEqual(["/sounds/click.wav", "/sounds/kids-3.wav"]);
   });
 
-  it("plays the startup sound once, after the first gesture when refused", async () => {
-    configureUiSounds(true, true);
-    refuse = true;
-    playStartupSound();
-    await new Promise((r) => setTimeout(r, 0));
-    expect(played).toEqual([]);
-    refuse = false;
-    document.dispatchEvent(new Event("pointerdown"));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(played).toEqual(["/sounds/startup.wav"]);
-    playStartupSound();
-    expect(played).toHaveLength(1);
-  });
-
   it("maps controls to the measured sounds", () => {
-    configureUiSounds(true, true);
+    configureUiSounds(true);
     const off = installUiSoundDelegates();
     document.body.innerHTML = `<button id=orb class=orb></button><button id=dis class=orb disabled></button>
       <div class=kids-shell><button id=kid class=orb></button></div>
@@ -78,13 +64,13 @@ describe("interface sounds", () => {
     fire("title", "click");
     expect(take()).toEqual(["timeline", "click"]);
     off();
-    configureUiSounds(true, false);
+    configureUiSounds(false);
     playUiSound("tick");
     expect(take()).toEqual([]);
   });
 
   it("plays the menu-bar and print-dialog sounds measured in VM pass 5", () => {
-    configureUiSounds(true, true);
+    configureUiSounds(true);
     const off = installUiSoundDelegates();
     document.body.innerHTML = `<div class=menu><button id=title></button><ul role=menu><li><button role=menuitem id=item></button></li>
       <li><button role=menuitem id=dis disabled></button></li></ul></div>
@@ -133,19 +119,19 @@ describe("interface sounds", () => {
   });
 
   it("uses the Kids switch while the Kids shell is shown", () => {
-    configureUiSounds(true, false, true);
+    configureUiSounds(false, true);
     playUiSound("click");
     expect(played).toEqual([]);
     document.body.innerHTML = `<div class=kids-shell></div>`;
     playUiSound("click");
-    configureUiSounds(true, true, false);
+    configureUiSounds(true, false);
     playUiSound("click");
     expect(played).toEqual(["/sounds/click.wav"]);
     document.body.innerHTML = "";
   });
 
   it("plays the dialog button and tour site-map sounds", () => {
-    configureUiSounds(true, true);
+    configureUiSounds(true);
     const off = installUiSoundDelegates();
     document.body.innerHTML = `<div class=dlg-backdrop><button id=ok></button><button role=tab id=page></button></div>
       <div class=pano-site><button id=pt class=pano-site-pt></button><button id=here class="pano-site-pt current"></button></div>`;

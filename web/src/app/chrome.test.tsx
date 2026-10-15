@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import { COPYRIGHT, SOURCE_LINE, addSourceToCopy } from "./commands";
+import { COPYRIGHT, SOURCE_LINE, SOURCE_LINE_MD, addSourceToCopy } from "./commands";
 import { BROWSE_ALL, FEATURE_GROUPS, featureHref } from "./featuresData";
 import { FeaturesMenu } from "./FeaturesMenu";
 import { OptionsDialog } from "./OptionsDialog";
@@ -108,7 +108,7 @@ describe("Ctrl+C in an article", () => {
     const data = new Map<string, string>();
     const e = Object.assign(new Event("copy", { cancelable: true }), { clipboardData: { setData: (t: string, v: string) => void data.set(t, v) } }) as unknown as ClipboardEvent;
     expect(addSourceToCopy(e)).toBe(true);
-    expect(data.get("text/plain")).toBe(`Zebras are striped.\n${SOURCE_LINE}`);
+    expect(data.get("text/plain")).toBe(`Zebras are *striped*.\n\n${SOURCE_LINE_MD}`);
     expect(data.get("text/html")).toContain("<b>Microsoft® Encarta® 2009.</b>");
     art.remove();
   });

@@ -187,7 +187,9 @@ fn entry(t: &mut Tracker, e: &Element) -> Value {
                     squash: true,
                 };
                 for l in inline::children(&mut cx, c) {
-                    if let Inline::Link(l) = l {
+                    if let Inline::Link(mut l) = l {
+                        // Each link stands alone: no space carried over from the run.
+                        model::trim_ends(&mut l.c);
                         links.push(json!({"url": l.url, "ref": l.ref_id, "c": model::inlines_json(&l.c)}));
                     }
                 }

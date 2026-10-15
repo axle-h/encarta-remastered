@@ -5,14 +5,13 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { configureUiSounds, installUiSoundDelegates, playStartupSound } from "./uiSounds";
+import { configureUiSounds, installUiSoundDelegates } from "./uiSounds";
 
 export type TextSize = "small" | "medium" | "large";
 export type LatLongFormat = "dm" | "dms" | "decimal";
 export type Units = "metric" | "us";
 
 export interface Settings {
-  startupSound: boolean;
   menuSounds: boolean;
   /** Encarta Kids' own Tools > Menu and Button Sounds; on by default there (VM pass 5). */
   kidsMenuSounds: boolean;
@@ -31,7 +30,6 @@ export interface Settings {
 export const SETTINGS_KEY = "encarta.settings.v1";
 
 export const DEFAULT_SETTINGS: Settings = {
-  startupSound: true,
   menuSounds: false,
   kidsMenuSounds: true,
   textSize: "medium",
@@ -58,7 +56,6 @@ export function parseSettings(raw: string | null): Settings {
   }
   const d = DEFAULT_SETTINGS;
   return {
-    startupSound: bool(o.startupSound, d.startupSound),
     menuSounds: bool(o.menuSounds, d.menuSounds),
     kidsMenuSounds: bool(o.kidsMenuSounds, d.kidsMenuSounds),
     textSize: oneOf(o.textSize, ["small", "medium", "large"], d.textSize),
@@ -112,13 +109,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, []);
   useEffect(() => applyTextSize(settings.textSize), [settings.textSize]);
   useEffect(
-    () => configureUiSounds(settings.startupSound, settings.menuSounds, settings.kidsMenuSounds),
-    [settings.startupSound, settings.menuSounds, settings.kidsMenuSounds],
+    () => configureUiSounds(settings.menuSounds, settings.kidsMenuSounds),
+    [settings.menuSounds, settings.kidsMenuSounds],
   );
-  useEffect(() => {
-    playStartupSound();
-    return installUiSoundDelegates();
-  }, []);
+  useEffect(installUiSoundDelegates, []);
   const value = useMemo(() => ({ settings, update }), [settings, update]);
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }

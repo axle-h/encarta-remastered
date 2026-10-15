@@ -368,6 +368,7 @@ html[data-text-size="large"] .art-text {
   html[data-print-scope="text"] .art-strip,
   html[data-print-scope="text"] .art-side,
   html[data-print-scope="text"] .enc-media,
+  html[data-print-scope="text"] .enc-mbox,
   html[data-print-scope="text"] .art-text img {
     display: none !important;
   }

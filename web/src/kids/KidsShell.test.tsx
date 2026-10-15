@@ -136,8 +136,7 @@ describe("Kids menu bar", () => {
     cleanup();
     setup();
     fireEvent.click(screen.getByRole("button", { name: "Tools" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /Startup Sound/ }));
-    expect(screen.getByRole("menuitem", { name: /On/ })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: /Startup Sound/ })).toBeNull();
   });
 
   it("Ctrl+L toggles captions and F9 stops reading", () => {

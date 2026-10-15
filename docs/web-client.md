@@ -350,7 +350,10 @@ decoded size and horizon match an independent survey of all 167.
   - Copy (`commands.ts`): a selection gets the source line "Microsoft® Encarta® 2009. © 1993-2008 Microsoft
     Corporation. All rights reserved." on the next line, a whole article or dictionary entry after a blank line;
     Ctrl+C inside an article does the same (text and HTML, the name in bold). The Kids Copy button copies the
-    selection or else the whole article, with no dialog. The dictionary's Copy copies a selection alone.
+    selection or else the whole article, with no dialog. The dictionary's Copy copies a selection alone. Deliberate
+    differences: article copies put Markdown in the plain-text flavour (`markdown.ts`: headings, emphasis, lists,
+    tables, web links; the source line its own paragraph with the name in bold) and HTML beside it, and no-break
+    spaces are copied as plain spaces.
   - Read Aloud (`readAloud.ts`, browser speech synthesis; adult Edit menu and Kids Tools menu): Whole Article and
     Selected Text only while idle, Stop Reading (F9) and Pause only while reading, Pause becomes Continue. Nothing is
     highlighted while it reads.

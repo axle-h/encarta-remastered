@@ -13,6 +13,11 @@
   }
 
   .chrome,
+  .kids-bar,
+  .kids-menu,
+  .kids-pictures-button,
+  .arrow-tip,
+  .enc-speaker,
   .skip-link,
   .art-strip,
   .art-tools,
@@ -39,6 +44,7 @@
     display: none !important;
   }
 
+  .shell,
   .page {
     min-height: 0 !important;
   }
@@ -61,6 +67,25 @@
   .art-text {
     font-size: 11pt;
     line-height: 1.45;
+  }
+
+  /* No left gutter: the text takes the page's width, and with media the picture boxes float at the
+     left of the text instead of in the gutter. */
+  .art-text {
+    --gutter: 0px;
+    padding-left: 0 !important;
+  }
+
+  .art-text :is(.enc-p, .enc-intro, .enc-byline, .enc-heading, .enc-rule, .enc-bib, .enc-quote, .art-contrib) {
+    max-width: none !important;
+  }
+
+  .art-text .enc-mbox {
+    margin: 0 12pt 8pt 0;
+  }
+
+  .art-text .enc-inline-table {
+    margin-left: 0;
   }
 
   a,
@@ -103,5 +128,41 @@
   .home,
   .browse {
     background: none !important;
+  }
+
+  /* Kids articles: the fixed-height panel and its scroller unroll into one column of text; the
+     picture tiles stay out (Kids prints offer only Whole Article Text). */
+  .kids-shell {
+    min-width: 0 !important;
+  }
+
+  .kids-art,
+  .kids-art-scroll {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: none !important;
+  }
+
+  .kids-art-head {
+    height: auto !important;
+    margin-bottom: 12pt;
+  }
+
+  .kids-text {
+    float: none !important;
+    width: auto !important;
+    padding: 0 !important;
+  }
+
+  .kids-text .enc-article {
+    width: auto !important;
+    padding: 0 !important;
+  }
+
+  .kids-media {
+    display: none !important;
   }
 }
