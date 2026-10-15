@@ -6,7 +6,7 @@ import { Interpreter, type Handlers } from "./script/interp";
 import { atof, atoi, foldCase, parseCommand } from "./script/parse";
 import { cursorZone, followGround, lookPitch, mouseVector, newCamera, setPitch, stepMove, stepPitch, timeFactor, NO_INPUT } from "./sim/camera";
 import { collide, slideMove } from "./sim/collision";
-import { chunkVisible, cloudPhi, Filmstrip, flickerColour, flickerFactor, FlickerLight, lcg, rasteriseCloud, Ripple } from "./sim/effects";
+import { chunkVisible, cloudPhi, Filmstrip, flickerColour, flickerFactor, FlickerLight, lcg, rasteriseCloud, Ripple, rippleSkip } from "./sim/effects";
 import { WalkMap, WalkMapSet, type Segment } from "./sim/walkmap";
 import { markerMoved, parseWorldLoaded, siteMapMarker, wedgeAngles } from "./sitemap";
 import type { Cell, ElementDef, LayerFile, Step, StepOf, WalkMapFile } from "./types";
@@ -380,6 +380,77 @@ describe("flicker (§7.2.6)", () => {
     const dst = new Uint8Array(src.length);
     r.render(src, dst);
     expect(dst[0]).toBe(200);
+  });
+
+  it("water ripple: frame skipping above 80 fps and the drop wait (§7.4.6)", () => {
+    expect([30, 40, 64, 79.9, 80, 100, 119.9, 120, 252].map(rippleSkip)).toEqual([0, 0, 0, 0, 1, 1, 1, 2, 5]);
+    // A source that always says "middle of the field" and rand() & 1 = 1: every try stamps.
+    const mid: () => number = () => 0.5 + 1e-9;
+    const steps = (fps: number, frames: number) => {
+      const r = new Ripple(16, 16);
+      let n = 0;
+      for (let i = 0; i < frames; i++) if (r.frame(fps, mid)) n++;
+      return n;
+    };
+    expect(steps(64, 64)).toBe(64); // every frame below 80 fps (VM: 631 steps in 641 frames at 64 fps)
+    expect(steps(100, 64)).toBe(32); // skip 1: every second frame
+    expect(steps(130, 63)).toBe(21); // skip 2
+    // The first step drops at once; with a wait of 1 (rand() & 1 = 1) the next drop comes two steps later.
+    const tries: number[] = [];
+    const r = new Ripple(16, 16);
+    const spy = r.randomDrop.bind(r);
+    let step = 0;
+    r.randomDrop = (rng) => { tries.push(step); return spy(rng); };
+    for (step = 0; step < 6; step++) r.frame(64, mid);
+    expect(tries).toEqual([0, 2, 4]);
+  });
+
+  it("water ripple: drop positions, 2-texel border and floor shifts (§7.4.6)", () => {
+    const seq = (xs: number[]) => { let i = 0; return () => xs[i++ % xs.length] ?? 0; };
+    const r = new Ripple(16, 16);
+    expect(r.randomDrop(seq([3 / 16, 8 / 16, 0]))).toBe(false); // x = 3: not 3 < x
+    expect(r.randomDrop(seq([13 / 16, 8 / 16, 0]))).toBe(false); // x = 13: not x < W − 3
+    expect(r.randomDrop(seq([8 / 16, 12.5 / 16, 0]))).toBe(true); // y = 12 = H − 4 is fine
+    expect(r.randomDrop(seq([8 / 16, 13 / 16, 0]))).toBe(false);
+    expect(r.randomDrop(seq([4 / 16, 4 / 16, 0]))).toBe(true); // shift (0 & 15) + 1
+    expect(r.cur[4 * 16 + 4]).toBe(750);
+    expect(r.cur[12 * 16 + 8]).toBe(750);
+    expect(r.cur.filter((v) => v !== 0).length).toBe(2 * 21);
+    // Arithmetic shifts: one neighbour at −1 gives (−1 >> 2) = −1 where truncation would give 0.
+    const f = new Ripple(8, 8);
+    f.cur[3 * 8 + 4] = -1;
+    f.step();
+    expect(f.cur[3 * 8 + 3]).toBe(-1 - (-1 >> 4)); // −1 − (−1) = 0 after damping
+    expect(f.cur[2 * 8 + 3]).toBe(0);
+    const g = new Ripple(8, 8);
+    g.cur[4 * 8 + 4] = -40;
+    g.step();
+    expect(g.cur[4 * 8 + 3]).toBe(-10 - (-10 >> 4)); // (−40 >> 2) = −10, damped to −9
+    // The outer two rows and columns are never written.
+    g.cur.fill(5000);
+    g.step();
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+      if (x < 2 || y < 2 || x > 5 || y > 5) expect(g.cur[y * 8 + x]).toBe(0);
+    }
+  });
+
+  it("water ripple display: linear offset across rows, bottom-up surface, black outside (§7.4.6)", () => {
+    const w = 4, h = 3;
+    const r = new Ripple(w, h);
+    // Image pixel at display row y holds surface row h − 1 − y; red = surface index.
+    const src = new Uint8Array(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      const o = ((h - 1 - Math.floor(i / w)) * w + (i % w)) * 4;
+      src[o] = i; src[o + 3] = 255;
+    }
+    r.prev[6] = 1; // the displayed field (the one the last step started from)
+    const dst = new Uint8Array(src.length);
+    r.render(src, dst);
+    const at = (i: number) => dst[((h - 1 - Math.floor(i / w)) * w + (i % w)) * 4];
+    expect(at(7)).toBe(8); // x = 3, y = 1: one to the right runs on to the next row's first texel
+    expect(at(6)).toBe(1); // offset (0 − 1)·4 + (0 − 1) = −5
+    expect(at(10)).toBe(0); // offset +4 → index 14, past the end: black
+    expect(at(0)).toBe(0); expect(at(4)).toBe(4); expect(at(2)).toBe(2); // row 0 and column 0 copy
   });
 
   it("cloud impostor: chunk culling and the reference rasteriser", () => {

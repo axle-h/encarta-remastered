@@ -60,7 +60,7 @@ export interface BibBlock {
   annotation?: Inline[];
 }
 
-/** Column of a placed item (content-schema §2 rule 6): the text column or the left margin. */
+/** Column of a placed item (content-schema §2 rule 7): the text column or the left margin. */
 export type MediaColumn = "text" | "margin";
 
 /** One placed item: its id, association group and sequence number. */

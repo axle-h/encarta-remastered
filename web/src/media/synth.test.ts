@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseMidi } from "./midi";
 import { absCents, centibels, regionPitchCents, regionsFor, resolvePreset, timecents, volumeEnvelope, type SfIndex, type SfPreset, type SfRegion } from "./soundfont";
-import { scheduleUntil, SoundfontEngine, volumePoints } from "./synth";
+import { gsRelease, panGains, scheduleUntil, SoundfontEngine, volumePoints } from "./synth";
 
 /** A Standard MIDI File, format 0, 480 ppq at the default tempo (0.5 s per quarter); synthetic. */
 function smf0(track: number[]): Uint8Array {
@@ -50,6 +50,18 @@ describe("MIDI reader: controls", () => {
     expect(song.notes[0]!.d).toBeCloseTo(1.5);
   });
 
+  it("treats any non-zero sustain pedal value as down, as the GS synth does", () => {
+    const song = parseMidi(
+      smf0([
+        0x00, 0xb0, 64, 32, // pedal 32: down
+        0x00, 0x90, 60, 100,
+        0x83, 0x60, 0x80, 60, 0, // released at 0.5 s
+        0x87, 0x40, 0xb0, 64, 0, // pedal up at 1.5 s
+      ]),
+    );
+    expect(song.notes[0]!.d).toBeCloseTo(1.5);
+  });
+
   it("follows RPN 0 pitch bend sensitivity", () => {
     const song = parseMidi(smf0([0x00, 0xb0, 101, 0, 0x00, 0xb0, 100, 0, 0x00, 0xb0, 6, 12, 0x00, 0xe0, 0x7f, 0x7f]));
     expect(song.controls[0]!.value).toBeCloseTo((8191 / 8192) * 1200);
@@ -92,6 +104,28 @@ describe("soundfont", () => {
     const r = region({ volEnv: [-12000, -12000, 0, 0, 960, 0], volEnvKey: [0, 100] });
     expect(volumeEnvelope(r, 60).decay).toBeCloseTo(1);
     expect(volumeEnvelope(r, 48).decay).toBeCloseTo(2);
+  });
+});
+
+describe("GS synth fits", () => {
+  it("pans as a balance: the near side keeps its level, the far side falls as a square root", () => {
+    expect(panGains(64)).toEqual([1, 1]);
+    const db = (g: [number, number]) => 20 * Math.log10(g[1] / g[0]);
+    // Measured R − L on the Microsoft GS synth: −2, −3.7, −6.7 dB at CC 48, 32, 16 (within 1 dB).
+    expect(db(panGains(48))).toBeCloseTo(-1.25, 0);
+    expect(db(panGains(32))).toBeCloseTo(-3, 0);
+    expect(db(panGains(16))).toBeCloseTo(-6.0, 0);
+    expect(panGains(96)[1]).toBe(1);
+    expect(panGains(0)).toEqual([1, 0]);
+    expect(panGains(127)).toEqual([0, 1]);
+  });
+
+  it("shortens releases by instrument family and leaves the rest", () => {
+    expect(gsRelease(56, 0.4)).toBe(0.05); // trumpet
+    expect(gsRelease(73, 0.02)).toBe(0.02); // flute with a release already shorter
+    expect(gsRelease(48, 0.8)).toBeCloseTo(0.4); // strings
+    expect(gsRelease(19, 1)).toBeCloseTo(0.2); // church organ
+    expect(gsRelease(0, 1)).toBe(1); // piano
   });
 });
 
@@ -176,6 +210,18 @@ describe("synth engine", () => {
     const initial = (100 / 127) ** 2;
     expect(calls).toContainEqual(["target", (50 / 127) ** 2, expect.closeTo(0.35)]);
     expect(calls).toContainEqual(["set", initial, expect.closeTo(1.1)]);
+    engine.stop();
+  });
+
+  it("drives the mod wheel's vibrato from one 6 Hz LFO per channel, so held notes follow the wheel", () => {
+    vi.useFakeTimers();
+    // Mod wheel to 127 at 0.25 s and back to 0 at 0.5 s.
+    const song = parseMidi(smf0([0x00, 0x90, 60, 100, 0x81, 0x70, 0xb0, 1, 127, 0x81, 0x70, 0xb0, 1, 0, 0x00, 0x80, 60, 0]));
+    const { ctx, calls } = fakeContext();
+    const engine = new SoundfontEngine(ctx, ctx.destination, song, { presets: new Map(), samples: 0 });
+    engine.schedule(1);
+    expect(calls).toContainEqual(["set", 42, expect.closeTo(0.35)]);
+    expect(calls).toContainEqual(["set", 0, expect.closeTo(0.6)]);
     engine.stop();
   });
 });

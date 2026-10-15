@@ -32,8 +32,8 @@ import {
   type StatsIndex,
   type StatValue,
 } from "./data";
-import { hoverClassesAt, hoverTarget, rankHits, viewTitle, type HitPlace, type QueriedFeature } from "./hit";
-import { HIT_PREFIX, hitClassesAt, hitRanges, vectorSources, type ClassOverrides } from "./layers";
+import { hoverClassesAt, hoverTarget, labelHitAt, rankHits, viewTitle, type HitPlace, type QueriedFeature } from "./hit";
+import { HIT_PREFIX, hitClassesAt, hitOrder, hitRanges, vectorSources, type ClassOverrides } from "./layers";
 import {
   MILLER_MVT_PROTOCOL,
   MILLER_RASTER_PROTOCOL,
@@ -247,6 +247,7 @@ export function Atlas({
   const flat = projection === "flat";
   const shift = quantiseShift(zoomShift(flat, pOverM, stylePOverM, flat ? 0 : shiftLat));
   const ranges = useMemo(() => (raw ? hitRanges(raw, overrides) : new Map()), [raw, overrides]);
+  const order = useMemo(() => (raw ? hitOrder(raw) : undefined), [raw]);
   const body = entry ? styleBody(entry) : "earth";
   const isStatistical = entry?.id === 12;
 
@@ -268,12 +269,13 @@ export function Atlas({
     pOverM,
     shift,
     ranges,
+    order,
     hoverHighlight,
     paneHeight,
     quizMode,
     onPlaceClick,
   });
-  live.current = { ...live.current, drawn, raw, meta, zoom, body, selected, onViewChange, entry, projection, title, pOverM, shift, ranges, hoverHighlight, paneHeight, quizMode, onPlaceClick };
+  live.current = { ...live.current, drawn, raw, meta, zoom, body, selected, onViewChange, entry, projection, title, pOverM, shift, ranges, order, hoverHighlight, paneHeight, quizMode, onPlaceClick };
   /** Real latitude ↔ the map's latitude (the flat view draws Miller in view latitudes, miller.ts). */
   const toMapLat = useCallback((lat: number) => (live.current.projection === "flat" ? toViewLat(lat) : lat), []);
   const fromMapLat = useCallback((lat: number) => (live.current.projection === "flat" ? fromViewLat(lat) : lat), []);
@@ -534,6 +536,16 @@ export function Atlas({
     };
     /** Classes in the hit list at the current zoom (the ranges are in the style's own zooms). */
     const allowed = () => hitClassesAt(live.current.ranges, map.getZoom() - live.current.shift);
+    /** Half the size of a point's icon in px, or undefined for a name without a symbol. */
+    const iconRadius = (f: QueriedFeature) => {
+      const name = iconOf(f);
+      if (!name) return undefined;
+      const img = map.hasImage(name) ? map.getImage(name) : undefined;
+      return img ? Math.max(img.data.width, img.data.height) / (img.pixelRatio || 1) / 2 : 4;
+    };
+    /** The menu's places at a screen point, in Encarta's order (label hits first, mad-styling.md §4.5). */
+    const menuHits = (at: { x: number; y: number }) =>
+      rankHits(hitsAt(at), iconOf, allowed(), { order: live.current.order, labelHit: labelHitAt(at, (c) => map.project(c), iconRadius) });
     let hoverFrame = 0;
     let last: MapMouseEvent | null = null;
     const setHover = (entity: number | null) => {
@@ -550,7 +562,7 @@ export function Atlas({
       hoverFrame = requestAnimationFrame(() => {
         hoverFrame = 0;
         if (!last || !live.current.raw) return;
-        const hits = rankHits(hitsAt(last.point), iconOf, allowed());
+        const hits = menuHits(last.point);
         // Encarta highlights nothing on hover (V11); the Customizer can turn it on.
         const target = live.current.hoverHighlight && live.current.built ? hoverTarget(hits, hoverClassesAt(live.current.built, map.getZoom())) : undefined;
         setHover(target?.entity ?? null);
@@ -569,7 +581,7 @@ export function Atlas({
       setHoverCountry(null);
     };
     const onClick = (e: MapMouseEvent) => {
-      const hits = rankHits(hitsAt(e.point), iconOf, allowed());
+      const hits = menuHits(e.point);
       setTooltip(null);
       live.current.onPlaceClick?.(hits, { lat: fromMapLat(e.lngLat.lat), lon: e.lngLat.lng });
       if (!hits.length || live.current.quizMode) {

@@ -4,8 +4,9 @@
  * pitch, loop, lowpass filter, volume and modulation envelopes, pan, and reverb and chorus sends).
  *
  * Channel controls follow the SoundFont 2 default modulators: volume (CC 7) and expression (CC 11)
- * as a squared gain, pan (CC 10) added to the region's pan, reverb (CC 91) and chorus (CC 93) each
- * adding up to 20 % send, the mod wheel (CC 1) adding up to 50 cents of vibrato, and the pitch wheel
+ * as a squared gain, pan (CC 10) as the GS synth's balance law (`panGains`), reverb (CC 91) and chorus (CC 93) each
+ * adding up to 20 % send, the mod wheel (CC 1) adding up to 42 cents of 6 Hz vibrato to the notes already
+ * sounding as well as new ones (as the Microsoft GS synth does), and the pitch wheel
  * (±2 semitones unless the song sets RPN 0). Note velocity is a squared gain. Not modelled: the
  * modulation LFO, "loop until release" (played as a continuous loop) and the soundfont's own
  * modulators. Levels and effect returns were set against FluidSynth renders (web-client.md).
@@ -35,6 +36,36 @@ export const SYNTH_GAIN = 0.3;
 /** Effect return levels: FluidSynth's effects are stronger still (its chorus by about 2 dB). */
 const REVERB_LEVEL = 1.4;
 const CHORUS_LEVEL = 1.2;
+/** Mod wheel vibrato at full wheel, in cents each way, and its rate (measured on the Microsoft GS synth). */
+const MOD_WHEEL_CENTS = 42;
+const MOD_WHEEL_HZ = 6;
+/** Levels against the Microsoft GS synth: its crash and snare/kick samples are louder than Fluid's by this. */
+const DRUM_TRIM_DB = 5;
+const TRIMMED_DRUMS = new Set([36, 37, 38, 49, 52, 55, 57]);
+
+/**
+ * Channel pan (CC 10) as the Microsoft GS synth applies it: a balance, not an equal-power pan. The
+ * channel on the side of the pan keeps its level and the other falls as the square root of the
+ * distance left to the edge (R − L: −2 dB at CC 48, −3.7 at 32, −6.7 at 16; hard pans nearly silence
+ * the far side). An equal-power pan gives −3.5, −7.7 and −14 dB.
+ */
+export function panGains(cc: number): [left: number, right: number] {
+  const x = Math.max(-1, Math.min(1, (cc - 64) / 63));
+  const far = Math.sqrt(1 - Math.abs(x));
+  return x < 0 ? [1, far] : [far, 1];
+}
+
+/**
+ * Release time after the Microsoft GS synth's: brass, reeds and pipes (programs 56–79) stop almost
+ * at note-off, strings and ensembles (40–55) release in half the time Fluid's do, organs in a fifth.
+ */
+export function gsRelease(program: number, release: number): number {
+  if (program >= 56 && program < 80) return Math.min(release, 0.05);
+  if (program >= 40 && program < 56) return release * 0.5;
+  if (program >= 16 && program < 24) return release * 0.2;
+  return release;
+}
+
 /** How far ahead notes are scheduled, seconds. */
 const LOOKAHEAD = 0.5;
 
@@ -100,9 +131,14 @@ const initialChannel = (): ChannelState => ({ volume: 100, expression: 127, pan:
 interface Channel {
   state: ChannelState;
   dry: GainNode;
+  /** Left and right gains of the channel's pan (`panGains`). */
+  balance: [GainNode, GainNode];
   wet: GainNode;
   chorus: GainNode;
   bend: ConstantSourceNode;
+  /** The mod wheel's vibrato, in cents: one LFO per channel, feeding every voice on it. */
+  vibrato: GainNode;
+  vibratoLfo: OscillatorNode;
 }
 
 interface Voice {
@@ -279,17 +315,35 @@ export class SoundfontEngine {
       const dry = ctx.createGain();
       const wet = ctx.createGain();
       const cho = ctx.createGain();
-      dry.connect(this.out);
+      const split = ctx.createChannelSplitter(2);
+      const merge = ctx.createChannelMerger(2);
+      const balance: [GainNode, GainNode] = [ctx.createGain(), ctx.createGain()];
+      dry.connect(split);
+      balance.forEach((g, i) => {
+        split.connect(g, i);
+        g.connect(merge, 0, i);
+      });
+      merge.connect(this.out);
       wet.connect(this.reverb);
       cho.connect(chorus.input);
       const bend = ctx.createConstantSource();
       bend.offset.value = 0;
       bend.start(now);
-      this.channels.push({ state: initialChannel(), dry, wet, chorus: cho, bend });
+      const vibratoLfo = ctx.createOscillator();
+      vibratoLfo.frequency.value = MOD_WHEEL_HZ;
+      vibratoLfo.start(now);
+      const vibrato = ctx.createGain();
+      vibrato.gain.value = 0;
+      vibratoLfo.connect(vibrato);
+      this.channels.push({ state: initialChannel(), dry, balance, wet, chorus: cho, bend, vibrato, vibratoLfo });
     }
     // Controls before the start position set the channels' state; earlier notes are skipped.
     while (this.nextControl < song.controls.length && song.controls[this.nextControl]!.t < from) this.applyControl(song.controls[this.nextControl++]!, now);
-    for (let c = 0; c < 16; c++) this.applyLevels(c, now, true);
+    for (let c = 0; c < 16; c++) {
+      this.applyLevels(c, now, true);
+      this.applyPan(c, now, true);
+      this.channels[c]!.vibrato.gain.setValueAtTime(this.channels[c]!.state.modulation * (MOD_WHEEL_CENTS / 127), now);
+    }
     while (this.nextNote < song.notes.length && song.notes[this.nextNote]!.t < from) this.nextNote++;
     this.t0 = now + 0.1 - from;
     this.timer = setInterval(() => this.schedule(), 50);
@@ -319,7 +373,9 @@ export class SoundfontEngine {
         this.channels.forEach((ch, c) => {
           ch.state = initialChannel();
           ch.bend.offset.setValueAtTime(0, at);
+          ch.vibrato.gain.setValueAtTime(0, at);
           this.applyLevels(c, at, true);
+          this.applyPan(c, at, true);
         });
         continue;
       }
@@ -346,6 +402,8 @@ export class SoundfontEngine {
       return;
     }
     ch.state[c.kind] = c.value;
+    if (c.kind === "pan") this.applyPan(c.channel, at, false);
+    if (c.kind === "modulation") ch.vibrato.gain.setValueAtTime(c.value * (MOD_WHEEL_CENTS / 127), at);
     if (c.kind === "volume" || c.kind === "expression") this.applyLevels(c.channel, at, false);
   }
 
@@ -357,6 +415,14 @@ export class SoundfontEngine {
       if (immediate) node.gain.setValueAtTime(g, at);
       else node.gain.setTargetAtTime(g, at, 0.008);
     }
+  }
+
+  private applyPan(channel: number, at: number, immediate: boolean) {
+    const ch = this.channels[channel]!;
+    panGains(ch.state.pan).forEach((g, i) => {
+      if (immediate) ch.balance[i]!.gain.setValueAtTime(g, at);
+      else ch.balance[i]!.gain.setTargetAtTime(g, at, 0.008);
+    });
   }
 
   private noteOn(n: MidiNote, at: number, off: number) {
@@ -395,12 +461,15 @@ export class SoundfontEngine {
       src.loopEnd = r.loopEnd / rate;
     }
     ch.bend.connect(src.detune);
+    ch.vibrato.connect(src.detune);
 
     // Volume envelope and release.
-    const peak = (n.velocity / 127) ** 2 * centibels((r.attenuation ?? 0) * ATTENUATION_FACTOR);
+    const trim = n.channel === PERCUSSION_CHANNEL && TRIMMED_DRUMS.has(n.note) ? 10 ** (DRUM_TRIM_DB / 20) : 1;
+    const peak = (n.velocity / 127) ** 2 * centibels((r.attenuation ?? 0) * ATTENUATION_FACTOR) * trim;
     const amp = ctx.createGain();
     const level = scheduleUntil(amp.gain, volumePoints(r, n.note, at, peak), off);
     const env = volumeEnvelope(r, n.note);
+    if (n.channel !== PERCUSSION_CHANNEL) env.release = gsRelease(n.program, env.release);
     let stopAt: number;
     if (level <= peak * 1e-5 || level <= 0) {
       amp.gain.setValueAtTime(0, off);
@@ -431,8 +500,8 @@ export class SoundfontEngine {
     }
     if (mod && r.modEnvToPitch) this.modulate(src.detune, mod, r.modEnvToPitch, off, modulationEnvelope(r, n.note).release);
 
-    // Vibrato: the region's own depth plus the mod wheel's (up to 50 cents).
-    const depth = (r.vibrato?.[0] ?? 0) + (50 * ch.state.modulation) / 127;
+    // Vibrato: the region's own (the mod wheel's is the channel's shared LFO, connected above).
+    const depth = r.vibrato?.[0] ?? 0;
     let lfo: OscillatorNode | null = null;
     if (depth !== 0) {
       lfo = ctx.createOscillator();
@@ -445,7 +514,7 @@ export class SoundfontEngine {
     }
 
     const pan = ctx.createStereoPanner();
-    pan.pan.value = Math.max(-1, Math.min(1, (r.pan ?? 0) / 500 + (ch.state.pan - 64) / 64));
+    pan.pan.value = Math.max(-1, Math.min(1, (r.pan ?? 0) / 500));
     head.connect(amp).connect(pan).connect(ch.dry);
     const sends: GainNode[] = [];
     const send = (gen: number | undefined, cc: number, bus: GainNode) => {
@@ -469,6 +538,7 @@ export class SoundfontEngine {
       this.voices.delete(v);
       try {
         ch.bend.disconnect(src.detune);
+        ch.vibrato.disconnect(src.detune);
       } catch {
         /* engine stopped */
       }
@@ -498,7 +568,10 @@ export class SoundfontEngine {
         /* already stopped */
       }
     }
-    for (const ch of this.channels) ch.bend.stop(now + 0.2);
+    for (const ch of this.channels) {
+      ch.bend.stop(now + 0.2);
+      ch.vibratoLfo.stop(now + 0.2);
+    }
     for (const lfo of this.lfos) lfo.stop(now + 0.2);
     setTimeout(() => this.out.disconnect(), 300);
   }

@@ -82,4 +82,28 @@ describe("interface sounds", () => {
     playUiSound("tick");
     expect(take()).toEqual([]);
   });
+
+  it("plays the dialog button and tour site-map sounds", () => {
+    configureUiSounds(true, true);
+    const off = installUiSoundDelegates();
+    document.body.innerHTML = `<div class=dlg-backdrop><button id=ok></button><button role=tab id=page></button></div>
+      <div class=pano-site><button id=pt class=pano-site-pt></button><button id=here class="pano-site-pt current"></button></div>`;
+    const fire = (id: string, type: string) => document.getElementById(id)!.dispatchEvent(new Event(type, { bubbles: true }));
+    const take = () => played.splice(0).map((s) => s.replace("/sounds/", "").replace(".wav", ""));
+    // VM: a dialog's push buttons tick on rollover and click once; its page tabs are silent.
+    fire("ok", "pointerover");
+    fire("ok", "click");
+    fire("page", "pointerover");
+    fire("page", "click");
+    expect(take()).toEqual(["tick", "click"]);
+    // VM (ENCARTAR.DLL 578, 579): entering and clicking a site-map stop; the you-are-here point is not a target.
+    fire("pt", "pointerover");
+    fire("pt", "click");
+    fire("here", "pointerover");
+    fire("here", "click");
+    expect(take()).toEqual(["tour-hover", "tour-pick"]);
+    playUiSound("tourPick");
+    expect(take()).toEqual(["tour-pick"]);
+    off();
+  });
 });

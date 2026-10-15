@@ -247,13 +247,14 @@ describe("events and command replies (VM)", () => {
     expect(events.at(-1)?.[1]).toBe("HOTSPOTCLICKED:HOTSPOTID=701500001");
   });
 
-  it("replies: load and DISPLAYFPS say Failed but act, HALFREZDRIVING fails, ITSFILEURL 1 or −2", () => {
+  it("replies: load and DISPLAYFPS say Failed but act, HALFREZDRIVING fails, ITSFILEURL 1 (spaces kept)", () => {
     const c = new TourControl(scene(), { rng: lcg(1) });
     expect(c.do("SCENE.HALFREZDRIVING=0")).toBe("Failed");
     expect(c.do("SCENE.DISPLAYFPS=1")).toBe("Failed");
     expect(c.displayFps).toBe(true);
     expect(c.do("script.itsfileurl=C:\\PROGRA~1\\ENC\\04257.eit")).toBe("1");
-    expect(c.do("script.itsfileurl=C:\\Program Files\\ENC\\04257.eit")).toBe("-2");
+    // VM (debugger): Encarta itself sends the long path with spaces, and the control gets it whole (§2.2, §3.2).
+    expect(c.do("script.itsfileurl=C:\\Program Files\\ENC\\04257.eit")).toBe("1");
     expect(c.do("script.load=load.3sc")).toBe("Failed");
     expect(c.loading).toBe(true);
     for (let i = 0; i < 1000 && c.loading; i++) c.tick();

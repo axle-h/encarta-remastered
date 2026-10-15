@@ -19,7 +19,7 @@ use anyhow::{Context, Result};
 use encarta_formats::mad::Atlas;
 use encarta_formats::mad::cells::CellSystem;
 use encarta_formats::mad::schemas::{Bitmap, DisplayRule, DisplayRules, decode_record};
-use encarta_formats::mad::tables::{self, GeometryKind, LabelStyle, MapStyle, PenDef};
+use encarta_formats::mad::tables::{self, FeatureClass, GeometryKind, LabelStyle, MapStyle, PenDef};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -271,7 +271,7 @@ impl Ctx<'_> {
         if p.b8[3] != 0xFF { self.tint(p.b8[3]).map_or(hex(p.color), hex) } else { hex(p.color) }
     }
 
-    fn label_layout(&mut self, rule: &DisplayRule, kind: GeometryKind, zooms: (f64, f64)) -> Option<(Value, Value, Option<String>)> {
+    fn label_layout(&mut self, rule: &DisplayRule, kind: GeometryKind, zooms: (f64, f64), symbol: bool) -> Option<(Value, Value, Option<String>)> {
         let l = self.labels.get(rule.w5_13[0] as usize)?.clone();
         let bold = l.tail[0] == 1;
         let italic = l.tail[1] == 1;
@@ -309,14 +309,11 @@ impl Ctx<'_> {
                 if text.alt.is_some() {
                     layout["text-max-width"] = text.max_width(10.0);
                 }
-                // Encarta puts a point label diagonally off its symbol, the text's corner at the
-                // symbol's: above right when free (VM, mad-styling.md §7.4), else above left, below
-                // right, below left (the order of the last three is a hypothesis).
-                layout["text-variable-anchor"] = json!(["bottom-left", "bottom-right", "top-left", "top-right"]);
+                layout["text-variable-anchor"] = point_label_anchors(symbol);
                 // Lines align on the symbol's side ("Mumbai" over "Bombay" right-aligned left of
                 // the city, V15).
                 layout["text-justify"] = json!("auto");
-                layout["text-radial-offset"] = json!(0.3);
+                layout["text-radial-offset"] = json!(if symbol { 0.3 } else { 0.0 });
             }
         }
         let paint = json!({
@@ -342,8 +339,9 @@ impl Ctx<'_> {
         let name = json!(["coalesce", ["get", "name"], ""]);
         let layout = json!({
             "symbol-placement": "line",
-            // Encarta drops a shield when one with the same text is within a sixth of the pane
-            // (~160 px of the 812 × 518 pane); MapLibre has no such test, so repeats are rare.
+            // Encarta puts at most one shield on each on-screen run, near its middle, and drops it when
+            // one with the same text is within ~160 px (812 × 518 pane; mad-styling.md §8.1). MapLibre
+            // repeats line labels at the spacing and drops a repeat of the same text within half of it.
             "symbol-spacing": 400,
             "symbol-sort-key": ["get", "priority"],
             "text-field": if l.tail[3] == 1 { json!(["upcase", name]) } else { name },
@@ -514,7 +512,7 @@ impl Ctx<'_> {
                                 layout["symbol-sort-key"] = json!(["get", "priority"]);
                                 layout["icon-allow-overlap"] = json!(false);
                                 if label != 0
-                                    && let Some((tl, mut tp, ph)) = self.label_layout(rule, kind, (lo, hi))
+                                    && let Some((tl, mut tp, ph)) = self.label_layout(rule, kind, (lo, hi), true)
                                 {
                                     // Symbol and label appear together or not at all (§7.4); an
                                     // optional label on a shown symbol starts transparent.
@@ -555,7 +553,7 @@ impl Ctx<'_> {
                     GeometryKind::Line => "lines",
                     _ => "points",
                 };
-                if let Some((mut layout, paint, ph)) = self.label_layout(rule, kind, (lo, hi)) {
+                if let Some((mut layout, paint, ph)) = self.label_layout(rule, kind, (lo, hi), false) {
                     if label == 2 {
                         layout["visibility"] = json!("none");
                     }
@@ -601,6 +599,38 @@ fn stack_key(p: &Proto) -> (u8, u32, u32) {
 /// merged. Tri-state (low nibble) 1 = by default, 2 = when the user turns the class on. Hit side
 /// (high nibble) 0 = anywhere, 1 = land (left out when a water hit is listed too), 2 = water
 /// (listed only over water); 0 in Moon styles, whose polygons are not split.
+/// MapLibre anchors of a point label, in MOBB's candidate order (mad-styling.md §7.4): the text's
+/// corner at the symbol's corner, above right, below right, above left, below left. MOBB adds 250,
+/// 500, 750 or 1000 to each candidate's overlap cost and keeps the cheapest, so with nothing in the
+/// way the first free corner wins; MapLibre takes the first corner that does not collide. A label
+/// without a drawn symbol is centred on its point first (no added cost), then tries the corners.
+fn point_label_anchors(symbol: bool) -> Value {
+    let corners = ["bottom-left", "top-left", "bottom-right", "top-right"];
+    if symbol { json!(corners) } else { json!(std::iter::once("center").chain(corners).collect::<Vec<_>>()) }
+}
+
+/// Rows of the classes that ENCARTA.EXE never puts in the click menu: PDCAttribute pen group 134
+/// (time zones, DST areas, "Shading - gray"; mad-styling.md §16 V11 result). Rows, not class ids:
+/// the tiles' `class` and the hit list are by row.
+fn menu_excluded_rows(classes: &[FeatureClass], is_moon: impl Fn(usize) -> bool, moon: bool) -> Vec<u16> {
+    classes.iter().enumerate().filter(|&(row, c)| c.pen_group == MENU_EXCLUDED_PEN_GROUP && is_moon(row) == moon).map(|(row, _)| row as u16).collect()
+}
+
+/// What the click menu sorts by besides the kind of hit (mad-styling.md §4.5), for the classes in
+/// the hit list: PDCAttribute scale / 1000 by row, and the rows with the routable-road flag (byte 6).
+fn class_hit_order(classes: &[FeatureClass], rows: impl Iterator<Item = u16>) -> (serde_json::Map<String, Value>, Vec<u16>) {
+    let mut scale = serde_json::Map::new();
+    let mut routable = Vec::new();
+    for row in rows {
+        let Some(c) = classes.get(row as usize) else { continue };
+        scale.insert(row.to_string(), json!(c.scale / 1000));
+        if c.flag != 0 {
+            routable.push(row);
+        }
+    }
+    (scale, routable)
+}
+
 fn interactive_ranges(rules: &[DisplayRule], moon: bool) -> BTreeMap<u16, Vec<(f64, f64, u8, u8)>> {
     let mut out: BTreeMap<u16, Vec<(f64, f64, u8, u8)>> = BTreeMap::new();
     for r in rules {
@@ -745,8 +775,8 @@ pub fn run(atlas: &Atlas, classes: &Classes, detail_classes: BTreeSet<u16>, out:
             .collect();
         // Classes of PDCAttribute pen group 134 (time zones, DST areas, "Shading - gray") never enter the click
         // menu (mad-styling.md §16 V11 result).
-        let menu_excluded: Vec<u16> =
-            classes.classes.iter().filter(|c| c.pen_group == MENU_EXCLUDED_PEN_GROUP && classes.is_moon(c.id as usize) == is_moon_style).map(|c| c.id).collect();
+        let menu_excluded = menu_excluded_rows(&classes.classes, |row| classes.is_moon(row), is_moon_style);
+        let (class_scale, routable) = class_hit_order(&classes.classes, interactive.keys().filter_map(|k| k.parse().ok()));
         let rects: Vec<Value> = min_rects
             .iter()
             .filter(|r| r.style == s.id)
@@ -775,6 +805,8 @@ pub fn run(atlas: &Atlas, classes: &Classes, detail_classes: BTreeSet<u16>, out:
                 "encarta:reference_pane_height_px": geo::REFERENCE_PANE_HEIGHT_PX,
                 "encarta:interactive": interactive,
                 "encarta:menu_excluded_classes": menu_excluded,
+                "encarta:class_scale": class_scale,
+                "encarta:routable_classes": routable,
                 "encarta:surface": { "water_pixel_class": ctx.surface.water, "land_pixel_class": ctx.surface.land, "land_luminance": (ctx.surface.land_luminance * 10.0).round() / 10.0 },
                 "encarta:notes": "Zoom ranges come from Encarta camera altitudes via zoom = log2(40075·(P/m)/(1280·alt_km)) at latitude 0 for Encarta's 812 × 518 map pane (P/m = 3135, measured in the VM; P/m ≈ 6.05 × pane height). A client shifts the zoom ranges by log2(cos φ · P/m(own pane) / 3135) to apply Encarta's rule at the true ground scale. The raster-index source carries class indices for client-side recolouring (raster/palettes.json).",
             },
@@ -886,6 +918,34 @@ mod tests {
         assert_eq!(sides(2), [(1, 2)]);
         assert!(!r.contains_key(&3), "tri-state 0: not interactive");
         assert!(interactive_ranges(&rules, true).values().flatten().all(|e| e.3 == 0), "Moon polygons are not split");
+    }
+
+    fn class(id: u16, pen_group: u16, flag: u8, scale: u32, name: &str) -> FeatureClass {
+        FeatureClass { id, kind: GeometryKind::Area, pen_group, flag, scale, reserved: 0, group: 0, priority: 100, name: name.into() }
+    }
+
+    #[test]
+    fn menu_exclusion_is_by_row_not_class_id() {
+        // Class ids differ from rows, as on the disc; the tiles' `class` is the row.
+        let classes = [class(500, 6, 0, 0, "A"), class(501, MENU_EXCLUDED_PEN_GROUP, 0, 0, "Zone"), class(9, MENU_EXCLUDED_PEN_GROUP, 0, 0, "MOON zone")];
+        let moon = |row: usize| classes[row].name.starts_with("MOON");
+        assert_eq!(menu_excluded_rows(&classes, moon, false), [1]);
+        assert_eq!(menu_excluded_rows(&classes, moon, true), [2]);
+    }
+
+    #[test]
+    fn class_hit_order_by_row() {
+        let classes = [class(500, 6, 0, 250_000, "Region"), class(501, 6, 1, 400_000, "Road"), class(502, 6, 0, 420_000, "Country")];
+        let (scale, routable) = class_hit_order(&classes, [0u16, 1, 7].into_iter());
+        assert_eq!(Value::Object(scale), json!({ "0": 250, "1": 400 }));
+        assert_eq!(routable, [1]);
+    }
+
+    #[test]
+    fn point_label_candidates_in_mobb_order() {
+        // Above right, below right, above left, below left; centred first without a symbol.
+        assert_eq!(point_label_anchors(true), json!(["bottom-left", "top-left", "bottom-right", "top-right"]));
+        assert_eq!(point_label_anchors(false), json!(["center", "bottom-left", "top-left", "bottom-right", "top-right"]));
     }
 
     #[test]

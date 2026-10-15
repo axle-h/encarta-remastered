@@ -46,14 +46,19 @@ Within a section, data lines are tab-separated.
 | countryId | always one of the 193 countries; unique within an indicator | country (also the atlas place id, see `p2mtbl.md`) |
 | value | decimal number, possibly negative, never empty | the statistic, written with exactly `decimals` digits after the point |
 | decimals | 0–3 | **number of decimal places**: it matches the digits after the point in all 57,347 rows |
-| B | 1–20; 8 in 93 % of rows; varies within an indicator (Area: 6, 8, 7, 7, 5, …) | **unknown**. It is not the significant-digit count, and its values go beyond the qualifier ids. |
+| B | 1–26; 8 in 93 % of rows; varies within an indicator (Area: 6, 8, 7, 7, 5, …) | **significant digits** of the value (static analysis of `ATCONT.DLL`, 2026-10-15). The statistics database rounds every value it hands out, after any unit conversion `value × factor + offset`, to B significant digits, and then prints it with `decimals` places. B = 0, or any B above 15 (141 rows), means no rounding (the loader keeps the low four bits, so B above 15 is stored as 0). Every stored value already has at most B significant digits (checked over all rows, 0 changes), so for the primary unit the rounding is invisible. It only matters for the alternate unit (km² → mi²), where it hides floating-point noise. Our UI has no unit toggle, so nothing is shown differently. |
 | year | 1990–2008 | data year |
 | C | 0 in 90 %; constant in most indicators (deforestation rate: 15 in every row; compulsory education: 1) | **year span**: the value covers `year` … `year + C`. **Confirmed in the VM**: the statistics map shows "Peru 0.13 (1990-2005)" for year 1990, C = 15, and "(1995)" for C = 0. Stored as `stat_value.year_end` and `period` ("1990-2005" / "1995"); `Item::period_text()` in the reader. |
-| note | `N/A` or `estimate` | footnote text; the words are qualifier names (2, 4) |
+| note | `N/A` or `estimate` | footnote text. The loader reads this column as an integer qualifier id (`GetValueQualifierName`), so both words parse as 0 = no qualifier: **the text is never displayed** (static analysis of `ATCONT.DLL`) |
 
 - Item rows are sorted by value, descending, within each indicator (all 363). That is the ranking order the UI shows.
-- **Still open:** column B (not shown in the hover readout or the Statistics Table), and how the qualifier list
-  is used (its ids 2–11 never appear as numbers in the items; the note is not shown either).
+- Column B is settled (above). The qualifier list is loaded and queryable by id, but no item carries a numeric qualifier
+  (the note column is text, which reads as 0), so no qualifier is ever shown.
+- Reader in the original: `ATCONT.DLL` (the statistics database object, `CStatDatabaseImpl`). It opens the file as text, skips
+  lines that start with `//` and blank lines, requires the first line to be `EVGSDB` and the second (revision) to be at least
+  9031006, then reads the sections **by position, not by name**: countries, categories, qualifiers, units, indicators (each with
+  its item list). Year is stored as `year - 1900` in one byte, C and the qualifier in one byte each, decimals and B in the
+  two nibbles of one byte.
 
 ---
 

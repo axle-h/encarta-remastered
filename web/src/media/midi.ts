@@ -209,7 +209,7 @@ export function parseMidi(data: ArrayBuffer | Uint8Array): MidiSong {
       else if (e.a === 100) rpn[ch] = (rpn[ch]! & 0x3f80) | e.b;
       else if (e.a === 6 && rpn[ch] === 0) bendRange[ch] = e.b; // RPN 0: pitch bend sensitivity
       else if (e.a === 64) {
-        pedal[ch] = e.b >= 64;
+        pedal[ch] = e.b > 0; // the Microsoft GS synth treats any non-zero value as pedal down
         if (!pedal[ch]) {
           for (let k = ch * 128; k < ch * 128 + 128; k++) {
             const stack = open.get(k);

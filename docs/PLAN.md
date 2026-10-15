@@ -27,7 +27,29 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 
 ## Next (priority order)
 
-Nothing queued; the open questions are under "Needs the VM" below.
+Nothing queued; what is left (mostly blocked: no 3D device, no printer, unread code) is under "Needs the VM" below.
+
+Done 2026-10-15 (VM pass 3, the rest of "Needs the VM"; three VM lanes from `flash-ready`, cdb, nothing installed):
+**Atlas** (from MOBB200/ENCARTA.EXE code, checked against the captures): point labels try above right, below right,
+above left, below left (centred first without a symbol) at added costs 250–1000, but the cheapest box by what lies
+under it and the neighbours' reserved boxes wins, so the order only breaks ties; one shield per run, centre cost plus
+neighbour cost; the click menu is MOBB's sort (label hits, points, routable roads, lines, areas; class scale; GeoObj),
+and the time-zone exclusion now goes by row (it listed time zones and dropped Mexico/US shield roads; mad-styling.md
+§4.5, §7.4, §8.1; `atlas/style.rs`, `vector.rs`, `web/src/atlas/hit.ts`). **Tours**: the water ripple steps once per
+drawn frame below 80 fps (skip `trunc(fps·0.025)−1` above 40 fps), with the step's border, rounding and drop rules
+corrected; `3D.TOGGLEHIDDEN` is `VISIBLE` on every object, and the odd picture is `CAMERA.CLEARBACKGROUND=0` keeping
+the colour buffer, now reproduced; ITS mode reads the same files through ENCARTA.EXE's own `msencdata:` protocol, so
+nothing changes (tours-3d.md §2.2, §7.4.3, §7.4.6, §10; `sim/effects.ts`, `render/view.ts`). **Sounds**: 578/579 are
+the tour site-map hover and pick sounds, now played on our site maps; the other unheard ids are never played by the
+original; dialog buttons tick on rollover (media.md §9, `uiSounds.ts`, `TourView.tsx`). **Placement**: the empty
+`Child_s<n>` slots are the reader's reserved Archives ("History" section, else first free slot) and Further Reading
+(last free slot) items; placement now matches all 1,660 captured items (content-schema §2, `content/article.rs`).
+**Music**: three anthems and two MIDI test files of our own recorded through GS; the synth now follows GS on pan
+(balance), mod wheel (6 Hz, held notes), pedal threshold, release by family and drum levels (media.md §8); MindMaze
+music has no 2009 playback path. **Data**: MSWORLD column B is significant digits, TIMELINE field 5 a UTF-16 flag,
+offset A never read, P2MTBL `8`/`1` the directory count and first key, and LEX body +0x0C–0x12 the descriptor region
+lengths (cdb: MSSPELL3 opens EESPLA01 on the first search). Unit tests: web 360+, `encarta-convert` pass. Re-run
+`encarta-convert content`, `ENCARTA_ATLAS_ONLY=style` and `=vector encarta-convert atlas`. Not run in a browser.
 
 Done 2026-10-15 (VM with Flash Player and a debugger): Flash Player 10.3.181.16 ActiveX and cdb (Debugging Tools 6.12)
 installed in the guest, live snapshot `flash-ready`, `vm/dbg.sh` (vm.md). **Panoramas**: single panoramas open with the
@@ -109,18 +131,12 @@ sprites), area-pen draw-over masks, flat-view tiles in Web Workers, time zones o
 134), symbol layers stacked by priority (mad-styling.md §7.3, §8.1, §5.2, §16; atlas-output.md; atlas-client.md).
 
 ### Needs the VM
-- Atlas: the order of the three fallback label corners, how overlap cost weighs against it, and the shield
-  centre-vs-overlap cost (mad-styling.md §8.1); the click menu's order in places. Needs the code or the debugger
-  (`vm/dbg.sh`, not tried yet).
-- Sounds: where the unheard ENCARTAR.DLL sounds play (578, 579, 682/31972/31978, 702/31909, 31906-31908, 31910/31911,
-  31912, 31913). Not tried yet: Geography Quiz score dialog, Read Aloud, Print and Copy dialogs, Organize Favorites,
-  Help windows, and (now that Flash is installed) Kids Read Aloud and the Kids games; 578 and 579 are nearly silent
-  and may never play (media.md §9).
-- Tours: the hardware cloud step and MaxView (3D device); the water ripple's step rate; what `3D.TOGGLEHIDDEN` does
-  to the picture; ITS-mode loading ([tours-3d.md](formats/tours-3d.md) §10). The ripple rate and `TOGGLEHIDDEN` can now be traced
-  with the debugger.
-- Data: the media-placement residue: an empty item slot (`Child_s<n>`) in four sections that no record we read
-  explains (debugger, not tried yet; content-schema §11); MSWORLD.SDB column B, TIMELINE.DAT field 5 and offset A, the P2MTBL and LEX
-  header words (no screen shows them).
-- Music: a reference recording with pitch bends, controllers, drums and several channels; how Encarta loops
-  MindMaze music.
+Left after VM pass 3 (vm-findings "VM pass 3"):
+- Tours: the hardware cloud step and MaxView need a 3D device (the guest has none).
+- Sounds: Print's dialogs (no printer in the guest); the Kids process was not logged (its code names none of the
+  unheard ids).
+- Data: LEX body u32s +0x04/+0x20, the header stamp's meaning and the copyright's trailing u16 (not read on the search
+  path); TIMELINE offset A is never read by the viewer.
+- Atlas: the costs of the alternative-name layouts and which label kinds are placed first (code not read). MapLibre
+  cannot weigh candidate costs or place one shield per run, so both stay approximated.
+- Music: MindMaze music cannot be observed (no MIDI playback path in 2009).

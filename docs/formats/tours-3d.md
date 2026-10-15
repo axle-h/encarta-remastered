@@ -101,8 +101,29 @@ tick. The rest of this document describes what `do` does.
 **(VM) Replies.** The reply of `Do()` is not a reliable success signal: `script.load=…\load.3sc` returns `Failed`
 although the load then runs (`WORLDLOADED` 1.6–2.3 s later), `SCENE.DISPLAYFPS=1` returns `Failed` but switches the
 overlay on, and `SCENE.HALFREZDRIVING=0` returns `Failed` (the misspelling of step 2.2). `script.itsfileurl=<path>`
-returns `1` when the container is found and `-2` for a path containing spaces (they do not survive, §3.2), so the
-host must pass an 8.3 path. A camera command pair such as `CAMERA.MOVETO=…;CAMERA.PITCH=…` returns `Success;Success`.
+returns `1` when the file exists (it only checks the attributes: `-1` for an empty value, `-2` for no such file,
+`-3` for a folder) and keeps the path upper-cased (`ITSFILEURL?`). A camera command pair such as
+`CAMERA.MOVETO=…;CAMERA.PITCH=…` returns `Success;Success`.
+
+**(VM, debugger in ENCARTA.EXE) What Encarta sends.** Opening the Acropolis from Features → 3D Ancient Sites, a
+breakpoint on `Do` (control offset 0xD0F0) logged, in order: `SCENE.HALFREZDRIVING=1`,
+`script.itsfileurl=C:\Program Files\Microsoft Encarta\2009 Encarta Contents\E09AXLRD\world\7015\04257.EIT` (the long
+path, spaces and all), `script.load=load.3sc`, then the default stop's `CAMERA.MOVETO=-2.260526,-0.385825,-7.827163,3.398490;CAMERA.PITCH=21.000036;`
+and one `camera.pos?` per `USERLOCUPDATE`. Software or hardware is chosen through the control's methods, not `Do`.
+Encarta loads the control from `Common Files\Microsoft Shared\Reference 2003\ACTIVEX3DX3.OCX`, byte-identical to
+the disc's `AREF\COMPNTS\ACTX3DX3.OCX`.
+
+**ITS mode (container loading).** Once a container is set, every file the control loads (scripts, `.x`, textures,
+`.3lt`, `.3wm`, `.3cl`, `.32d`, …) is read whole through a URL moniker `msencdata:<container>::<name>`
+(0x100456A0), with the same names and the same fallback names as disk mode (§5.5), and disk paths are no longer
+used. The `msencdata` protocol is not registered system-wide: ENCARTA.EXE registers it for its own process as a
+temporary namespace handler (a class from MSENCDAT.DLL). That is why a foreign host such as our tourhost gets `1`
+from `itsfileurl` and then loads nothing. A container cannot be unset again (an empty value returns `-1` and
+changes nothing). `SCENE.LOADFILESFROMITS` only stores and reports a flag that nothing reads. **(VM)** In Encarta,
+a breakpoint on the reader logged 190 reads for the Acropolis (95 names: `LOAD.3SC`, `BEGIN.32D`, its GIFs,
+`ACR.X`, each texture, `ACR.3LT`, `ACR.3WM`, the `.3cl` files, `LH.32D` and the other scripts), and no `.cur`
+file: the cursors never come from the container (§6.9). For a port, ITS mode changes nothing: the bytes are the
+container's files, found by the rules of §5.5.
 
 ### 2.3 The tick
 
@@ -193,8 +214,9 @@ before their `)`. Handlers trim leading `=`/`(` and trailing `)`. Booleans accep
 some properties `ACTIVE`) for true, and `0`, `FALSE`, `OFF` for false. Numbers are parsed like C `atof`/`atoi`:
 leading whitespace is skipped, the longest numeric prefix is used, and a non-numeric value gives 0. `NAME?`
 queries return the current value. Floats are formatted `%f`, so `CAMERA.POS?` returns `x,y,z,yaw`.
-**(VM)** Spaces in values are not preserved: `script.itsfileurl=C:\Program Files\…` fails (`-2`) where the same
-file's 8.3 path works, so the text loses its spaces (or is cut at the first one) before the path is used.
+**(VM)** Spaces inside values are kept: `SCENE.WORKINGPATH=C:\a b\c d` reads back as `C:\A B\C D`, and
+`script.itsfileurl=` with the container's long path (spaces included) returns `1`. *Correction:* this section used
+to say spaces are lost; the `-2` behind that came from a long path into the wrong folder.
 
 ### 3.3 `SCENE.` / `SCRIPT.` commands (`FUN_10041f80`)
 
@@ -215,7 +237,7 @@ The *rest* (the text after `SCENE.`) is matched by **prefix** in this order. The
 | `LOADFILESFROMITS=bool` | – | Flag. |
 | `ITSFILEURL=path`, `ITSFILEURL?` | via host | Sets the container to read files from. The file must exist. Returns 1, or a negative code (−1 empty, −2 not found, −3 is a directory). |
 | `CURSORS=bool`, `CURSORS?` | `=TRUE` | Enables the custom cursors set by `CURSOR`. |
-| `CURSOR=index,file` | 7 per tour | Cursor slot `index` (0–6) gets the `.cur` file. Slot meaning: §6.9. |
+| `CURSOR=index,file` | 7 per tour | Meant to give cursor slot `index` (0–6) the `.cur` file, but the handler ignores both: the first call loads the control's seven built-in cursors, whose pictures equal the shipped files (§6.9). |
 | `EVENT(text)` / `EVENT=text` | yes | Fires `Event3DX(text)` to the host (§3.6). |
 | `WORKINGPATH=path`, `WORKINGPATH?` | – | Working path for disk-mode file names. |
 | `RUN(file)` / `RUN=file` | – | Same as `LOAD`. Note that the **top-level** `RUN(` form is different: it runs macros (§3.4). |
@@ -362,7 +384,7 @@ All seven `load.3sc` files follow the same template. They differ only in camera 
 names and the `WORLDLOADED` payload:
 
 1. `SCENE.DELETEALL` (or `SCRIPT.DELETEALL`), `SCENE.DISPLAYFPS=0`, a black background, and
-   `CAMERA.CLEARBACKGROUND=0`.
+   `CAMERA.CLEARBACKGROUND=0` (the colour buffer is then never cleared between frames, §7.4.3).
 2. Initial `CAMERA.POS=x,y,z,yaw` and `CAMERA.PITCH`, then `SCENE.DRAW`.
 3. `2D.LOAD=begin.32d`, `2D._0.NEXTFRAME(16)`, the `LOADALARM` alarm, and `SCENE.ALARM.ACTIVATE`
    (the loading animation).
@@ -1170,6 +1192,11 @@ nominal step per tick and at most five.
 * While the mouse is pressed on an active 2D item, no camera step happens (it is a HUD interaction).
 
 **Cursors** (when `SCENE.CURSORS=TRUE`): over a 2D hotspot item the cursor is index 5 (`vthot360.cur`).
+The `.cur` files are never read (the `CURSOR` handler discards its arguments, and no `.cur` read shows in the ITS
+log, §2.2): the slots hold the control's own cursor resources 0xA6, 0xA3, 0xA2, 0xA5, 0xA4, 0xA1, 0xA1 for
+slots 0–6. The first five have the same bitmaps and hotspot (15,15) as `sv`, `svright`, `svup`, `svleft` and
+`svdown.cur`; 0xA1 is a hand with the same picture and hotspot (13,6) as `vthot360.cur`. So the container's files
+give the right pictures, and slot 6 (`grip.cur`, missing) would be that hand too.
 Otherwise the zone of the pointer relative to the view centre (FUN_10016ca0) picks the cursor:
 inside |dx| < 30 px and |dy| < 60 px → 0 (`sv.cur`). Outside, if |dy| ≤ |dx|: right → 1 (`svright`), left → 3
 (`svleft`); otherwise up → 2 (`svup`), down → 4 (`svdown`). **(VM)** Exactly so: dx 29 is the centre, 30 is right;
@@ -1197,7 +1224,7 @@ does not set the property:
 | `CAMERA.POS=x,y,z,yaw` | sets the eye, keeps the look vector, then sets yaw and reapplies the current pitch. Y is overridden on the next tick by ground following if over ground | eye (0, 0.2, −3), looking +Z |
 | `CAMERA.PITCH=deg` | sets pitch absolutely | 0 |
 | `CAMERA.MOVE=dx,dy,dz` | relative move, no collision | — |
-| `CAMERA.MOVETO=x,y,z,yaw` | absolute set (as POS), then hotspot check. **(VM) quirk:** a POS/MOVETO to the X and Z the eye already has makes `POS?`/`PITCH?` report `-1.#IND00` (NaN) until `CAMERA.HOMEPOV` (which also resets HEIGHT to 0.05): the look vector degenerates. This is probably why the multi-floor stop commands first move far away. A port need not reproduce the NaN | — |
+| `CAMERA.MOVETO=x,y,z,yaw` | absolute set (as POS), then hotspot check. **(VM) quirk:** a POS/MOVETO to the X and Z the eye already has makes `POS?`/`PITCH?` report `-1.#IND00` (NaN) until `CAMERA.HOMEPOV` (which also resets HEIGHT to 0.05): the look vector degenerates. This is probably why the multi-floor stop commands first move far away. **(VM, third pass)** In tourhost the NaN also came from a second POS to a different X and Z (even both changed by 0.01) after a first POS, at pitch 0 or 21; a `CAMERA.PITCH=` sent right before each POS avoided it every time (mechanism not analysed). A port need not reproduce the NaN | — |
 | `CAMERA.HOME` / `HOMEPOV` / `HOMEOMNI` | restore the home pose (POV home = the defaults above) | — |
 | `CAMERA.POV` / `OMNI`, `VIEWMODE?` | walk mode (0) vs orbit mode (1); tours never use orbit mode | 0 |
 | `SCENE.HALFRESDRIVING=1` | render at half resolution while a movement key or drag is active | 0 |
@@ -1644,9 +1671,19 @@ For a port: use an unlit material.
 
 * `VISIBLE` is a per-object draw flag (default visible).
 * `3D.UNHIDEALL` sets every object visible.
-* `3D.TOGGLEHIDDEN` inverts every object's flag. **(VM)** `VISIBLE?` flips 1 → 0 → 1 on every object, but the
-  drawn result was not understood: a first toggle left the Parthenon view unchanged; a second one, after two objects
-  had been hidden, showed those again and hid the ground. No shipped script uses it.
+* `3D.TOGGLEHIDDEN` inverts every object's flag (it reads and writes the same flag as `VISIBLE`; `lod_` partners
+  and cloud placeholders are objects too and flip with the rest). No shipped script uses it.
+* The draws honour the flag (both the whole-object draw and the PVS face-list draw skip a hidden object). What
+  makes the picture look odd is `CAMERA.CLEARBACKGROUND=0`, which every `load.3sc` sets (§3.9): the frame then
+  starts by clearing only the depth buffer, never the colour buffer (the colour clear at 0x10065990, to
+  `BACKGROUNDCOLOR`, runs only while CLEARBACKGROUND is on). Wherever no visible object draws, the previous
+  frame's pixels stay. In normal use the sky meshes cover the whole view, so this never shows; with objects
+  hidden it does. **(VM, tourhost, Acropolis start)** After `TOGGLEHIDDEN` every `VISIBLE?` is 0 and the picture
+  stays exactly as it was (5 pixels differ), also after the camera turns 37°: nothing is drawn and the last frame
+  stays. Showing `Sky03` alone then draws its mountain band over that frozen picture, and after another turn the
+  first band is still there next to the new one (trails). A second `TOGGLEHIDDEN` (everything but `Sky03` and
+  `newcolumn05` visible) gives the normal view, the other sky meshes covering. This explains the earlier
+  observation (two objects hidden, then a toggle: they "came back" and the band painted over the ground).
 
 #### 7.4.4 `FILMSTRIP=framewidth,wait,path` (setter 0x1003B430, per-frame step in the object draw 0x1003ADC0)
 
@@ -1676,13 +1713,22 @@ object that uses that texture record changes too. `fireAnm.bmp` is applied to al
 
 Turning water **on** for an object makes its first face's texture a 2-D ripple simulation:
 
-* Two int height fields of W×H start at zero.
-* **Step**, run once per rendered frame. If the frame rate exceeds 40 fps, steps are skipped
-  proportionally **[VM: exact rate]**. For every interior texel:
-  `new = (sum of the 8 neighbours in the current field) / 4 − new` (the previous-previous value),
-  then `new −= new / 16` (damping ×15/16). Afterwards the two fields swap.
-* **Drops:** at random intervals a drop is stamped at a random position at least 3 texels from the
-  edges. The stamp is a 5×5 disc without its corners, with these heights:
+* Two int height fields of W×H start at zero, and so do the skip and drop counters below.
+* **When it steps.** The step routine (0x10035F10) is called once per drawn frame for **every** texture record,
+  whether its object is in view or not, while 3D is drawn; only records with water on do anything. After each step
+  it sets a skip count: `trunc(fps × 0.025) − 1` when fps > 40, else 0, where fps is the control's instantaneous
+  frame rate, 1 / (duration of the last frame), the number `SCENE.DISPLAYFPS` shows (float32 constants 40 and
+  −0.025, truncation toward zero). The next `skip` calls do nothing. So below 80 fps the ripple steps on every
+  frame, from 80 to 120 fps on every second frame, and so on: between 40 and 80 steps per second, never fewer
+  than one per frame below 80 fps. **(VM, debugger in tourhost, Acropolis pond, software device)** 641 frames in
+  10.0 s (64.1 fps), 631 steps: every frame stepped except after two frames of 4 ms, read as 252 fps, which set a
+  skip of 5. At Encarta's ~64 ticks/s the ripple therefore advances by one step per tick.
+* **Drops** are tried at the start of a step. A drop counter counts steps; when it reaches the current wait
+  (0 at the start, so the first step drops), it restarts and a new wait is drawn: `rand() & 1`, plus the same
+  `trunc(fps × 0.025) − 1` when fps > 40. So a drop comes every first or second step (VM: 419 tries in 631 steps,
+  2/3 expected). The position is x = `rand()` mod W, y = `rand()` mod H, and the drop is stamped only when
+  3 < x < W − 3 and 3 < y < H − 3 (otherwise none this time). The stamp, centred on (x, y) in the current field,
+  is a 5×5 disc without its corners, with these heights:
 
   ```
        .   700  500  700   .
@@ -1692,10 +1738,19 @@ Turning water **on** for an object makes its first face's texture a 2-D ripple s
        .   700  500  700   .
   ```
 
-  every value shifted right by `(rand() & 15) + 1`.
-* **Display:** output texel (x, y) = source texel displaced by (h[x−1] − h[x]) columns and
-  (h[x−W] − h[x]) rows, taken from the unmodified original bitmap. A displacement that falls outside
-  the bitmap gives black.
+  every value shifted right by `(rand() & 15) + 1` (so shifts above 10 give a flat stamp).
+* **Step.** For every texel at least 2 from each edge (2 ≤ x ≤ W − 3, 2 ≤ y ≤ H − 3; the two outer rows and
+  columns are never written and stay 0): `new = ((sum of the 8 neighbours in the current field) >> 2) − older`,
+  where `older` is the value the same texel had in the field before the current one, then `new −= new >> 4`
+  (damping by 15/16). Both shifts are arithmetic: they round toward minus infinity.
+* **Display**, done inside the step after the new field is computed and **before** the fields swap: the picture
+  shows the field the step started from (with the drop just stamped), one step behind the simulation. It is
+  rebuilt only on frames that step. The bitmap is addressed as stored in the surface, bottom image row first
+  (§5.6), with W texels per row. For texel index i = y·W + x with x ≥ 1 and y ≥ 1, the source index is
+  `i + (h[i−W] − h[i])·W + (h[i−1] − h[i])`, taken from the unmodified original bitmap. This is a linear offset,
+  so a horizontal displacement past the end of a row carries on into the neighbouring row instead of being cut
+  off. A source index before the start or past the end of the bitmap gives black. Row 0 and column 0 have zero
+  heights around them and copy the original.
 * Turning water **off** restores the original texture.
 * **Shipped use: Acropolis only, through the walk map.** *Correction (implementation):* this section
   used to say the effect is never on. The only WATER statement in the `.3sc` files is
@@ -1820,16 +1875,15 @@ From `crosscheck.py`, comparing the names case-insensitively:
 - [x] Flame filmstrips: every 5 ticks (about 12.4 fps), random phase per torch (§7.4.4).
 - [x] LOD pop at 13 units horizontal distance (Acropolis `newcolumn07`, §7.6).
 - [x] The water ripple on `n_00water` appears in Acropolis while standing in `acr.3wm` cells 1145–1148
-      (in front of the Athena Parthenos) and stops on leaving. [ ] Its step rate.
+      (in front of the Athena Parthenos) and stops on leaving. [x] Its step rate: once per frame below 80 fps (§7.4.6).
+- [x] `3D.TOGGLEHIDDEN`: the flags flip and the draws follow them; the colour buffer is not cleared (§7.4.3).
 - [x] `LIGHTS.TOGGLE` does nothing (VM: replies `Success:-1`, `LIGHTS.ON?` stays TRUE, the view is unchanged).
 
 ### 7.11 Remaining unknowns
 
 * Exact per-vertex normal source and face-centre definition (mean of face vertices vs. bounding-box
   centre). This depends on §5. Object centre = mean of its per-face centres.
-* Water step throttling above 40 fps and drop interval (uses the measured frame rate). Irrelevant
-  for the shipped content.
-* What `TOGGLEHIDDEN` does to drawing (VM: it flips `VISIBLE?`, but the views did not follow; §7.4.3).
+* *Resolved:* water step throttling and the drop interval (§7.4.6); what `TOGGLEHIDDEN` does to drawing (§7.4.3).
 * Which texture records are colour-keyed (magenta transparency). This belongs to §5.5, but clouds rely on magenta being the transparent key.
 * `LODDISTANCE` semantics (only used in the picking pass).
 
@@ -2260,7 +2314,7 @@ Resolved:
 - [x] **Captions colours.** Black fill, 0xC0D1E3 text and frame, white on hover, hand cursor (§8.5.3).
 - [x] **Site map** for an unrotated map (§4.2).
 - [x] **Loading.** Control size 616×420, loading-screen layout, about 2 s on screen (§8.4.3).
-- [x] **Leftovers.** `SCENE.HALFREZDRIVING` returns `Failed`; `Do()` replies (§2.2); spaces in values are lost (§3.2); the MOVETO-to-the-same-position NaN quirk (§6.10).
+- [x] **Leftovers.** `SCENE.HALFREZDRIVING` returns `Failed`; `Do()` replies (§2.2); spaces in values are kept (§3.2, corrected); the MOVETO-to-the-same-position NaN quirk (§6.10).
 - [x] **Texture orientation.** Surfaces are bottom-up for every image format: `v' = 1 − v` in glTF (§5.6), checked at all 40 Tour Stops.
 - [x] **Cloud statue orientation.** Upright, not mirrored, correct side (§7.3.3).
 - [x] **Site map** with the rotated frames of Persepolis and Azuchi (§4.2): marker within 1 px and wedge within 2° at all 8 stops, floor images per stop confirmed. The marker blinks dark/light blue every 0.715 s (§4.2).
@@ -2271,18 +2325,24 @@ Resolved:
 - [x] **Sprite billboards.** Rotation by the camera yaw only, same sign; flame strips step every 5 ticks (about 12.4 fps) from a random frame (§7.4.1, §7.4.4).
 - [x] **Captions.** System font widths captured and the width rule confirmed (float32 scale); `_L` outline 1 px; icons upright; the cone (at FOV 100); dropped unless strictly inside the view; a cone-hidden caption stays clickable; no "Show Labels and Hot Spots" item in Encarta 2009 (§8.4.2, §8.5, §8.6).
 - [x] **LOD.** The pop at 13.0 XZ units; none over a visibility cell, where the PVS lists choose (§7.6, §6.6).
-- [x] **Water ripple** on `n_00water` in cells 1145–1148 only (§7.4.6). Its step rate is not measured.
+- [x] **Water ripple** on `n_00water` in cells 1145–1148 only (§7.4.6). It steps once per frame below 80 fps (debugger: 631 steps in 641 frames at 64 fps), with a drop try every first or second step.
 - [x] **PVS.** Same view with `WALKMAP.DELETE.VISIBILITY` apart from the per-cell LOD choice; sprites in no list are drawn (§6.6).
 - [x] **Back-face culling.** Back faces are culled (§5.9).
 - [x] **Cursor zones** as specified; `grip.cur` never appears (§6.9).
 - [x] **Open edges.** Leaving the collision coverage does not block a move (§6.7).
 - [x] **Loading spinner cadence** (7 ticks per frame, §8.4.3). Junk in hotspot strings has no visible effect (§6.2).
 
+Resolved in the third pass (debugger):
+
+- [x] **`3D.TOGGLEHIDDEN`** flips every draw flag, and the draws honour it; the odd pictures come from
+  `CAMERA.CLEARBACKGROUND=0`, which leaves the colour buffer uncleared (§7.4.3).
+- [x] **ITS-mode loading.** Encarta's sequence logged; files come through the `msencdata:` protocol that only
+  ENCARTA.EXE registers, which is why tourhost loads nothing; nothing a port models changes. Cursor files are
+  never read (§2.2, §6.9).
+
 Still open:
 
 - [ ] The hardware 5° cloud re-render step and the maximised (MaxView) window (§7.3.4): no 3D device in the VM.
-- [ ] **Water ripple step rate** (§7.4.6) and **`3D.TOGGLEHIDDEN`**'s effect on drawing (§7.4.3).
-- [ ] **ITS-mode loading** in the harness.
 
 How to capture: a debugger breakpoint on the control's `Do` method (`FUN_1000d0f0`) and on the event fire
 (`FUN_1000e720`) logs every command and event (cdb is in the VM's `flash-ready` snapshot; `vm/dbg.sh`, docs/vm.md;

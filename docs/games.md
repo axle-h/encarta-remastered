@@ -150,7 +150,12 @@ except where the art tells the story.
   answers the clue (below).
 - **Sound.** Effects through `<audio>`; `intro.mid`, `bgloop1–3.mid` and `question.mid` looped through the shared
   General MIDI soundfont synth (web-client.md; the old oscillator synth, drums left out, when the server has no
-  soundfont). Sound and music can be switched off.
+  soundfont). Sound and music can be switched off. How Encarta 2009 would play and loop them cannot be observed: its
+  `ENCARTA.EXE` still carries the `CMindmazeView` class and a helper that turns a name into
+  `msencdata:…mindmaze.eit*baggage/<name>` and downloads it to the cache (`FUN_005045b0`, `FUN_005044a0`), but no
+  code that plays a MIDI file: its sound imports are `sndPlaySoundA`/`PlaySoundA` (WAVE only) and `mciSendCommandA`
+  only to stop and close every MCI device at shutdown. Our looping (each pass from the initial channel state) stays
+  as it is.
 - **Players** (name, subjects, floor, score, rewards, questions seen, the floor in progress) are kept in this
   browser's `localStorage`; a returning player resumes the floor. Questions already seen are dealt last.
 - Not used: `rmofdoor`, `atrium`, `grating`, `maninst`, `parrot` as a scene (it is a prop), `match1/2.wav`,

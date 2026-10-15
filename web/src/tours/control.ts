@@ -23,7 +23,7 @@ import {
   type GroundMode,
   type StepInput,
 } from "./sim/camera";
-import { Filmstrip, FlickerLight, lcg, randBits, Ripple, type Rng } from "./sim/effects";
+import { Filmstrip, FlickerLight, lcg, Ripple, type Rng } from "./sim/effects";
 import { WalkMapSet } from "./sim/walkmap";
 import type { CursorSlot, LightInfo, ObjectInfo, RGB, SeqStep, Step, StepOf, TourScene, Vec3 } from "./types";
 
@@ -80,7 +80,6 @@ export interface LightRt {
 
 export interface WaterRt {
   ripple: Ripple | null;
-  acc: number;
   version: number;
   /** Texture size, set by the renderer when it knows the image. */
   size: [number, number] | null;
@@ -324,14 +323,8 @@ export class TourControl implements Handlers {
     for (const w of this.water.values()) {
       if (!w.size) continue;
       if (!w.ripple) w.ripple = new Ripple(w.size[0], w.size[1]);
-      // Steps are throttled to 40 per second (§7.4.6); a drop every ~0.2 s on average (interval not specified).
-      w.acc += dt;
-      while (w.acc >= 1 / 40) {
-        w.acc -= 1 / 40;
-        if (randBits(this.rng, 3) === 0) w.ripple.randomDrop(this.rng);
-        w.ripple.step();
-        w.version++;
-      }
+      // Once per drawn frame, skipping frames only above 80 fps (§7.4.6): at 64 ticks/s, every tick.
+      if (w.ripple.frame(1 / dt, this.rng)) w.version++;
     }
   }
 
@@ -608,8 +601,9 @@ export class TourControl implements Handlers {
       case "showCollision": this.showCollision = Boolean(v); break;
       case "fogStart": this.fog.start = Number(v); break;
       case "fogEnd": this.fog.end = Number(v); this.fog.enabled = this.fog.end > 0.01; break;
-      // VM: `1` when the container is found, `-2` for a path with spaces (they do not survive, §3.2).
-      case "itsFileUrl": return /\s/.test(String(v).trim()) ? "-2" : "1";
+      // The control only checks that the file exists (§2.2): `1`, or `-1` for an empty value. Files come from
+      // the converted container either way.
+      case "itsFileUrl": return String(v).trim() ? "1" : "-1";
       default: break;
     }
     return SUCCESS;
@@ -738,7 +732,7 @@ export class TourControl implements Handlers {
     if (on) {
       // Turning water on restarts the height fields from zero (§7.4.6).
       const prev = this.water.get(rec);
-      this.water.set(rec, { ripple: null, acc: 0, version: (prev?.version ?? 0) + 1, size: prev?.size ?? null });
+      this.water.set(rec, { ripple: null, version: (prev?.version ?? 0) + 1, size: prev?.size ?? null });
     } else {
       this.water.delete(rec);
     }

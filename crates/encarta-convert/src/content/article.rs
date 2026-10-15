@@ -519,8 +519,13 @@ pub fn convert(t: &mut Tracker, root: &Element, info: &ItemInfo) -> Article {
     let mut blocks = b.blocks(text, None, 0, &[]);
     let mut placed: Vec<Placement> = info.placements.iter().filter(|p| is_inline_group(&p.group)).cloned().collect();
     placed.sort_by_key(|p| (p.sequence, p.ref_id));
+    let has = |g: &str| info.placements.iter().any(|p| p.group == g);
+    let reserved = Reserved {
+        archives: has("archive"),
+        further_reading: has("furtherread"),
+    };
     match info.layout {
-        Layout::Encyclopedia => place_media(&mut blocks, &placed),
+        Layout::Encyclopedia => place_media(&mut blocks, &placed, reserved),
         Layout::Sidebar => {
             let mut items: Vec<Block> = Vec::new();
             if placed.len() == 1 {
@@ -650,11 +655,48 @@ impl Unit {
     }
 }
 
+/// Article resources the reader lays out as invisible items in the text before the primary items,
+/// each taking one paragraph slot (`docs/content-schema.md` §2 "Reserved paragraphs").
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Reserved {
+    /// The article has `archive` associations (the Archives module).
+    pub archives: bool,
+    /// The article has `furtherread` associations (the Further Reading module).
+    pub further_reading: bool,
+}
+
+/// One section after its sidebars and timeline items are laid out; the primary items and Facts and
+/// Figures are laid out by [`finish_section`] over the slots still free.
+struct Streams {
+    m: usize,
+    /// (slot, order within the slot, unit): primary, sidebar, timeline, Facts and Figures.
+    out: Vec<(usize, u8, Unit)>,
+    used: std::collections::HashSet<usize>,
+    primary: Vec<Placement>,
+    facts: Vec<Placement>,
+}
+
+impl Streams {
+    /// The first (or last) paragraph slot nothing has taken. Slot 0 belongs to the primary items
+    /// when the section has any.
+    fn free_slot(&self, from_end: bool) -> Option<usize> {
+        let ok = |s: &usize| !self.used.contains(s) && !(*s == 0 && !self.primary.is_empty());
+        if from_end { (0..self.m).rev().find(ok) } else { (0..self.m).find(ok) }
+    }
+}
+
 /// The reader's layout of one section's items over its `m` paragraphs (inferred from the VM captures;
 /// rules in `docs/content-schema.md` §2). `carried` are timeline-stream items the previous section
 /// had no paragraph for. Returns `(slot, unit)`, where slot `k < m` means "before paragraph k" and
 /// `m` after the last paragraph, and the items to carry into the next section.
+#[cfg(test)]
 fn layout_section(items: Vec<Placement>, m: usize, carried: Vec<Placement>) -> (Vec<(usize, Unit)>, Vec<Placement>) {
+    let (s, carry) = layout_streams(items, m, carried);
+    (finish_section(s), carry)
+}
+
+/// First half of a section's layout: sidebars and the timeline stream (with the items carried in).
+fn layout_streams(items: Vec<Placement>, m: usize, carried: Vec<Placement>) -> (Streams, Vec<Placement>) {
     let mut sidebars = Vec::new();
     let mut timeline = Vec::new();
     let mut facts = Vec::new();
@@ -713,6 +755,28 @@ fn layout_section(items: Vec<Placement>, m: usize, carried: Vec<Placement>) -> (
             }
         }
     }
+    (
+        Streams {
+            m,
+            out,
+            used,
+            primary,
+            facts,
+        },
+        carry,
+    )
+}
+
+/// Second half of a section's layout: Facts and Figures closes it; the primary items share the
+/// paragraph slots still free.
+fn finish_section(s: Streams) -> Vec<(usize, Unit)> {
+    let Streams {
+        m,
+        mut out,
+        used,
+        primary,
+        facts,
+    } = s;
     for p in facts {
         out.push((m, 3, Unit::One(p)));
     }
@@ -754,7 +818,7 @@ fn layout_section(items: Vec<Placement>, m: usize, carried: Vec<Placement>) -> (
         }
     }
     out.sort_by_key(|x| (x.0, x.1));
-    (out.into_iter().map(|(s, _, u)| (s, u)).collect(), carry)
+    out.into_iter().map(|(s, _, u)| (s, u)).collect()
 }
 
 fn unit_block(u: Unit) -> Block {
@@ -764,16 +828,58 @@ fn unit_block(u: Unit) -> Block {
     }
 }
 
-/// Inserts media/sidebar placements into their sections, walking the sections in reading order so
-/// that timeline items a section has no paragraph for move on to the next one. Placements for a
-/// section that does not exist (articles without sections) go to the top-level paragraphs.
-fn place_media(blocks: &mut Vec<Block>, placements: &[Placement]) {
+/// A section in reading order: its id, plain title and number of paragraphs of its own.
+struct SectionInfo {
+    id: u32,
+    title: String,
+    m: usize,
+}
+
+fn own_paragraphs(blocks: &[Block]) -> Vec<usize> {
+    blocks
+        .iter()
+        .enumerate()
+        .filter(|(_, b)| matches!(b, Block::Para { .. } | Block::Intro { .. }))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+fn collect_sections(blocks: &[Block], out: &mut Vec<SectionInfo>) {
+    for b in blocks {
+        if let Block::Section { id, title, blocks: inner, .. } = b {
+            out.push(SectionInfo {
+                id: *id,
+                title: model::plain(title).trim().to_string(),
+                m: own_paragraphs(inner).len(),
+            });
+            collect_sections(inner, out);
+        }
+    }
+}
+
+/// Inserts media/sidebar placements into their sections. The sections are walked in reading order
+/// three times: sidebars and timeline items first (timeline items a section has no paragraph for
+/// move on to the next one), then the reserved paragraphs of the article's modules, then the
+/// primary items over what is left. Placements for a section that does not exist (articles without
+/// sections) go to the top-level paragraphs.
+fn place_media(blocks: &mut Vec<Block>, placements: &[Placement], reserved: Reserved) {
     let mut by_sec: std::collections::BTreeMap<u32, Vec<Placement>> = Default::default();
     for p in placements {
         by_sec.entry(p.sec).or_default().push(p.clone());
     }
+    let mut secs = Vec::new();
+    collect_sections(blocks, &mut secs);
     let mut carry = Vec::new();
-    place_in_sections(blocks, &mut by_sec, &mut carry);
+    let mut layouts: Vec<Streams> = Vec::with_capacity(secs.len());
+    for s in &secs {
+        let items = by_sec.remove(&s.id).unwrap_or_default();
+        let (l, c) = layout_streams(items, s.m, std::mem::take(&mut carry));
+        layouts.push(l);
+        carry = c;
+    }
+    reserve_module_slots(&secs, &mut layouts, reserved);
+    let mut slots = layouts.into_iter().map(finish_section);
+    apply_sections(blocks, &mut slots);
     if !carry.is_empty() {
         // Nothing follows the last section: its carried items close it.
         let units = carry.into_iter().map(|p| unit_block(Unit::One(p))).collect();
@@ -782,24 +888,50 @@ fn place_media(blocks: &mut Vec<Block>, placements: &[Placement]) {
     let mut left: Vec<Placement> = by_sec.into_values().flatten().collect();
     if !left.is_empty() {
         left.sort_by_key(|p| (p.sequence, p.ref_id));
-        let carry = interleave(blocks, left, Vec::new());
+        let m = own_paragraphs(blocks).len();
+        let (l, carry) = layout_streams(left, m, Vec::new());
+        insert_units(blocks, finish_section(l));
         let units = carry.into_iter().map(|p| unit_block(Unit::One(p))).collect();
         append_to_last_section(blocks, units);
     }
 }
 
-fn place_in_sections(
-    blocks: &mut [Block],
-    by_sec: &mut std::collections::BTreeMap<u32, Vec<Placement>>,
-    carry: &mut Vec<Placement>,
-) {
-    for b in blocks.iter_mut() {
-        if let Block::Section { id, blocks: inner, .. } = b {
-            let items = by_sec.remove(id).unwrap_or_default();
-            if !items.is_empty() || !carry.is_empty() {
-                *carry = interleave(inner, items, std::mem::take(carry));
+/// The Archives and Further Reading modules each hold one paragraph slot that shows nothing
+/// (VM: an empty item `DIV`), placed after the sidebars and timeline items and before the primary
+/// items: Archives at the first free slot of the section titled "History", or, without one, at the
+/// first free slot of the article; Further Reading at the last free slot of the last section. With
+/// no free slot they go after the section's last paragraph, which changes nothing.
+fn reserve_module_slots(secs: &[SectionInfo], layouts: &mut [Streams], reserved: Reserved) {
+    if reserved.archives {
+        match secs.iter().position(|s| s.title.eq_ignore_ascii_case("history")) {
+            Some(i) => {
+                if let Some(k) = layouts[i].free_slot(false) {
+                    layouts[i].used.insert(k);
+                }
             }
-            place_in_sections(inner, by_sec, carry);
+            None => {
+                if let Some((l, k)) = layouts.iter_mut().find_map(|l| l.free_slot(false).map(|k| (l, k))) {
+                    l.used.insert(k);
+                }
+            }
+        }
+    }
+    if reserved.further_reading
+        && let Some(l) = layouts.last_mut()
+        && let Some(k) = l.free_slot(true)
+    {
+        l.used.insert(k);
+    }
+}
+
+/// Puts each section's laid-out units into its blocks, in the order of [`collect_sections`].
+fn apply_sections(blocks: &mut [Block], slots: &mut impl Iterator<Item = Vec<(usize, Unit)>>) {
+    for b in blocks.iter_mut() {
+        if let Block::Section { blocks: inner, .. } = b {
+            if let Some(s) = slots.next() {
+                insert_units(inner, s);
+            }
+            apply_sections(inner, slots);
         }
     }
 }
@@ -814,17 +946,14 @@ fn append_to_last_section(blocks: &mut Vec<Block>, units: Vec<Block>) {
     }
 }
 
-/// Lays out `items` (and items carried from the previous section) over the paragraphs of `blocks`;
-/// returns the items to carry into the next section.
-fn interleave(blocks: &mut Vec<Block>, items: Vec<Placement>, carried: Vec<Placement>) -> Vec<Placement> {
-    let paras: Vec<usize> = blocks
-        .iter()
-        .enumerate()
-        .filter(|(_, b)| matches!(b, Block::Para { .. } | Block::Intro { .. }))
-        .map(|(i, _)| i)
-        .collect();
+/// Inserts laid-out units before their paragraphs; slot `m` goes after the last paragraph, before
+/// the subsections.
+fn insert_units(blocks: &mut Vec<Block>, slots: Vec<(usize, Unit)>) {
+    if slots.is_empty() {
+        return;
+    }
+    let paras = own_paragraphs(blocks);
     let m = paras.len();
-    let (slots, carry) = layout_section(items, m, carried);
     let mut at: std::collections::BTreeMap<usize, Vec<Block>> = Default::default();
     for (slot, u) in slots {
         at.entry(slot.min(m)).or_default().push(unit_block(u));
@@ -838,12 +967,10 @@ fn interleave(blocks: &mut Vec<Block>, items: Vec<Placement>, carried: Vec<Place
         }
         out.push(b);
     }
-    // After the last paragraph, before the subsections.
     let tail: Vec<Block> = at.into_values().flatten().collect();
     let k = out.iter().rposition(|b| !matches!(b, Block::Section { .. })).map_or(0, |i| i + 1);
     out.splice(k..k, tail);
     *blocks = out;
-    carry
 }
 
 fn bib_json(b: &Bib) -> Value {
@@ -1209,6 +1336,63 @@ mod tests {
             pl(1, 4, "composite", 4, Margin),
         ];
         assert_eq!(lay(v, 10), vec![(0, vec![1]), (3, vec![3]), (6, vec![4]), (10, vec![2])]);
+    }
+
+    /// Lays out sections `(id, title, m, items)` like `place_media`, with the reserved module slots.
+    fn lay_article(secs: Vec<(u32, &str, usize, Vec<Placement>)>, reserved: Reserved) -> Vec<Vec<(usize, Vec<u32>)>> {
+        let infos: Vec<SectionInfo> = secs.iter().map(|(id, t, m, _)| SectionInfo { id: *id, title: t.to_string(), m: *m }).collect();
+        let mut carry = Vec::new();
+        let mut layouts = Vec::new();
+        for (_, _, m, items) in secs {
+            let (l, c) = layout_streams(items, m, std::mem::take(&mut carry));
+            layouts.push(l);
+            carry = c;
+        }
+        reserve_module_slots(&infos, &mut layouts, reserved);
+        layouts.into_iter().map(|l| slots(&finish_section(l))).collect()
+    }
+
+    #[test]
+    fn module_slots_are_reserved_before_the_primary_items() {
+        use Column::*;
+        let archives = Reserved { archives: true, further_reading: false };
+        // Moon: no "History" section; the introduction's slots are all taken (slot 0 by the
+        // pictures, 1 and 2 by events), so the Archives slot is section 2's first free one, after
+        // its sidebar, and the four primary items skip it.
+        let intro = vec![pl(1, 1, "media", 1, Margin), pl(1, 2, "timeevent", 2, Margin), pl(1, 3, "timeevent", 3, Margin)];
+        let s2 = vec![
+            pl(2, 10, "media", 1, Margin),
+            pl(2, 11, "table", 2, Margin),
+            pl(2, 12, "flash", 3, Margin),
+            pl(2, 13, "media", 4, Margin),
+            pl(2, 14, "sidebar", 5, Text),
+        ];
+        let got = lay_article(vec![(1, "", 3, intro), (2, "THE MOON SEEN FROM EARTH", 6, s2.clone())], archives);
+        assert_eq!(got[0], vec![(0, vec![1]), (1, vec![2]), (2, vec![3])]);
+        assert_eq!(got[1], vec![(0, vec![10]), (1, vec![14]), (3, vec![11]), (4, vec![12]), (5, vec![13])]);
+        // Without archives the primary items are spaced over all free slots.
+        let got = lay_article(vec![(2, "", 6, s2.clone())], Reserved::default());
+        assert_eq!(got[0], vec![(0, vec![10]), (1, vec![14]), (2, vec![11]), (3, vec![12]), (4, vec![13])]);
+        // A section titled exactly "History" takes it, even when earlier sections have room;
+        // "History of Mathematics" does not count.
+        let got = lay_article(
+            vec![(1, "History of Mathematics", 4, vec![pl(1, 1, "media", 1, Margin), pl(1, 2, "media", 2, Margin)]), (9, "HISTORY", 3, vec![])],
+            archives,
+        );
+        assert_eq!(got[0], vec![(0, vec![1]), (2, vec![2])]);
+        let got = lay_article(vec![(1, "History of Mathematics", 4, vec![pl(1, 1, "media", 1, Margin), pl(1, 2, "media", 2, Margin)])], archives);
+        assert_eq!(got[0], vec![(0, vec![1]), (2, vec![2])], "slot 1 reserved, step 1 over [2, 3]");
+        // East Timor section 13 (the last): Further Reading takes the last free slot, before the
+        // last paragraph; the four pictures then go one paragraph apart after the event.
+        let s13 = vec![
+            pl(13, 1, "media", 2, Margin),
+            pl(13, 2, "timeevent", 1, Margin),
+            pl(13, 3, "media", 3, Margin),
+            pl(13, 4, "media", 4, Margin),
+            pl(13, 5, "media", 5, Margin),
+        ];
+        let got = lay_article(vec![(12, "", 4, vec![]), (13, "Independence", 9, s13)], Reserved { archives: false, further_reading: true });
+        assert_eq!(got[1], vec![(0, vec![1]), (1, vec![2]), (2, vec![3]), (3, vec![4]), (4, vec![5])]);
     }
 
     #[test]

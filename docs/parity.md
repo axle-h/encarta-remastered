@@ -21,7 +21,7 @@ that closed in 2009). *(ours)* marks behaviour chosen here where the original is
 
 | | done | partial | missing | n/a |
 |---|---|---|---|---|
-| Features (134 rows below) | 105 | 17 | 4 | 8 |
+| Features (134 rows below) | 106 | 16 | 4 | 8 |
 
 Fixed in this audit: 25 items (see [Fixes made](#fixes-made-in-this-audit)). The remaining gaps, in
 priority order, are the "Next" list in [PLAN.md](PLAN.md).
@@ -72,7 +72,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Show Outline / Show Full Article | done | VM `761575094-outline`, `761563737-outline` | — |
 | Find in Article | done | CSS Highlight API | — |
 | Media strip, Show All Media | done | | — |
-| Inline media placement (text column, margin, clusters) | partial | schema 2; 99.4 % paragraph, 100 % order and cluster match against the 25 encyclopedia article captures (`placement_matches_vm_captures`); country introductions and overflow into the next section reproduced | spacing in four sections (content-schema §11) |
+| Inline media placement (text column, margin, clusters) | done | schema 2; 100 % paragraph, order and cluster match (1,660 of 1,660 items) against the 25 encyclopedia article captures (`placement_matches_vm_captures`, exact); country introductions and overflow into the next section reproduced; the reader's reserved Archives and Further Reading slots (rule 5, VM pass 3) explain the last four sections | needs `encarta-convert content` re-run |
 | Quick Facts / Facts and Figures panel | done | | — |
 | World Atlas panel → map at the place | done | | — |
 | Related Articles tree | done | | — |
@@ -101,7 +101,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Audio (Opus/AAC), audio sets with picture | done | 50/50 audio sets | — |
 | Captions under audio (SAMI → WebVTT) | done | | — |
 | Video with captions (414) | done | 50/50; VM `461546454` | — |
-| MIDI music (236) | done | own SMF reader and soundfont synth over Fluid R3 GM (media.md §8); offline renders of 20 disc songs follow FluidSynth's loudness envelope within about 1 dB (web-client.md) | no VM comparison: the guest has no sound device |
+| MIDI music (236) | done | own SMF reader and soundfont synth over Fluid R3 GM (media.md §8); offline renders of 20 disc songs follow FluidSynth's loudness envelope within about 1 dB (web-client.md) | compared with the GS Wavetable synth in the VM (media.md §8): tempo, onsets, programs, velocity, bend, volume/expression match; pan (balance law), mod wheel (6 Hz on held notes), pedal threshold, release by family and cymbal/kick/snare levels now follow GS. Still different: Fluid's stereo sample pairs, velocity above 96, timbre, timpani length; our reverb and 0.3 s ring-out kept by choice |
 | Interactives (860, Flash IAF player under Ruffle) | done | 50/50 open a player; Ruffle test pass: 46 of every control type and both editions draw and respond, disc fonts as device fonts (web-client.md) | Trebuchet MS approximated by Tahoma (VM, Flash 10.3, seven items: drawing matches, some paragraphs wrap one line differently, nothing extra clipped); Vasco da Gama's ocean fill missing once in an early headless run, drawn by Flash and in every run since |
 | Match games natively | done | games.md | — |
 | Panoramas (151, `surround`) | done | native cylinder player (`web/src/panorama/`) in place of the Flash `vrslide` viewer, which is blank under Ruffle | — |
@@ -151,8 +151,8 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 |---|---|---|---|
 | Globe, Miller flat view, measured P/m | done | atlas-client.md, VM V1/V2/V12; flat-view tiles made in Web Workers | — |
 | 20 menu styles + statistical, moon | done | VM V4 | 4, 18, 21–23, 26 have no MapStyle |
-| Labels, symbols, road shields | done | road shields are the labels of shield road classes, numbered by name (mad-styling.md §8.1, matches VM V8); alternative names (U+0004) on a `w6` line (§7.3); pen draw-over masks on lines and fills (§5.2) | the alternative line is confirmed by V15 (Mumbai/Bombay, Bolzano/Bozen) with a rule between the lines, drawn by "rule" glyph faces (atlas-client.md; about 2 px lower than the VM, names with an alternative do not wrap); label placement cost and the shields' one-per-sixth-of-pane rule approximated |
-| Click menu with Map / Read Article | done | VM V11; pen group 134 (time zones) left out, as ENCARTA.EXE does (mad-styling.md §16), confirmed on the Time Zones map itself (V16: Western Europe, West Central Europe, France, Europe); no land area is listed over the sea (VM: only "Bay of Biscay" 1-3 km off Brittany; lakes still list their country): area classes are split at the coast and only land parts are hit-tested (atlas-output.md) | water bodies, World, tectonic plates and reefs stay hittable over the sea by assumption |
+| Labels, symbols, road shields | done | road shields are the labels of shield road classes, numbered by name (mad-styling.md §8.1, matches VM V8); alternative names (U+0004) on a `w6` line (§7.3); pen draw-over masks on lines and fills (§5.2) | the alternative line is confirmed by V15 (Mumbai/Bombay, Bolzano/Bozen) with a rule between the lines, drawn by "rule" glyph faces (atlas-client.md; about 2 px lower than the VM, names with an alternative do not wrap); point labels try MOBB's candidates in its order (above right, below right, above left, below left; centred first without a symbol; §7.4, from the code), but MOBB picks the cheapest candidate by what lies under it and its neighbours where MapLibre takes the first that fits; Encarta puts one shield per run near its middle, ours repeat at a spacing (§8.1) |
+| Click menu with Map / Read Article | done | VM V11; pen group 134 (time zones) left out, as ENCARTA.EXE does (mad-styling.md §16), confirmed on the Time Zones map itself (V16: Western Europe, West Central Europe, France, Europe); no land area is listed over the sea (VM: only "Bay of Biscay" 1-3 km off Brittany; lakes still list their country): area classes are split at the coast and only land parts are hit-tested (atlas-output.md); menu order from MOBB's sort (§4.5, VM pass 3): label hits, points, routable roads, lines, areas, then class scale ascending and GeoObj descending, matching every captured menu; the time-zone exclusion now goes by row (it went by class id, which listed time zones and dropped the Mexico/US shield roads) | needs `ENCARTA_ATLAS_ONLY=style` and `=vector` re-runs |
 | Place links (P2MTBL) | done | 206/206 sampled links open (this audit: 2,656 off-disc targets are left out instead of "Item not found"; 1,229 MSWORLD.ITR photos and sounds now open) | 910 of those photos show only their 64-px pushpin picture; 152 sounds have no audio on the disc (msworld.md §3) |
 | Place search | done | gazetteer FTS | — |
 | Map Legend, Map Customizer | done | | legend captions are class names |
@@ -166,7 +166,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| 7 tours: walking, collision, ground following (gravity mode), lights, statues, captions | done | 47 views match the VM read-back (tour-runtime.md); gravity fall and the drifted pitch limit as traced with the debugger (2026-10-15) | hardware cloud step, ripple step rate |
+| 7 tours: walking, collision, ground following (gravity mode), lights, statues, captions | done | 47 views match the VM read-back (tour-runtime.md); gravity fall and the drifted pitch limit as traced with the debugger; the water ripple steps once per drawn frame below 80 fps (cdb: 631 steps in 641 frames at 64 fps) and `CLEARBACKGROUND=0` keeps the colour buffer, which is what `3D.TOGGLEHIDDEN` shows (2026-10-15) | hardware cloud step and MaxView (no 3D device) |
 | Tour page layout, site map, Tour Stops menu | done | VM `701504257/stops` | rotated maps unverified |
 | Labels and Hot Spots toggle | done | | — |
 | Hotspot → media page, Back restores pose | done | VM | — |
@@ -224,7 +224,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| Options dialog (5 pages: General, Encarta Updates, Closed Captioning, World Atlas, Quality) | done | `app/OptionsDialog.tsx`, `settings/settings.tsx` (VM 2026-10-14): text size, captions (audio and video), atlas crosshairs, lat/long format, units, linear stats are wired | startup sound, rollover tick, press/release click, Kids rollover and timeline sounds play as measured in the VM (`settings/uiSounds.ts`; media.md §9); menu and button sounds default to off, as the original's Default button sets; 578, 579, 682, 702, 31906-31913 were not heard in the views tried |
+| Options dialog (5 pages: General, Encarta Updates, Closed Captioning, World Atlas, Quality) | done | `app/OptionsDialog.tsx`, `settings/settings.tsx` (VM 2026-10-14): text size, captions (audio and video), atlas crosshairs, lat/long format, units, linear stats are wired | startup sound, rollover tick, press/release click, Kids rollover and timeline sounds play as measured in the VM (`settings/uiSounds.ts`; media.md §9); menu and button sounds default to off, as the original's Default button sets; 578/579 play on tour site-map stops (3D tour canvas and Virtual Tour points), dialog buttons tick on rollover; the other unheard ids are never played by the original (media.md §9) |
 | Kids / Premium switch | done | `/kids` | — |
 
 ## Accessibility

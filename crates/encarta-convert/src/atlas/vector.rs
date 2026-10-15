@@ -556,6 +556,9 @@ fn props(objects: &Objects, classes: &Classes, p: &Piece) -> Vec<(&'static str, 
     let mut v = vec![("class", Value::Uint(class as u64)), ("class_name", Value::Str(c.name.clone())), ("entity", Value::Uint(o.entity as u64))];
     if !o.name.primary.is_empty() {
         v.push(("name", Value::Str(o.name.primary.clone())));
+        // The click menu's last tie-break (mad-styling.md §4.5): GeoObj (record key, entry), descending.
+        let (key, entry) = objects.location(obj);
+        v.push(("geoobj", Value::Uint(geoobj_order(key, entry))));
     }
     if let Some(a) = &o.name.abbr {
         v.push(("abbr", Value::Str(a.clone())));
@@ -584,6 +587,11 @@ fn props(objects: &Objects, classes: &Classes, p: &Piece) -> Vec<(&'static str, 
         v.push(("water", Value::Bool(true)));
     }
     v
+}
+
+/// GeoObj `(record key, entry)` as one number that sorts like the pair (entries are below 2^16).
+fn geoobj_order(key: u32, entry: u32) -> u64 {
+    (key as u64) << 16 | entry.min(0xFFFF) as u64
 }
 
 /// Tile units of a fixed-point world coordinate for tile `(z, x, y)`, with a world shift.
@@ -750,7 +758,7 @@ pub struct VectorReport {
 fn layer_meta(classes: &Classes) -> Json {
     let fields = json!({ "class": "Number", "class_name": "String", "entity": "Number", "name": "String", "abbr": "String",
                           "alt_names": "String", "name_0009": "String", "anonymous": "Boolean", "priority": "Number", "goto_km": "Number",
-                          "width_z10": "Number", "water": "Boolean" });
+                          "width_z10": "Number", "water": "Boolean", "geoobj": "Number" });
     let _ = classes;
     json!(LAYERS.iter().map(|l| json!({ "id": l, "fields": fields })).collect::<Vec<_>>())
 }
@@ -906,6 +914,13 @@ pub fn detail_classes(atlas: &Atlas, classes: &Classes) -> Result<std::collectio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn geoobj_order_sorts_like_key_then_entry() {
+        assert!(geoobj_order(200, 90) > geoobj_order(7, 30));
+        assert!(geoobj_order(7, 30) > geoobj_order(7, 29));
+        assert_eq!(geoobj_order(4_000_000, 8000), 4_000_000 * 65536 + 8000);
+    }
 
     /// Small-region run on the user's disc (skipped without `extracted/`): Denmark, band 7, z8.
     #[test]

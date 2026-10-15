@@ -105,7 +105,8 @@ export class TourView {
       doubleSided: options.doubleSided ?? false,
       pixelRatio: options.pixelRatio ?? (typeof devicePixelRatio === "number" ? devicePixelRatio : 1),
     };
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: "high-performance" });
+    // The drawing buffer is kept between frames for CAMERA.CLEARBACKGROUND=0 (§7.4.3).
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: "high-performance", preserveDrawingBuffer: true });
     this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     this.renderer.setPixelRatio(this.options.pixelRatio);
     this.renderer.autoClear = true;
@@ -326,9 +327,13 @@ export class TourView {
     const cam = c.camera;
     const bg = cam.backgroundColor;
     this.renderer.setClearColor(new THREE.Color(bg[0] / 255, bg[1] / 255, bg[2] / 255), 1);
-    const drawModel = this.ready && c.modelLoaded && c.modelOn && !c.loading;
-    if (!drawModel) {
-      this.renderer.clear();
+    const contentReady = this.ready && c.modelLoaded && !c.loading;
+    // With CLEARBACKGROUND=0 (every tour) only depth is cleared: wherever no visible object draws, the
+    // last frame stays, and with 3D off the last 3D picture stays under the 2D layer (§7.4.3).
+    const keepColour = contentReady && cam.clearBackground === 0;
+    this.renderer.autoClearColor = !keepColour;
+    if (!contentReady || !c.modelOn) {
+      if (!keepColour) this.renderer.clear();
       return;
     }
     const v = c.view();

@@ -109,7 +109,19 @@ from the 33 article captures (1,660 placed items). Per section, with *m* = the s
    past the last section close it.
 4. Facts and Figures goes after the last paragraph of its section and takes no paragraph from the others
    (the five country introductions captured).
-5. The primary items share the remaining paragraphs ("free slots"; at least slot 0). With no more items than
+5. **Reserved paragraphs.** Before the primary items, two article modules each take one paragraph slot and draw
+   nothing there (the reader's layout puts a module item into the section; the template's item container stays
+   empty, VM: `<DIV id=Child_s‹n› parsec="n"></DIV>`). A slot is *free* when no sidebar or timeline item has it
+   and it is not slot 0 of a section that has primary items. **Archives** (the article has `archive`
+   associations): the first free slot of the section whose title is exactly "History" (case ignored; "History of
+   the United Kingdom" does not count), or, with no such section, the first free slot in reading order over all
+   sections. **Further Reading** (`furtherread` associations): the last free slot of the last section in reading
+   order (usually the slot before its last paragraph). With no free slot the module goes after the section's last
+   paragraph, which moves nothing. Other module items (Facts and Figures, the map of `minimob="1"` articles, live
+   radio and news) go after the first section's last paragraph, which moves nothing either. Provenance: the
+   reader's layout code (`MSENCXML.DLL` in `AREF/COMPNTS`, `FUN_458f4f00`, run after the sidebar and timeline
+   passes and before the primary pass); it agrees with the empty slots seen in the captures.
+6. The primary items share the remaining paragraphs ("free slots"; at least slot 0). With no more items than
    free slots they go `step = ⌊free/items⌋` slots apart from the first free slot. With more, the items that
    cannot share a box (video, inline tables, anything not *clusterable*) take their own free slots first,
    free slot `k·free/count` for item *k* (when they are at least as many as the free slots, they share them
@@ -119,22 +131,18 @@ from the 33 article captures (1,660 placed items). Per section, with *m* = the s
    **cluster** — one box in the margin showing one item at a time with a strip of thumbnails. In one slot:
    primary first, then the sidebar, then the timeline item. Slot *m* (after the last paragraph) goes before
    the section's subsections.
-6. **Column.** Sidebar teasers and video span the **text** column; a `media` picture spans the text column
+7. **Column.** Sidebar teasers and video span the **text** column; a `media` picture spans the text column
    when its `files/image` is at least 360 px wide and it is not `NoSquish="1"`, otherwise it is drawn in the
    left **margin** column (192 px picon); an audio set (`audionested`) follows its picture member (by that
    rule, or text when the member has no `image` file and a 216-px picon); everything else, and every
    cluster, is in the margin.
 
-Against the captures this gives the VM's paragraph for 99.4 % of the items, the VM's order for all of them
-and the VM's cluster boxes for all of them (1,660 items in the 25 encyclopedia articles captured; the test
-`content::disc_tests::placement_matches_vm_captures` measures it when `extracted/` and the captures are
-present). The previous rules (one timeline stream without virtual tours, Facts and Figures among the primary
-items, no carrying) gave 95.7 %, 98.4 % and 98.0 %; the old "spread evenly" rule 66 %, 89 % and 89 %. The rest,
-ten items in four sections, are primary items the VM puts later in the section than `⌊free/items⌋` spacing
-does (Mathematics and United Kingdom introductions, Moon §2, East Timor §13). Each of these sections has one **empty
-item slot** in the VM's DOM (a `<DIV id=Child_s‹n›>` with nothing in it) exactly where the spacing needs a used slot:
-the reader lays out one more item there, as it would a timeline-stream item, and draws nothing for it. Nothing in the
-data we read accounts for that item (§11).
+Against the captures this gives the VM's paragraph, order and cluster box for every item (1,660 items in the 25
+encyclopedia articles captured; the test `content::disc_tests::placement_matches_vm_captures` requires it when
+`extracted/` and the captures are present). Without rule 5 it was 99.4 %: the ten items of the Mathematics and
+United Kingdom introductions and Moon §2 (Archives; none of them has a "History" section) and East Timor §13 (Further
+Reading) came one paragraph early. The previous rules (one timeline stream without virtual tours, Facts and Figures
+among the primary items, no carrying) gave 95.7 %, 98.4 % and 98.0 %; the old "spread evenly" rule 66 %, 89 % and 89 %.
 
 **Sidebar teasers** (`sidebar` placed in an article) are boxes in the text column: header "Sidebars", the
 category by the sidebar's DATA `type` (VM: `SBD` HISTORIC DOCUMENTS, `SBG` GREAT MOMENTS IN SPORTS, `SBH`
@@ -441,10 +449,9 @@ Answered by the VM captures (`docs/vm-findings.md`): the alternative title (§2,
 private-use glyphs (§7), sidebar layout (§2), Kids layout (§2), and the media placement rules (§2).
 Still open:
 
-1. Media placement residue (§2): in the four sections (Mathematics and United Kingdom introductions, Moon §2, East
-   Timor §13) the VM lays out one item we do not have, an empty slot in its DOM that explains all ten misplaced items
-   (VM captures, 2026-10-15). Which record the native layout puts there needs the debugger. Answered earlier: the
-   country introductions (Facts and Figures closes the section) and the items carried into the next section.
+1. ~~Media placement residue~~: answered (2026-10-15): the empty slots are the Archives and Further Reading modules'
+   reserved paragraphs (§2 rule 5), read from the reader's layout code (`MSENCXML.DLL`); placement now matches the VM
+   for all 1,660 captured items.
 2. ~~Sidebar categories `SBA`, `SBP`~~: answered (VM 2026-10-14, 761593235 and 761594207): both show the plain
    purple "sidebar" banner like the other categories; the category changes nothing on screen.
 3. ~~Timeline pop-up wording of full dates and geologic dates~~: answered, see timeline.md §3.2 (VM 2026-10-14).

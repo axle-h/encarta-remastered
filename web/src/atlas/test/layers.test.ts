@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LayerSpecification } from "maplibre-gl";
-import { classNames, hitClassesAt, hitLayers, hitRanges, interactiveRanges, isHoverLayer, layerClasses, layerState, menuExcludedClasses, statLayer } from "../layers";
+import { classNames, hitClassesAt, hitLayers, hitOrder, hitRanges, interactiveRanges, isHoverLayer, layerClasses, layerState, menuExcludedClasses, statLayer } from "../layers";
 import { syntheticStyle } from "./fixtures";
 
 const s = syntheticStyle();
@@ -76,6 +76,13 @@ describe("added layers", () => {
     expect(hitRanges(withZones, none).has(80)).toBe(false);
     expect(hitRanges(withZones, none).has(62)).toBe(true);
     expect(menuExcludedClasses(withZones).has(80)).toBe(true);
+  });
+  it("reads the click menu's sort data", () => {
+    const m = { ...s, metadata: { ...(s.metadata ?? {}), "encarta:class_scale": { "62": 420, "64": 250 }, "encarta:routable_classes": [474] } };
+    const o = hitOrder(m);
+    expect([...o.scale]).toEqual([[62, 420], [64, 250]]);
+    expect(o.routable.has(474)).toBe(true);
+    expect(hitOrder(s).scale.size).toBe(0);
   });
   it("colours countries from feature-state", () => {
     const l = statLayer("earth") as { paint: Record<string, unknown>; "source-layer": string };

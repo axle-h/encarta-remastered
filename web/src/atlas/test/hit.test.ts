@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hoverClassesAt, hoverTarget, rankHits, viewTitle, type QueriedFeature } from "../hit";
+import { hitRank, hoverClassesAt, hoverTarget, labelHitAt, rankHits, viewTitle, type QueriedFeature } from "../hit";
 import { syntheticStyle } from "./fixtures";
 
 const f = (id: number, sourceLayer: string, name: string, className: string, cls = 0, extra: Record<string, unknown> = {}): QueriedFeature => ({
@@ -25,6 +25,60 @@ describe("hit ranking (V11 menu order)", () => {
   ]);
   it("lists points, lines, areas, countries last, once per entity", () => {
     expect(hits.map((h) => h.name)).toEqual(["Limoges", "Loire", "15°", "Tropic of Cancer", "Western Europe", "Auvergne", "France", "World"]);
+  });
+  it("sorts by MOBB's rank, class scale, then GeoObj descending (mad-styling.md §4.5)", () => {
+    // Rows: 10 town (scale 200), 20 region (250), 21 division (250), 30 range (400), 31 basin (420),
+    // 32 country (420), 40 river line (400).
+    const order = { scale: new Map([[10, 200], [20, 250], [21, 250], [30, 400], [31, 420], [32, 420], [40, 400]]), routable: new Set<number>() };
+    const g = (key: number, entry: number) => ({ geoobj: key * 65536 + entry });
+    const menu = rankHits(
+      [
+        f(1, "areas", "Country", "CountryRegion", 32, g(0, 169)),
+        f(2, "areas", "Region B", "Statistical region", 20, g(8, 24)),
+        f(3, "areas", "Basin", "River - basin", 31, g(60, 92)),
+        f(4, "areas", "Range", "Physiographic region", 30, g(60, 59)),
+        f(5, "areas", "Division", "Admin1", 21, g(208, 94)),
+        f(6, "areas", "Region A", "Statistical region", 20, g(8, 25)),
+        f(7, "lines", "River", "River", 40, g(16, 186)),
+        f(8, "points", "Town", "PPL", 10, g(64, 35)),
+      ],
+      undefined,
+      undefined,
+      { order },
+    );
+    expect(menu.map((h) => h.name)).toEqual(["Town", "River", "Division", "Region A", "Region B", "Range", "Basin", "Country"]);
+  });
+  it("lists places hit through their drawn label first, a routable road's label before all", () => {
+    const order = { scale: new Map([[10, 200], [32, 420], [50, 400], [60, 400]]), routable: new Set([60]) };
+    const sym = (q: QueriedFeature): QueriedFeature => ({ ...q, layer: { id: "label", type: "symbol" } });
+    const menu = rankHits(
+      [
+        f(1, "areas", "Sea", "Water label", 50),
+        f(2, "points", "Town", "PPL", 10),
+        sym(f(3, "labels", "Country", "CountryRegion", 32)),
+        f(4, "lines", "Motorway", "Motorway", 60),
+        sym(f(5, "lines", "Highway", "Highway", 60)),
+      ],
+      undefined,
+      undefined,
+      { order },
+    );
+    expect(menu.map((h) => h.name)).toEqual(["Highway", "Country", "Town", "Motorway", "Sea"]);
+    expect(menu[1]!.label).toBe(true);
+    expect(hitRank({ kind: "area", label: false, classId: 1 })).toBe(5);
+    // At most four routable roads.
+    const roads = rankHits([1, 2, 3, 4, 5, 6].map((i) => f(i, "lines", `Road ${i}`, "Motorway", 60)), undefined, undefined, { order });
+    expect(roads.map((h) => h.name)).toEqual(["Road 1", "Road 2", "Road 3", "Road 4"]);
+  });
+  it("tells a point's label from its symbol by where the click is", () => {
+    const pt = (icon: boolean): QueriedFeature => ({ ...f(1, "points", "Town", "PPL"), geometry: { type: "Point", coordinates: [icon ? 1 : 2, 0] } });
+    const project = ([x, y]: [number, number]) => ({ x: x * 100, y });
+    const radius = (q: QueriedFeature) => ((q.geometry?.coordinates as number[])[0] === 1 ? 4 : undefined);
+    const test = labelHitAt({ x: 103, y: 0 }, project, radius);
+    expect(test(pt(true))).toBe(false); // 3 px from a 4-px-radius icon
+    expect(labelHitAt({ x: 112, y: 0 }, project, radius)(pt(true))).toBe(true); // beside it: the name
+    expect(test(pt(false))).toBe(true); // a name without a symbol
+    expect(test({ ...f(2, "areas", "Country", "CountryRegion"), layer: { id: "fill", type: "fill" } })).toBe(false);
   });
   it("applies the hit sides: water classes only over water, land classes not with them (mad-styling.md §4.4)", () => {
     const sides = new Map([

@@ -1029,3 +1029,163 @@ that is not clipped in Flash. Flash's land fills in Vasco show a fine dither, wh
 The atlas label-corner order and click-menu order, the media-placement residue (`Child_s<n>`) and the other
 debugger-only data questions were not taken up in this pass; the debugger workflow is now there for them. Not tried
 with Flash yet: the unheard sounds in Kids Read Aloud and the Kids games, which are Flash.
+
+## VM pass 3 (2026-10-15): the last "Needs the VM" items
+
+Three VM lanes ran in parallel (`vm/` and two reflink copies with their own ports, all from `flash-ready`); nothing
+was installed in the guest. The hardware cloud step and MaxView (3D device) were not attempted.
+
+### Atlas: label, shield and click-menu order (static, MOBB200.DLL and ENCARTA.EXE; no VM)
+Checked against `fixtures/atlas/labels/`, `sea-click/`, `sea-click2/`, V11.
+- Point labels (mad-styling.md §7.4): candidates above right, below right, above left, below left (centred first
+  when the point has no symbol), with fixed added costs 250/500/750/1000 (centred 0). A box outside the pane or
+  over a placed label is rejected; the rest add a background cost (pixel classes under the box: 0 over water,
+  251 over land, 1000–2000 across a coast, +1000–3000 over label/line-class pixels) and a neighbour cost (the
+  reserved boxes of other labelled points, 4750 down to 251 by priority group; 5000 for the pane centre).
+  Cheapest wins, ties to the earlier candidate. So the order matters only between equal costs: isolated labels
+  above right (7 of 7 in the outback), and the Morbihan mix (18 of 30 above left) comes from the costs.
+- Shields (§8.1): one per on-screen run at most; candidates cost the centre term plus the same neighbour cost (no
+  background, no position step); cheapest wins; a same-text shield within ~160 px drops the run's shield.
+- Click menu (§4.5): MOBB sorts by rank (label hit of a routable road 0, other label hits 1, points 2, routable
+  roads 3, lines 4, areas 5), then PDCAttribute scale ascending, then GeoObj key and entry descending; at most 4
+  routable roads; ENCARTA.EXE keeps the order. Every captured menu fits, e.g. V11 "Limoges, Auvergne (250, key
+  208), Western Europe (250, key 8 entry 25), West Central Europe (entry 24), Massif central (400), Loire Basin
+  (420, key 60), France (420, key 0)"; "Vevey, Vaud, Lake Geneva, Rhône, Alps, Switzerland" (400s by key 64, 60,
+  24); "Italy, Southern Europe, Western Europe, Mediterranean Sea" over the sea (Italy through its drawn label).
+- Converter bug found: `encarta:menu_excluded_classes` held class ids, not rows, so the client listed time zones
+  and left out the Mexico/US shield roads (rows 209–211). Fixed (styles stage).
+
+### Tours: the last §10 items (cdb in tourhost and ENCARTA.EXE)
+- **Water ripple step rate (§7.4.6).** A cdb log in tourhost at the Acropolis pond (`acr.3wm` cells 1145–1148,
+  software device), breakpoints past the step routine's water gate (0x10035F37), at the step proper (0x10035F95) and
+  at the drop try (0x100364A2): 641 frames in 10.0 s (64.1 fps), 631 steps, 419 drop tries. Every frame stepped except
+  after two 4-ms frames, read as 252 fps, which set a skip of 5. Matches the code: after a step, skip =
+  `trunc(fps × 0.025) − 1` above 40 fps (fps = 1 / last frame time, the DISPLAYFPS number), so one step per frame below
+  80 fps; drop wait `rand() & 1` steps (2/3 tries per step expected, 0.664 measured). Static reading of the same code
+  also corrected the step border (2 texels, not 1), the rounding (arithmetic shifts), the drop position rule
+  (x = rand mod W, kept only when 3 < x < W − 3) and the display (a linear offset in the bottom-up surface, so
+  horizontal displacements run on into the next row; the picture is the pre-step field). tours-3d.md §7.4.6.
+- **`3D.TOGGLEHIDDEN` (§7.4.3).** It flips the same flag as `VISIBLE` on every object, and both draws honour it. The odd
+  pictures come from `CAMERA.CLEARBACKGROUND=0` (every load.3sc): only depth is cleared, the colour clear (0x10065990)
+  runs only with CLEARBACKGROUND on. Acropolis start: after the toggle every `VISIBLE?` is 0 and the picture is
+  unchanged (5 px), also after a 37° turn; `3D.Sky03.VISIBLE=1` then draws its mountain band over the frozen frame,
+  and after another turn both bands show (trails); a second toggle gives the normal view. This also explains pass 2's
+  "brought those back and hid the ground".
+- **ITS mode (§2.2).** cdb on ENCARTA.EXE (module `ACTIVEX3DX3`, from `Reference 2003\ACTIVEX3DX3.OCX`, byte-identical
+  to the disc's `ACTX3DX3.OCX`) while opening the Acropolis from Features → 3D Ancient Sites logged these `Do` calls:
+  `SCENE.HALFREZDRIVING=1`, `script.itsfileurl=C:\Program Files\Microsoft Encarta\2009 Encarta Contents\E09AXLRD\world\7015\04257.EIT`,
+  `script.load=load.3sc`, the default stop's `CAMERA.MOVETO=…;CAMERA.PITCH=21.000036;`, then `camera.pos?` once a
+  second. The file reader (0x100456A0, URL moniker `msencdata:<container>::<name>`) ran 190 times on 95 names (scripts,
+  `ACR.X`, textures, `.3lt`, `.3wm`, `.3cl`, `.32d`), never on a `.cur`. `msencdata` is not in the registry: ENCARTA.EXE
+  registers it per process (IInternetSession::RegisterNameSpace, class in MSENCDAT.DLL), which is why tourhost loads
+  nothing in ITS mode. Same files and name rules as disk mode: nothing a port models changes.
+- **Spaces in `Do` values are kept** (correction of the §2/§3 entry above): tourhost `script.itsfileurl=` with the long
+  path returns 1 and `ITSFILEURL?` gives it back upper-cased with its spaces; `SCENE.WORKINGPATH=C:\a b\c d` reads back
+  `C:\A B\C D`. The old `-2` was a long path into `Encarta Premium DVD 2009\` instead of `2009 Encarta Contents\`.
+- **Cursors** (static, checked against the files): the `CURSOR=index,file` handler passes both to a routine that
+  ignores them and loads the control's own cursor resources once; slots 0–6 = resources 0xA6, 0xA3, 0xA2, 0xA5, 0xA4,
+  0xA1, 0xA1. The first five have the same bitmaps and hotspots as `sv`, `svright`, `svup`, `svleft`, `svdown.cur`;
+  0xA1 is the hand of `vthot360.cur` (same picture, hotspot 13,6). tours-3d.md §6.9.
+- **Camera quirk:** in tourhost a second `CAMERA.POS` to a new X and Z (after a first one) left yaw `-1.#IND00`; a
+  `CAMERA.PITCH=` right before each POS avoided it (tours-3d.md §6.10).
+- Helpers and logs: `target/agent-tours3/` (`its.cdb`, `water.cdb`, `its-full.log`, `water1.log`, `py/wstat.py`,
+  `py/curres.py`, screenshots `cmp1`–`cmp4.png`).
+
+### Sounds and placement residue (cdb in ENCARTA.EXE, with usb-audio)
+Lane `target/vm2` from `flash-ready` with `--wav` (usb-audio) so the sound path is live. cdb attached to ENCARTA.EXE
+with breakpoints on the `ENCARTAR.DLL` sound loader (`ENCARTA+0x11860`, logs the resource id and a stack), on
+`winmm` `PlaySoundA/W` and `sndPlaySoundW`, and (second run) on `FindResourceA` for the style records below; the
+"menu and button sounds" bit was set in memory (`DAT_006f0f44 | 1`). Logs: `C:\inst\snd.log` (not kept); helper
+scripts in `target/agent-enc3/` (`snd.cdb`, `restart.sh`, `sl.py`, `press.py`, `scripts/*.py`).
+
+#### Interface sounds (media.md §9)
+- **578 / 579 are the tour site-map sounds.** 578 when the pointer enters a stop on a site map, 579 on the click that
+  moves there; both played synchronously (`sndPlaySoundA` flags 4). Seen in 3D Ancient Sites (Colosseum: the plan's
+  squares) and Virtual Tours (Paris: the highlighted green squares; grey squares and the you-are-here arrow silent).
+  Static: `ENCARTA.EXE` site-map classes (`CSiteMap` `FUN_00502c80`/`FUN_00502930`, `CVirtToursWnd`
+  `FUN_005210d0`/`FUN_00522430`, which waits 150 ms after 579 before moving).
+- **The others never play.** The process plays `ENCARTAR.DLL` sounds only through the one loader (plus the splash's
+  `PlaySoundA`); `ENCARTA.EXE` names no id of 682, 702, 31906-31913, 31972, 31978 (no immediate, no data word), no
+  other module of the process imports a sound API (only `EDICT.EXE`, a separate process, for pronunciations), and the
+  XSL/JS templates call `PlaySoundAsync` only for 31973 and 31978+N (N = 1..10). In the resource data, 702 occurs only
+  in two `SHRL` style records (`RCDATA` 835, 860: the « » chevron buttons, bitmaps 1062/1063) that no code loads, and
+  31913 only in `RCDATA` 31940, a child of the default dialog-frame record 31939 under key 0x17, which the frame
+  loader skips. Kids buttons take 31975-31977 from `RCDATA` 25506/25507 (keys 0x4015-0x4017).
+- Exercised under the log: Features menu, 3D tour (site map, Tour Stops, Music), Virtual Tour, Organize Favorites
+  (folder buttons, New Folder, rename, caption ? and ×), Add to Favorites, World Atlas (pushpin palette and placing,
+  pin balloon, map context menu, Map Customizer radios/checks/buttons), Games & Fun Stuff, the Africa jigsaw (Flash),
+  media list and picture page. Only 31971/31973/31974/31914/31916/31917, 575-free views, 578 and 579 appeared. Print
+  could not be reached ("There is no default printer"); Kids runs as a second process the log did not cover.
+- Encarta's own dialogs tick on button rollover (31914, = `tick`) and click on press (31916, = `click`); the
+  map context menu (a Windows menu) and message boxes are silent.
+
+#### Placement residue (content-schema §2)
+- The empty `Child_s<n>` item slots are **module items** the reader's layout adds (`AREF/COMPNTS/MSENCXML.DLL`,
+  decompiled to `analysis/decompiled/ghidra/MSENCXML/`; `Gamma::DoPlacement` = `FUN_458e1760`, module pass
+  `FUN_458f4f00`, run after the sidebar/timeline passes and before the primary pass). The template draws an `assoc`
+  only for sidebars, small composites and items with `data/files`, so these stay empty.
+- **Archives** (any forward `archive` row): the first free paragraph slot of the section titled exactly "History"
+  (case-insensitive), else the first free slot over all sections in reading order (`FUN_458f5520`). **Further
+  Reading** (any `furtherread` row): the last free slot of the last section. Free = no sidebar or timeline item, and
+  not slot 0 of a section with primary items. Live weather would also take a first free slot; live radio/news, Facts
+  and Figures and the `minimob` map go after the first section's last paragraph.
+- That explains the four residue sections: Moon §2 and the Mathematics and United Kingdom introductions are Archives
+  (no section is titled exactly "History"; "History of Mathematics", "History of the United Kingdom"), East Timor §13
+  is Further Reading. It also matches the other empty slots in the captures: one before the last section's last
+  paragraph in nearly every article (Further Reading), History sections (`s117@0/0`, `s75@0/1`) and the pairs before
+  Facts and Figures in country introductions. With the rule our placement matches the VM for 1,660 of 1,660 items.
+
+### Data fields (static: ATCONT.DLL, ENCARTA.EXE, MSSPELL3.DLL)
+- **MSWORLD.SDB column B** (`ATCONT.DLL`, `CStatDatabaseImpl` loader and value getters): significant digits. Values returned
+  to the UI (after `value x factor + offset`) are rounded to B digits, then printed with `decimals` places. B of 0 or above 15
+  means no rounding. All stored values already fit B digits, so the primary unit never changes. The note column is parsed as
+  an integer qualifier id, so "N/A"/"estimate" read as 0 and are never shown. Sections are read by position; header needs
+  `EVGSDB` and a revision of at least 9031006.
+- **TIMELINE.DAT descriptor field 5**: flag "titles are UTF-16" (`ENCARTA.EXE` `FUN_005e3cb0`/`FUN_005e4630`; file name is
+  `ENCARTAR.DLL` string 10159; loader `FUN_005e40a0`). **Term "offset A"**: the viewer never reads the term table or reference
+  pool at all (pointers are computed and unused); no meaning recoverable, not shown.
+- **P2MTBL.DAT header** (`ATCONT.DLL` `CP2MObject`): `8` is the directory entry count (header bytes read = 8 x 8 + 4), and the
+  `1` is the first key of entry 0; entries are {first place id, block offset} with an end sentinel {last id + 1, 0}.
+- **LEX**: see the next section (the static reading that the open routine rejects our files was wrong).
+
+### LEX speller loader (cdb in ENCARTA.EXE)
+- ENCARTA.EXE loads MSSPELL3.DLL; the speller is initialised lazily on the first search (`SpellerInit`, then
+  `SpellerOpenLex` on `EESplA01.lex`, language 0xFFFF). The open succeeds (out record holds the lexicon object, the u32 at
+  0x04 = 0x0100020E, LCID 0x409); `SpellerCheck`-side calls then run once per word. Dictionary/thesaurus/bilingual LEX files
+  were not opened during searches.
+- The zero u32 after the copyright is not a rejection: it selects the new-format path where the body starts right there.
+  `FUN_3f005561` parses the body; body +0x0C/+0x0E/+0x10/+0x12 are the u16 lengths of the three code-descriptor regions
+  (at +0x30/+0x34/+0x38); data breakpoints saw them read once, during open. The header stamp is read once (returned to the
+  caller). The copyright trailing u16 is never read in the search path.
+- Open: suggestion behaviour (the DLL's own) is not needed; dictionary use of MSSPELL3 not observed.
+
+### Music: GS Wavetable controllers, drums, release (media.md §8)
+Three more music items recorded in Encarta's own playback (the anthems of Kiribati 461533840, Sao Tome and Principe
+461533985, China 461533664: `fixtures/music/<id>-gs.wav`), plus two MIDI files of our own (single notes and controller
+changes, 118 s and 158 s) played through the same GS device with `mplayer2.exe /play /close` and compared with our
+synth on an `OfflineAudioContext` (aligned by onset).
+
+- **Disc MIDI use** (scan of all 244): no pitch bend off centre, no RPN, sysex, CC 120/121/123. Moving controllers are
+  expression, volume (a fade), mod wheel (1–15) and the pedal (0/127); 99 % of drum hits are crash 49/57; programs mostly
+  48, 49, 60, 56, 57, 58, 47, 0; pans 32–96. Conclusion: the disc does not exercise bend or RPN.
+- **GS pan is a balance**: R − L −6.7, −3.7, −2.0, 0, +2.0, +3.9, +7.0, +22.7 dB at CC 16, 32, 48, 64, 80, 96, 112, 127
+  (far side ≈ square root of the distance to the edge). Equal-power gives −14, −7.7, −3.5 …
+- **Mod wheel**: 6.0 Hz vibrato, ±41 cents at 127, ∝ value, immediate, follows the wheel during a held note.
+- **Pedal**: any non-zero value (1, 32, 63, 64) holds the note.
+- **Volume/expression**: squared law (−12 dB at 64), act on held notes. **Bend** ±2 semitones default (+199/−200), RPN 0
+  sets the range (12 → +1,200 cents). **Velocity**: squared up to 96, flatter above (96 → 127: +0.7…+3.9 dB).
+- **Release**: brass, reeds, pipes ≤ 30 ms; strings/ensembles about half of Fluid's; organ a fifth; piano the same.
+- **Reverb/chorus CC 91/93**: no audible effect in GS.
+- **Drums**: Fluid's crashes/kick/snare/side stick 5–10 dB below GS; toms equal. GS's timpani stops after 0.4 s.
+- **Playback timing**: tempo agrees within 0.4 % (China +0.36 %, Kiribati −0.14 %).
+- **MindMaze**: `ENCARTA.EXE` has `CMindmazeView` and a baggage-URL helper (`FUN_005045b0`, `FUN_005044a0`) but no MIDI
+  playback (sound imports: `sndPlaySoundA`, `PlaySoundA`, `mciSendCommandA` only to stop/close all); looping cannot be
+  observed.
+Method: `target/vm3/start.sh --loadvm flash-ready --wav`, WAV sliced by file size per action.
+
+### Still open
+The hardware cloud step and MaxView (no 3D device). Print's sounds (no printer in the guest) and a cdb log of the Kids
+process (the code names none of the unheard ids, so nothing is expected there). LEX: body u32s +0x04 and +0x20, the
+header stamp's meaning and the copyright's trailing u16 (never read on the search path); the other LEX files were not
+opened by searches. TIMELINE offset A is never read by the viewer. MindMaze music cannot be observed (2009 has no MIDI
+path for it). Atlas: the cost of the alternative-name layouts and which label kinds are placed first.

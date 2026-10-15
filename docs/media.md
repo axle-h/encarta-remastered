@@ -437,7 +437,62 @@ analysis. Renders were aligned to the recordings by cross-correlating their 10 m
   right, which leaves the piano's left and right channels anti-correlated between 400 and 1,000 Hz. Our player
   stops 0.3 s after the last note-off with a short fade, where Encarta cuts at the note-off itself. These were left
   as they are.
-- **Not covered.** None of the five uses pitch bend, other controllers, drums or more than one channel.
+- **Not covered.** None of the five uses pitch bend, other controllers, drums or more than one channel (next section).
+
+**What the disc's MIDI files use (scan of the 244, 2026-10-15).** No file has a pitch bend other than the centre
+value, an RPN, a sysex or CC 120/121/123. The controllers are bank select (35 files), mod wheel (191), volume (242),
+pan (229), expression (191), sustain (194), reverb 91 (197) and chorus 93 (194). Most are only set once at the start:
+the ones that move are expression (Kiribati's anthem, 313 changes on one channel), volume (a fade at the end of China's),
+the mod wheel (values 1–15 and one 44) and the pedal (always 0 or 127). 179 files have drums on channel 10, and 99 % of
+their hits are crash cymbals 49 and 57 (1,922 of 2,153), then toms 43 and 41, side stick 37 and one closed hat;
+the kit is 0 (one file selects 6). Most notes are programs 48, 49 (strings), 60, 56, 57, 58 (horn, trumpet, trombone,
+tuba), 47 (timpani) and 0, at velocities 64–112, with pans between 32 and 96.
+
+**Controller and drum recordings (VM 2026-10-15).** Three more music items were recorded the same way as the first
+five: the anthems of Kiribati (461533840: expression sweeps, nine channels, drums), Sao Tome and Principe (461533985:
+sustain pedal, 22 drum hits, nine channels) and China (461533664: mod wheel and a volume fade, trumpet and
+trombones, drums), saved as `fixtures/music/<id>-gs.wav` (57, 154 and 36 s). Their tempo, onsets and 2-second loudness
+agree with ours to within 0.4 % and about 1 dB around a constant offset (ours 4 dB below GS in rms and level with it in
+peaks, because the GS sustains are fuller), but the recordings cannot show a mixer-level cause, since the channels
+cannot be heard apart. So two test files of our own (single notes and controller changes, made by
+a local script, 118 s and 158 s) were played through the guest's `mplayer2.exe /play /close C:\t.mid`, the
+same GS device, and compared one change at a time with ours. Measured on the GS synth (organ, trumpet, strings,
+vel 96 unless noted):
+
+- **Pitch bend.** Default range ±2 semitones: full bend +199 and −200 cents, half +100, as ours; a ramp of 51 steps
+  glides smoothly. RPN 0 with data 12 gives +1,200 cents. No disc file uses a bend.
+- **Volume and expression.** Each follows the squared law: CC 64 is −12 dB and CC 32 −24 dB, as ours. Both act on a
+  held note, with the level following a sweep.
+- **Mod wheel.** Vibrato at 6.0 Hz, with a depth proportional to the wheel (±41 cents at 127, ±20 at 64), from the first
+  cycle, and it follows the wheel while a note is held. Ours had the SF2 default 8.2 Hz and read the wheel only at note-on.
+- **Pan.** A balance, not an equal-power pan: the near channel keeps its level and the far one falls (R − L at CC 16,
+  32, 48, 64, 80, 96, 112, 127: −6.7, −3.7, −2.0, 0, +2.0, +3.9, +7.0, +22.7 dB), about the square root of the distance to the
+  edge. Ours was −14, −7.7, −3.5 … +38 dB.
+- **Sustain pedal.** Any non-zero value (1, 32, 63, 64) holds the note; ours needed 64. The disc uses only 0 and 127.
+- **Velocity.** The same squared law as ours up to velocity 96 (steps 8.2 and 7.0 dB for 40, 64, 96); GS flattens above it
+  (96 → 127 is +0.7 to +3.9 dB, ours +4.9). Drums: snare 40, 80, 100, 127 spans 17 dB in GS, 22 in ours (Fluid layers).
+- **Release.** GS ends brass, reeds and pipes (programs 56–79) within about 10–30 ms of note-off, strings and
+  ensembles (40–55) in about half Fluid's time (−20 dB after 150 ms for strings 1, 100 ms for the contrabass), an
+  organ in a fifth (100 ms against 520 ms), and a piano like Fluid (150 against 140 ms). Ours took 80–140 ms to fall 20 dB for
+  brass, 100–200 ms for flute and piccolo.
+- **Reverb and chorus (CC 91, 93).** None audible in GS (a note's tail with CC 91 at 127 matches CC 91 at 0).
+- **Drums.** Fluid's crash cymbals (49, 57) peak 5–10 dB below GS's and its kick, snare and side stick 6–9 dB, where
+  the toms (43, 41) agree within 1 dB at the peak. Their tails are as long. In one run GS's TR-808 kit (program 25)
+  gave no sound on key 42.
+- **Other.** CC 123 and CC 120 end a held note in GS (ours ignores both, as no disc file sends them); a 0.66 s shift of
+  the playback began around the CC 120 test, unexplained and not seen in the later file. GS's timpani (program 47) stops after about 0.4 s whatever the note
+  length, where Fluid's rings for seconds; this is the sample, not a controller.
+
+**Changes made to our synth (2026-10-15).** The mod wheel is now one 6 Hz LFO per channel at 42 cents at full wheel
+(measured ±41–46), feeding every sounding voice, so it follows the wheel mid-note. Channel pan is now the balance above
+(`panGains`) on a per-channel left and right gain, not part of each voice's panner, so it also acts on held notes.
+Release times are shortened by family (`gsRelease`: programs 56–79 capped at 50 ms, 40–55 halved, 16–23 a fifth).
+Crash cymbals, kick, snare and side stick are 5 dB louder. Any non-zero pedal value holds notes. After the change,
+the test files: the time to fall 20 dB is within 10–20 ms of GS's for brass and reeds, equal for the organ and within
+50 ms for strings; pan R − L is within 0.7 dB at CC 16–112 (trumpet); vibrato is 6.0 Hz and measured ±46 cents at a
+setting of 47 against GS's ±41 (hence the 42 now set, not re-measured); crash cymbal peaks are 0–6 dB below GS's against 5–10 before. The synth tests cover each rule. Still different and left alone: the stereo sample pairs
+(ours has a correlation of 0.70 between channels, GS 0.97–0.99), the velocity flattening above 96, instrument
+timbres and levels of the samples (strings 3–6 dB quieter in ours, the trombone 6 dB louder) and the timpani length.
 
 ## 9. Interface sounds (`encarta-convert content`, step "ui sounds")
 
@@ -446,38 +501,45 @@ The application's own sounds are `WAVE` resources inside two DLLs (a PE resource
 holds 49 numbered sounds (mono 22,050 Hz PCM unless noted). `ENCARTAR.DLL` ids: 257-262 (stereo, 0.3-0.6 s) are drawn at
 random while the splash animation steps (`ENCARTA.EXE` picks one that differs from the last); 31979-31988 (stereo
 44,100 Hz, 0.4-0.7 s) are the ten Kids home category hover sounds and 31973 (1,128 bytes, 0.02 s) the Kids click, all
-named in `mainhome_kids.xsl` (`window.external.PlaySoundAsync(id)`). The other 31906-31978 are short clicks and blips
-whose triggers we have not found (the host seems to play them from menu code; not traced).
+named in `mainhome_kids.xsl` (`window.external.PlaySoundAsync(id)`). Where the other ids play is settled below
+("Unused ids").
 
 Written to `out/sounds/` as the unchanged RIFF files: `startup.wav`, `click.wav` (31973), `tick.wav` (31971),
-`kids-hover.wav` (31975), `timeline.wav` (575), `kids-1..10.wav` (31979-31988 in order; the XSL's
-`GetSoundRes(position)` is `31978 + position`). The server serves them at `/sounds/{name}.wav` (api.md).
+`kids-hover.wav` (31975), `timeline.wav` (575), `tour-hover.wav` (578), `tour-pick.wav` (579), `kids-1..10.wav`
+(31979-31988 in order; the XSL's `GetSoundRes(position)` is `31978 + position`). The server serves them at `/sounds/{name}.wav` (api.md).
 
 **Mapping (measured in the XP reference VM** with "Play menu and button sounds" ticked; ids with identical audio grouped):
 
 | Sound | Ids | Plays |
 |---|---|---|
-| `tick` | 31971 (= 31914, 31915, 31935) | rollover: pointer enters an enabled adult toolbar button (Back, Forward, Home, Features, search Go, Back history ▾) or an atlas text button (Map Legend, About this Map); every highlight change in the menu-bar menus (pointer, arrow keys, Esc closing a menu). Disabled buttons are silent |
+| `tick` | 31971 (= 31914, 31915, 31935) | rollover: pointer enters an enabled adult toolbar button (Back, Forward, Home, Features, search Go, Back history ▾) or an atlas text button (Map Legend, About this Map); every highlight change in the menu-bar menus (pointer, arrow keys, Esc closing a menu); the push buttons of Encarta's own dialogs (Organize and Add to Favorites, Map Customizer; id 31914, their click 31916; their page tabs and Windows message boxes are silent). Disabled buttons are silent |
 | `click` | 31973 (= 31916, 31917, 31936, 31974, 31976, 31977) | round toolbar buttons (adult and Kids): on mouse-down and again on mouse-up; menu-bar titles, check boxes, dialog buttons, atlas tool buttons, zoom −, Map Legend, map-style list arrows and Kids home category panels: once on click |
 | `kids-hover` | 31975 | rollover of the Kids round toolbar buttons (Home, Back, Forward, Copy, Print, search arrow), enabled ones only |
 | `timeline` | 575 | timeline controls: zoom in/out, era links (1600, PREHISTORY …), View as List, next/previous 25, Main Timeline, the Compare dialog opener |
 | `kids-N` | 31979-31988 | pointer enters the N-th Kids home category |
+| `tour-hover` | 578 | pointer enters a stop on a tour's site map (3D Ancient Sites: the plan's squares; Virtual Tours: the highlighted squares, not the grey ones). Played synchronously and nearly silent (peak 0.03 of full scale, 0.02 s) |
+| `tour-pick` | 579 | click on such a stop, just before the tour moves there (the 2D tour window then waits 150 ms) |
 
 Ordinary links inside pages (article sections, Show Full Article, browse-page links, search results, the search panel's
 category bars) play no Encarta sound, only Windows' own navigation click, which we do not reproduce; tabs: none heard.
-Defaults in the original (Options › Default): startup sound on, menu and button sounds **off**. Not heard in any view
-tried (home, browse, search panel, article, atlas, timeline, Kids home; second pass: dictionary window, Games & Fun
-Stuff folders, video and audio-set players, Visual Browser, Quick Search dialog, Favorites dialogs, Map Trek, Geography
-Quiz, Options pages, Kids games menu, Kids video / search / article / Look at Pictures, Kids Tools menu; vm-findings.md):
-ids 578, 579, 682/31972/31978, 702/31909, 31906-31908, 31910/31911, 31912, 31913. 578 and 579 are almost silent (peak
-0.03 and 0.08 of full scale) and may be unused. The new places add no new sound: only `tick`/`click` where a control
-or menu already plays them. The media players, Visual Browser, Map Trek dialog, Options page list and the Quick Search
+Defaults in the original (Options › Default): startup sound on, menu and button sounds **off**. **Unused ids** (2026-10-15, vm-findings.md): 682/31972/31978, 702/31909, 31906-31908, 31910/31911, 31912 and 31913
+never play. Every `ENCARTAR.DLL` sound goes through one loader in `ENCARTA.EXE` (`FUN_00411860`, then
+`sndPlaySoundA` from memory; the splash uses `PlaySoundA`); no other module of the process plays sounds. Its ids come
+from code constants (575, 578, 579, 31914, 31916, 31917, the button set 31971/31973/31974), from the Kids button
+style records `RCDATA` 25506/25507 (31975-31977) and from the Kids home XSL; none of those names the ids above. The
+only data that does: 702 sits in two button style records (`RCDATA` 835, 860: the « » chevron bitmaps 1062/1063)
+that nothing loads, 31913 in a dialog-frame child record (`RCDATA` 31940) under a key the frame loader skips. A
+debugger log of every play (breakpoints on the loader and on `winmm` `PlaySound*`/`sndPlaySound*`) over the tours,
+Virtual Tours, atlas (pushpins, Map Customizer, context menu), Organize/Add Favorites, menus and the Flash jigsaw
+games showed only the ids in the table. The Print dialogs could not be reached (no printer in the VM). The media players, Visual Browser, Map Trek dialog, Options page list and the Quick Search
 dialog's field are silent. In the Geography Quiz a correct answer plays a 2 s fanfare that is not an `ENCARTAR.DLL`
 resource (probably Windows' `tada.wav`, 1.94 s; not reproduced).
 
 **Ours:** `web/src/settings/uiSounds.ts` has one document-level delegate that maps controls to the sounds above
-(`playUiSound('tick'|'click'|'kidsHover'|'timeline')`); the rules are selectors there, and `data-snd="timeline"`
-marks the timeline controls. Plain links and tabs are silent; `menuSounds` defaults to false (persisted choices are
+(`playUiSound('tick'|'click'|'kidsHover'|'timeline'|'tourHover'|'tourPick')`); the rules are selectors there, and
+`data-snd="timeline"` marks the timeline controls. The Virtual Tours site-map points (`.pano-site-pt`, not the current
+one) play `tourHover`/`tourPick` through a rule; the 3D tour's site map is a canvas, so `pages/TourView.tsx` plays them
+itself when the pointer enters a stop's box and on the click that moves there. Plain links and tabs are silent; `menuSounds` defaults to false (persisted choices are
 kept); the startup sound plays once per page load. The timeline's Compare / View as List / Main Timeline controls do
 not exist in our timeline page yet (so `timeline` plays for the era links, pan/zoom buttons and the list pager).
 

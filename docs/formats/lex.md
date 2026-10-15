@@ -26,7 +26,8 @@ headwords (e.g. BILAE holds `Ecuadorean`, `king-size`, `B&B`). The speller lists
 
 ```
 0x00  u32   magic 0x779FF320            (bytes 20 F3 9F 77)
-0x04  u16   unknown (0x20E, 0x208, 0x2C8, 0x2CF, 0x2D8, 0x388; varies by file)
+0x04  u16   lexicon stamp (0x20E, 0x208, 0x2C8, 0x2CF, 0x2D8, 0x388; varies by file). Opaque: `MSSPELL3.DLL` copies the
+            u32 at 0x04 (this value plus the version) back to the caller of `SpellerOpenLex` and uses it for nothing else
 0x06  u16   0x0100                      (probably a format version)
 0x08  u32   64
 0x0C  8×u16 LCID list, ended by a 0 u16, the rest filled with 0xCCCC
@@ -36,15 +37,16 @@ headwords (e.g. BILAE holds `Ecuadorean`, `king-size`, `B&B`). The speller lists
             Corporation" (BILAF, BILFA); the last u16 of the n is not part of the
             string: it is 0x002D ('-') in most files and 0 in BILEA and BILIA (meaning unknown;
             perhaps the word-joining character)
-        u32   0
+        u32   0                         (length of an older, table-based block; 0 here, so the body follows at once)
 body: (offsets below are relative to the body start = 0x20 + 2n + 4)
 +0x00 u32   1
 +0x04 u32   0
 +0x08 u16   longest word, in characters (checked: equals the decoded maximum)
 +0x0A u16   most arcs in one node (checked: equals the decoded maximum)
-+0x0C u32   2                           (unknown)
-+0x10 u16   2                           (unknown)
-+0x12 u16   2 or 1                      (unknown)
++0x0C u16   2   length in u16 units of the symbol-code descriptor at +0x30 (read by MSSPELL3.DLL)
++0x0E u16   0   length of an empty region that follows it (also read)
++0x10 u16   2   length of the shared-node-code descriptor at +0x34
++0x12 u16   2 or 1   length of the skip-code descriptor at +0x38 (1: four bytes either way after 4-byte alignment)
 +0x14 u32   word count                  (checked: equals the decoded count)
 +0x18 u32   nSkip   entries in the skip table
 +0x1C u32   nSym    entries in the symbol table
@@ -145,6 +147,26 @@ the child if 0x010 is set. Because subtrees are shared, words are produced by wa
 
 ### Unknowns (no effect on the word list)
 
-Header u16 at 0x04, the trailing u16 of the copyright field (0x2D/0), body +0x0C/+0x10/+0x12. The lexicon carries no
+**Static + live (`MSSPELL3.DLL` inside `ENCARTA.EXE`, 2026-10-15).** The magic `0x779FF320` occurs in no other binary on
+the disc. The app loads the speller lazily: the first search that runs calls `SpellerInit`, then `SpellerOpenLex` (path of
+`EESplA01.lex` in the install folder, language 0xFFFF = any, record type 4 = this format), which maps the whole file and
+succeeds, filling the out record with the open lexicon, the u32 at 0x04 (`0x0100020E`) and the LCID 0x409. Afterwards
+`SpellerCheck` is called once per word. Of the *.lex files only EESPLA01 was opened (the dictionary files were not touched
+while searching).
+
+The earlier reading that the loader rejects our files was wrong. After the copyright string (`0x20 + 2n`) the open routine
+reads a u32 length. Zero is not a failure: it means there is no older table-based block, and the loader parses the
+body directly at that point (the decompiler had split this tail into a separate function, which hid it). The routine
+that parses the body (`FUN_3f005561`) requires the first u16 to be below 2 (we have 1) and then reads the u16s at body
++0x0C, +0x0E, +0x10 and +0x12 as the lengths of the four small regions that start at +0x30 (each aligned to 4 bytes),
+and the u32s at +0x14 (stream offset), +0x1C, +0x20 and +0x24 as the counts of the symbol, 0-sized and shared-node
+tables that follow. That is exactly our layout: the three "code descriptors" at +0x30/+0x34/+0x38 are the regions whose
+sizes sit at +0x0C..+0x12. Data breakpoints on the mapped file confirmed: +0x0C and +0x10 (as dwords) are read only inside
+this parse, during open; the u32 at 0x04 is read once, to hand back to the caller. Nothing read them again during
+spelling checks, and nothing read the copyright's trailing u16 (the caller passed no name buffer, so the copyright is not
+even copied).
+
+Still opaque: the header stamp at 0x04 (returned to the caller, not used by the speller), the trailing u16 of the
+copyright field (0x2D/0; never read in the search path), and the body u32 at +0x04 and +0x20 (zero). The lexicon carries no
 affix or frequency data that we could find. Suggestion behaviour (edit distance and ranking in MSSPELL3.DLL) is not in
 the file. Our rebuild replaces it (SymSpell or an `fst` over these word lists).

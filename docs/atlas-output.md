@@ -126,7 +126,9 @@ its U+0002 abbreviation), `abbr`, `alt_names` ("; "-joined), `name_0009` (the LC
 differs), `anonymous` (`{RESERVED}` placeholder names, which are dropped), and on points/labels `priority`
 (PDCAttribute b13, the `symbol-sort-key`) and on labels `goto_km`; `width_z10` on the labels of areas with an
 abbreviation (the area's east–west extent in px at zoom 10, for the abbreviation fallback); `water: true` on
-the line runs and polygon parts over water (draw-over masks, below). Within a tile, the parts of one object,
+the line runs and polygon parts over water (draw-over masks, below); `geoobj` on named features, the object's
+GeoObj `(record key, entry)` as `key · 65536 + entry` (the click menu's last tie-break, descending:
+mad-styling.md §4.5). Within a tile, the parts of one object,
 class and side (water/land) are merged into one feature.
 
 **Polygons.** GeoGem area rings carry no meaningful orientation (both windings occur). Inside one object, class
@@ -235,7 +237,9 @@ follows mad-styling.md §14.1:
 | labels: GeoLabel font/size/colour, bold/italic → face, rule halo colour, 1-px halo; line labels along lines, area labels on `labels` | §7 |
 | alternative name (`w6` set, not on lines): the label's `text-field` is a `format`: main name in the `w5` style plus `"\n"` and the tile's `alt_names` as a last section with the `w6` face (`text-font`), `font-scale` = w6 size / w5 size and `text-color`; in brackets when the main name starts with U+3040…U+9FFF (kana/CJK); `w6` none → no alternative. Upper case (GeoLabel byte 26) is `upcase` per section. The 1-px rule between the lines (V15) comes from rule faces (Glyphs, below): the main section uses `"<w5 face> Rule …"`, the alternative `"<w6 face> Rule …"`. Such labels do not wrap (`text-max-width` 1000 when `alt_names` is present). Point labels have `text-justify: auto`, so the lines align on the symbol's side | §4.1, §7.2, §7.3 |
 | road shields: a line class whose `w5` GeoLabel has a shape (byte 12 ≠ 0) gets a `symbol` layer on `lines` (filter `has name`, order after the labels) instead of a line label: `symbol-placement: line`, `symbol-spacing` 400, the name upright (`text-rotation-alignment`/`icon-rotation-alignment: viewport`), `icon-image` = sprite `shield<shape>-<outline>-<width>-<fill>-<fill2>`, `icon-text-fit: both` with padding, no overlap | §8.1 |
-| `metadata["encarta:menu_excluded_classes"]`: the classes of PDCAttribute pen group 134 (time zones, DST areas, "Shading - gray"), which the click menu never lists | §16 (V11 result) |
+| `metadata["encarta:menu_excluded_classes"]`: the rows of the classes of PDCAttribute pen group 134 (time zones, DST areas, "Shading - gray"), which the click menu never lists (rows like the tiles' `class`; before 2026-10-15 the converter wrote class ids here, which left the time zones in the menu and took the Mexico/US shield roads out) | §16 (V11 result) |
+| the click menu's sort data for the classes in `encarta:interactive`: `metadata["encarta:class_scale"] = {row: PDCAttribute scale / 1000}` and `metadata["encarta:routable_classes"] = [rows with PDCAttribute byte 6 set]` | §4.5 |
+| point labels: `text-variable-anchor` in MOBB's candidate order above right, below right, above left, below left (`bottom-left`, `top-left`, `bottom-right`, `top-right`) with `text-radial-offset` 0.3; a point label without a drawn symbol tries `center` first, offset 0 | §7.4 |
 | highlight pens (b15/b16/w17) as `feature-state: hover` layers (the client uses them for the selected place; Encarta highlights nothing on hover, V11) | §4.1 |
 | draw-over masks of line pens and of fill pens (and pattern brushes): filter `["all", <class test>, ["==", ["get","water"], true]]` (or `!=`), pen dropped where it may draw nowhere | §5.2 |
 | tint colours (fills, lines, highlights): the ramp entry `tint_index(L)` for the mean land luminance `L` of the style's raster LOOK (`encarta:surface`); highlight fills at 60 % | §6 |

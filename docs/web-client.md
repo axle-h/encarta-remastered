@@ -53,7 +53,7 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
 
 | path | role |
 |---|---|
-| `src/main.tsx`, `src/app/` | router, chrome (`Shell`: menu bar File/Edit/Favorites/Help, Back/Forward/Home orbs, Features menu, search, skip link), history button state, disc fonts (`fonts.ts`), Favorites store (`favorites.ts`), menu commands (`commands.ts`: print and copy by scope, source line), Read Aloud (`readAloud.ts`), Add to Favorites dialog (`AddFavoriteDialog.tsx`), Features flyout (`FeaturesMenu.tsx`, data in `featuresData.ts`: the VM's 3 groups, More flyouts and Browse all by content id), keyboard shortcuts (`shortcuts.ts`), print/copy scope dialog and Options dialog, lazy atlas (`atlasModule.tsx`); `src/settings/`: Options store (localStorage), interface sounds (`uiSounds.ts`: startup, click, Kids home) |
+| `src/main.tsx`, `src/app/` | router, chrome (`Shell`: menu bar File/Edit/Favorites/Help, Back/Forward/Home orbs, Features menu, search, skip link), history button state, disc fonts (`fonts.ts`), Favorites store (`favorites.ts`), menu commands (`commands.ts`: print and copy by scope, source line), Read Aloud (`readAloud.ts`), Add to Favorites dialog (`AddFavoriteDialog.tsx`), Features flyout (`FeaturesMenu.tsx`, data in `featuresData.ts`: the VM's 3 groups, More flyouts and Browse all by content id), keyboard shortcuts (`shortcuts.ts`), print/copy scope dialog and Options dialog, lazy atlas (`atlasModule.tsx`); `src/settings/`: Options store (localStorage), interface sounds (`uiSounds.ts`: startup, menu and button sounds, Kids home, tour site-map stops; media.md §9) |
 | `src/api/` | typed client for api.md (`client.ts`, in-memory cache, AbortSignal), `useApi` hook, response types |
 | `src/content/` | the content model of content-schema §8 (`model.ts`), React inline renderer (`Inlines.tsx`), link mapping |
 | `src/article/` | article reader: body renderer, layout rules (`layout.ts`), media column boxes, side panels, find bar, pronunciation |
@@ -135,7 +135,9 @@ built; `/atlas.html` (the atlas dev page) is served by the dev server only. In d
   modulated delays). Channel volume, expression, pan, mod wheel, reverb, chorus, pitch bend (RPN 0 range), bank
   select (unknown banks fall back to GM bank 0, unknown kits to Standard) and the sustain pedal follow the
   SoundFont default modulators; channel 10 is drums (bank 128). Not modelled: the modulation LFO, "loop until
-  release" (looped throughout) and the soundfont's own modulators. Without a soundfont on the server the old
+  release" (looped throughout) and the soundfont's own modulators. Where the Microsoft GS synth was measured
+  (media.md §8) the engine follows it instead: pan as a balance, a 6 Hz mod wheel acting on held notes, any non-zero
+  pedal value, shorter releases for brass, reeds, strings and organs, louder cymbals, kick and snare. Without a soundfont on the server the old
   oscillator synth plays. MindMaze's music uses the same synth, looped.
   Checked against FluidSynth 2.6 with the same soundfont (scripts kept out of the repo: libfluidsynth through
   ctypes, our engine in headless Chromium on an `OfflineAudioContext`): single notes of piano, strings, trumpet,

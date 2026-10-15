@@ -37,5 +37,8 @@ into setup straight from the user's own media and is never stored (see [CLEAN_RO
   breakpoints that log to `C:\inst\*.log` (`vm/dbg.sh log`). Killing cdb also ends the debuggee. Module bases
   differ per process (the tour control sits at 10000000 in tourhost, relocated in ENCARTA.EXE). Breakpoint addresses
   come from `analysis/decompiled/` and stay there or in docs as provenance pointers only (CLEAN_ROOM.md).
+- Parallel lanes: a `cp -a --reflink=always vm target/vmN` copy with `REPO` and the ports changed in its `start.sh`, `agent.py` and
+  `tour.py` (agent 7787/7797, VNC :6/:7) runs a second guest from the same snapshots; VM pass 3 used `target/vm2` and
+  `target/vm3` this way. Copy only while no VM of the source is running.
 - Not available: 3D hardware (the Cirrus card forces the tours' software renderer, so the hardware cloud step and
   MaxView can't be observed). OllyDbg 1.10 is also installed, unused.

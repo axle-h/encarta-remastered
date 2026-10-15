@@ -99,12 +99,29 @@ export const DROP_STAMP: readonly (readonly number[])[] = [
   [0, 700, 500, 700, 0],
 ];
 
-/** The ripple simulation on a W×H height field pair. */
+/**
+ * Frames left out after a ripple step or added to a drop wait (§7.4.6): `trunc(fps × 0.025) − 1` above
+ * 40 fps, else 0. `fps` is the instantaneous rate, 1 / (duration of the last frame).
+ */
+export function rippleSkip(fps: number): number {
+  return fps > 40 ? Math.trunc(fps * Math.fround(0.025)) - 1 : 0;
+}
+
+/**
+ * The ripple simulation (§7.4.6) on a W×H height field pair, kept in surface order: row 0 is the
+ * bottom row of the image (§5.6).
+ */
 export class Ripple {
   readonly w: number;
   readonly h: number;
+  /** The field the next step starts from. */
   cur: Int32Array;
+  /** The field before it; after a step, the one the display shows. */
   prev: Int32Array;
+  private skip = 0;
+  private skipped = 0;
+  private dropWait = 0;
+  private dropCount = 0;
 
   constructor(w: number, h: number) {
     this.w = w;
@@ -113,26 +130,46 @@ export class Ripple {
     this.prev = new Int32Array(w * h);
   }
 
-  /** One step: new = (sum of 8 neighbours)/4 − older, then new −= new/16; fields swap. */
+  /**
+   * One drawn frame at `fps`: steps unless the skip count from the last step says otherwise; each
+   * step first tries a drop when its wait is over. Returns whether the field stepped (and the
+   * picture changed).
+   */
+  frame(fps: number, rng: Rng): boolean {
+    if (this.skip !== 0 && this.skipped++ < this.skip) return false;
+    this.skipped = 0;
+    this.skip = rippleSkip(fps);
+    if (this.dropCount++ >= this.dropWait) {
+      this.dropCount = 0;
+      this.dropWait = randBits(rng, 1) + rippleSkip(fps);
+      this.randomDrop(rng);
+    }
+    this.step();
+    return true;
+  }
+
+  /**
+   * One step for texels at least 2 from each edge: new = ((sum of 8 neighbours) >> 2) − older, then
+   * new −= new >> 4 (arithmetic shifts); the fields swap.
+   */
   step(): void {
     const { w, h, cur } = this;
     const out = this.prev;
-    for (let y = 1; y < h - 1; y++) {
-      for (let x = 1; x < w - 1; x++) {
+    for (let y = 2; y < h - 2; y++) {
+      for (let x = 2; x < w - 2; x++) {
         const i = y * w + x;
         const s =
           (cur[i - 1] ?? 0) + (cur[i + 1] ?? 0) + (cur[i - w] ?? 0) + (cur[i + w] ?? 0) +
           (cur[i - w - 1] ?? 0) + (cur[i - w + 1] ?? 0) + (cur[i + w - 1] ?? 0) + (cur[i + w + 1] ?? 0);
-        let v = Math.trunc(s / 4) - (out[i] ?? 0);
-        v -= Math.trunc(v / 16);
-        out[i] = v;
+        const v = (s >> 2) - (out[i] ?? 0);
+        out[i] = v - (v >> 4);
       }
     }
     this.prev = cur;
     this.cur = out;
   }
 
-  /** Stamps a drop at (cx, cy) with every value shifted right by `shift`. */
+  /** Stamps a drop centred on surface texel (cx, cy) with every value shifted right by `shift`. */
   drop(cx: number, cy: number, shift: number): void {
     for (let dy = -2; dy <= 2; dy++) {
       for (let dx = -2; dx <= 2; dx++) {
@@ -145,35 +182,40 @@ export class Ripple {
     }
   }
 
-  /** A drop at a random position at least 3 texels from the edges, shift `(rand() & 15) + 1`. */
-  randomDrop(rng: Rng): void {
-    if (this.w < 7 || this.h < 7) return;
-    const x = 3 + Math.floor(rng() * (this.w - 6));
-    const y = 3 + Math.floor(rng() * (this.h - 6));
+  /** A drop try: x = rand mod W, y = rand mod H, stamped only when 3 < x < W − 3 and 3 < y < H − 3. */
+  randomDrop(rng: Rng): boolean {
+    const x = Math.floor(rng() * this.w);
+    const y = Math.floor(rng() * this.h);
+    if (x <= 3 || x >= this.w - 3 || y <= 3 || y >= this.h - 3) return false;
     this.drop(x, y, randBits(rng, 4) + 1);
+    return true;
   }
 
   /**
-   * Display: texel (x, y) = source texel displaced by (h[x−1] − h[x]) columns and (h[x−W] − h[x])
-   * rows; outside the bitmap gives black. RGBA buffers of W×H.
+   * The picture after a step: the field the step started from. Surface texel i (x ≥ 1, y ≥ 1) takes
+   * the original at index i + (h[i−W] − h[i])·W + (h[i−1] − h[i]), a linear offset that runs on into the
+   * neighbouring row; outside the bitmap gives black; row 0 and column 0 copy. `src` and `dst` are
+   * RGBA images of W×H in display order (top row first), so surface row r is image row H − 1 − r.
    */
   render(src: Uint8ClampedArray | Uint8Array, dst: Uint8ClampedArray | Uint8Array): void {
-    const { w, h, cur } = this;
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const i = y * w + x;
-        const hv = cur[i] ?? 0;
-        const ox = (x > 0 ? (cur[i - 1] ?? 0) : hv) - hv;
-        const oy = (y > 0 ? (cur[i - w] ?? 0) : hv) - hv;
-        const sx = x + ox, sy = y + oy;
-        const o = i * 4;
-        if (sx < 0 || sy < 0 || sx >= w || sy >= h) {
-          dst[o] = 0; dst[o + 1] = 0; dst[o + 2] = 0; dst[o + 3] = 255;
-          continue;
-        }
-        const s = (sy * w + sx) * 4;
-        dst[o] = src[s] ?? 0; dst[o + 1] = src[s + 1] ?? 0; dst[o + 2] = src[s + 2] ?? 0; dst[o + 3] = src[s + 3] ?? 255;
+    const { w, h } = this;
+    const f = this.prev;
+    const n = w * h;
+    const image = (i: number) => ((h - 1 - Math.floor(i / w)) * w + (i % w)) * 4;
+    for (let i = 0; i < n; i++) {
+      const x = i % w;
+      let s = i;
+      if (x > 0 && i >= w) {
+        const hv = f[i] ?? 0;
+        s = i + ((f[i - w] ?? 0) - hv) * w + ((f[i - 1] ?? 0) - hv);
       }
+      const o = image(i);
+      if (s < 0 || s >= n) {
+        dst[o] = 0; dst[o + 1] = 0; dst[o + 2] = 0; dst[o + 3] = 255;
+        continue;
+      }
+      const so = image(s);
+      dst[o] = src[so] ?? 0; dst[o + 1] = src[so + 1] ?? 0; dst[o + 2] = src[so + 2] ?? 0; dst[o + 3] = src[so + 3] ?? 255;
     }
   }
 }

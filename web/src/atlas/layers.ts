@@ -108,6 +108,23 @@ export function menuExcludedClasses(style: StyleSpecification): Set<number> {
   return new Set(Array.isArray(raw) ? raw.filter((c): c is number => typeof c === "number") : []);
 }
 
+/**
+ * The click menu's sort data (mad-styling.md §4.5): PDCAttribute scale / 1000 by class row
+ * (`encarta:class_scale`) and the routable-road rows (`encarta:routable_classes`). Empty for styles
+ * converted before they were written; the menu then falls back to kind and class name.
+ */
+export function hitOrder(style: StyleSpecification): { scale: Map<number, number>; routable: Set<number> } {
+  const meta = (style.metadata ?? {}) as Record<string, unknown>;
+  const scale = new Map<number, number>();
+  const raw = meta["encarta:class_scale"];
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) if (typeof v === "number") scale.set(Number(k), v);
+  }
+  const r = meta["encarta:routable_classes"];
+  const routable = new Set(Array.isArray(r) ? r.filter((c): c is number => typeof c === "number") : []);
+  return { scale, routable };
+}
+
 /** Overlapping or adjacent ranges of the same hit side merged. */
 function union(r: HitRange[]): HitRange[] {
   const s = [...r].sort((a, b) => a[0] - b[0]);

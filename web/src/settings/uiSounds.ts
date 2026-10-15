@@ -6,13 +6,14 @@
  * Which control plays what was measured in the XP reference VM (docs/media.md section 9):
  * `tick` is the rollover of toolbar buttons, atlas text buttons and menu highlights; `click` the
  * press of buttons (round toolbar buttons: on press and again on release); `kidsHover` the
- * rollover of the Kids round buttons; `timeline` the timeline controls. Plain links and tabs are
+ * rollover of the Kids round buttons; `timeline` the timeline controls; `tourHover` / `tourPick` the
+ * pointer entering / clicking a stop on a tour's site map (both nearly silent). Plain links and tabs are
  * silent. One document-level delegate ({@link installUiSoundDelegates}) maps controls to sounds;
  * `data-snd="timeline"` (or `"none"`) on an element or ancestor overrides the built-in rules.
  */
-export type UiSound = "startup" | "click" | "tick" | "kidsHover" | "timeline" | `kids-${number}`;
+export type UiSound = "startup" | "click" | "tick" | "kidsHover" | "timeline" | "tourHover" | "tourPick" | `kids-${number}`;
 
-const FILES: Record<string, string> = { kidsHover: "kids-hover" };
+const FILES: Record<string, string> = { kidsHover: "kids-hover", tourHover: "tour-hover", tourPick: "tour-pick" };
 
 const flags = { startup: true, menu: false };
 const players = new Map<string, HTMLAudioElement>();
@@ -63,9 +64,10 @@ const RULES: [string, Spec][] = [
   [".kids-shell .orb, .kids-shell .searchbox-go", { over: "kidsHover", ...ROUND }],
   [".orb", { over: "tick", ...ROUND }],
   [".searchbox-go", { over: "tick", click: "click" }],
-  [".menu.features > button, .enc-atlas-btn", { over: "tick", click: "click" }],
+  [".menu.features > button, .enc-atlas-btn, .dlg-backdrop button:not([role=tab])", { over: "tick", click: "click" }],
+  [".pano-site-pt:not(.current)", { over: "tourHover", click: "tourPick" }],
   ['[role="menuitem"]', { over: "tick" }],
-  [".menu > button, .dlg-backdrop button, .enc-atlas button, input[type=checkbox], input[type=radio]", { click: "click" }],
+  [".menu > button, .enc-atlas button, input[type=checkbox], input[type=radio]", { click: "click" }],
 ];
 
 function disabled(el: Element): boolean {

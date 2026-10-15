@@ -25,6 +25,7 @@ import {
 import type { HotspotTarget, SiteMapImage, TourStop } from "../tours/types";
 import { AMBIENT_AUDIO } from "../tours/ambient";
 import { audioSources, fileByRole, fileUrl, largeImage } from "../media/pick";
+import { playUiSound } from "../settings/uiSounds";
 import "./TourView.css";
 
 /**
@@ -277,6 +278,8 @@ function SiteMap({
     if (g) drawSiteMap(g, img, size, cfg, marker, lit);
   }, [img, size, cfg, marker, lit]);
   const [hover, setHover] = useState(false);
+  // The location under the pointer: entering one plays the site-map rollover sound (VM, media.md §9).
+  const over = useRef<SiteMapImage["locations"][number] | null>(null);
   const hit = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - r.left) * SITE_MAP_WINDOW[0]) / r.width;
@@ -292,11 +295,22 @@ function SiteMap({
       aria-label="Site map"
       role="img"
       style={{ cursor: hover ? "pointer" : "default" }}
-      onMouseMove={(e) => setHover(!!hit(e))}
-      onMouseLeave={() => setHover(false)}
+      onMouseMove={(e) => {
+        const l = hit(e);
+        if (l && l !== over.current) playUiSound("tourHover");
+        over.current = l;
+        setHover(!!l);
+      }}
+      onMouseLeave={() => {
+        over.current = null;
+        setHover(false);
+      }}
       onClick={(e) => {
         const l = hit(e);
-        if (l?.stop) onPick(l.stop);
+        if (l?.stop) {
+          playUiSound("tourPick");
+          onPick(l.stop);
+        }
       }}
     />
   );

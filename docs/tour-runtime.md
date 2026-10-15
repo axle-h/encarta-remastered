@@ -102,7 +102,7 @@ seven tours, and that the TS parser converts every disc statement exactly like t
 fed by `FixedTicker` from `requestAnimationFrame`, so nothing depends on the display's refresh rate.
 Each tick polls alarms, moves the camera (`k = clamp(100·dt, 1, 5)`, so `k = 1.5625`), follows the
 ground, runs the hotspot check, and advances flicker, film strips (once per tick, like the
-original's once per frame) and water (at most 40 steps/s). Walking is 100 × `SPEED.FLY` units/s
+original's once per frame) and water (once per tick at 64 Hz, §7.4.6). Walking is 100 × `SPEED.FLY` units/s
 and turning 200 × `SPEED.TURN` °/s, as measured, for any tick rate from 20 to 100 Hz; pitch keys
 step exactly `PITCHSPEED` per tick (the VM's walking rate of ~47 ticks/s makes pitch slower there).
 All world state is in glTF space; queries convert back to the disc's coordinates.
@@ -135,7 +135,9 @@ All world state is in glTF space; queries convert back to the disc's coordinates
   Encarta does this). Its away-and-back MOVETO in the multi-floor tours re-enters the start cell,
   which is why the Colosseum shows captions at once and the Acropolis does not.
 - **Replies** follow the VM: `script.load` says `Failed` (and loads), `SCENE.DISPLAYFPS` says
-  `Failed` (and switches), `script.itsfileurl` gives `1`, or `-2` for a path with spaces.
+  `Failed` (and switches), `script.itsfileurl` gives `1` (`-1` when empty); spaces in values are kept
+  (VM: Encarta sends the container's long path). Files always come from the converted container: the
+  original's ITS mode reads the same files by the same names (tours-3d.md §2.2).
 - **MOVETO to the current position** keeps a valid pose; the original's NaN (§6.10) is not
   reproduced. `poseCommand` moves far away first anyway, like the disc's stop commands.
 - **Walk-map grid cells** use the scan-line span rule of §6.14 (a grid column belongs to a
@@ -176,8 +178,12 @@ All world state is in glTF space; queries convert back to the disc's coordinates
   or, after the first render, beyond 0.9 × FOGEND. The 19-bit fixed point is not reproduced.
   The static point-cloud nodes in the glb are hidden.
 - **Water** runs the §7.4.6 ripple on a CPU height field and displaces the original bitmap into
-  a `DataTexture` that replaces the texture record while on. The drop interval is not specified;
-  a drop falls with probability 1/8 per step.
+  a `DataTexture` that replaces the texture record while on. `Ripple.frame(fps)` is called once per
+  tick with fps = `tickHz`: it steps unless the original's skip rule (`trunc(fps × 0.025) − 1` above
+  40 fps) leaves the frame out, so at 64 Hz it steps every tick (VM: 631 steps in 641 frames). A drop is
+  tried every first or second step, stamped only away from the edges; the step leaves a 2-texel border,
+  uses arithmetic shifts, and the picture shows the field the step started from, displaced by a linear
+  offset in bottom-up surface order (black outside the bitmap).
 - **Film strips** rewrite the object's own U coordinates (`savedU/N + (frame−1)/N`), so torches
   keep independent phases although `APPLYTEXTURE` replaced their shared texture record.
 - **2D layer** is drawn on a canvas overlay in CSS pixels, in element order. Captions are
@@ -200,13 +206,16 @@ All world state is in glTF space; queries convert back to the disc's coordinates
   `ERS HotSpot` 83 px → 91-px boxes).
 - **Far plane**: `CAMERA.FAR=-1`, or no `FAR` at all (Azuchi), gives 2 × world size. The
   control's own default is unknown.
-- `CAMERA.CLEARBACKGROUND=0` is not reproduced: the frame is always cleared to the background
-  colour (WebGL does not keep the previous frame).
+- `CAMERA.CLEARBACKGROUND=0` (every tour) is reproduced: the WebGL canvas keeps its drawing buffer
+  and only depth is cleared, so wherever no visible object draws the last frame stays, which is what
+  `3D.TOGGLEHIDDEN` and hidden objects look like in the VM (tours-3d.md §7.4.3). The 2D layer is a
+  separate canvas and is redrawn every frame (in the original it shares the buffer, which only
+  matters where no 3D object covers it).
 
 ## Known gaps
 
-- VM items still open (tours-3d.md §10): the hardware 5° cloud step (no 3D device in the VM), the
-  water ripple's step rate (here at most 40 steps/s), `3D.TOGGLEHIDDEN`'s effect on drawing. Faces are single-sided as converted (VM: back faces are
+- VM items still open (tours-3d.md §10): the hardware 5° cloud step and the maximised window (no 3D
+  device in the VM). Faces are single-sided as converted (VM: back faces are
   culled; `doubleSided` remains for experiments).
 - The app's menu offers "Labels and Hot Spots" (`2D.ON`/`2D.OFF`), but Encarta 2009 has no such
   item (VM: only its strings remain in ENCARTAR.DLL).

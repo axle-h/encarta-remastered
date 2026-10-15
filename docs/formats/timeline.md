@@ -33,7 +33,7 @@ Section descriptor at 0x18 (values from the disc):
 | u32 eventBytes | 0x3A2C8 = 238,280 = 3,404 × 70 | event table size |
 | u32 itemBytes | 0xDF35E = 914,270 = 13,061 × 70 | item table size |
 | u32 stringBytes | 0x3B248 = 242,248 | title pool size |
-| u32 | 1 | **unknown** (a flag or version; always 1) |
+| u32 stringsAreWide | 1 | **title encoding flag** (`ENCARTA.EXE` `FUN_005e3cb0` / `FUN_005e4630`). Non-zero: the titles are UTF-16 and are shown after stripping the `<fs type="n">…</fs>` font-size markup and replacing U+2008 with a space. Zero: the viewer would treat the pool as single-byte text. Always 1 on the disc. |
 | u32 termBytes | 0x58DD0 = 363,984 = 22,749 × 16 | term table size |
 | u32 termRefBytes | 0xBA844 = 763,972 = 190,993 × 4 | term reference pool size |
 
@@ -163,7 +163,7 @@ Each 16-byte term entry is:
 
 | off | type | field |
 |---|---|---|
-| 0 | u32 | **unknown offset A**: cumulative, non-decreasing |
+| 0 | u32 | offset A: cumulative, non-decreasing; **not read by any shipped code** (see below) |
 | 4 | u32 | **term text offset**: cumulative byte offset of this term's text (UTF-16Z) in a term-text pool |
 | 8 | u32 | reference offset: byte offset into the reference pool |
 | 12 | u32 | reference count |
@@ -179,14 +179,13 @@ Each 16-byte term entry is:
 - Unknown offset A advances by the length of a *second* UTF-16Z string per term. It differs from
   the term text when terms repeat (e.g. five "Aachen" entries advance A by 40, 32, 56, 68, 62 bytes).
   It is not in the catalog record: the record holds only the title. It matches the title length for 13,577 of 22,748 terms.
-  It is not the referenced event's title either. A likely source is the `$WWTimelineWW` word wheel's display strings, which are not decoded yet. **Unresolved.**
+  It is not the referenced event's title either. **Settled as unused (static analysis of `ENCARTA.EXE`, 2026-10-15):** the only code that opens `timeline.dat` (the file name is string 10159 in `ENCARTAR.DLL`; loader `FUN_005e40a0`) maps the file, reads the descriptor and category/region lists, and computes the term-table and reference-pool base pointers, but nothing ever reads through them; only the event table (70-byte records), the title pool and the lists are used (an index of events by sequence number and refId is built from the event table). The term and reference tables are leftovers of the build tool, and offset A is most likely an offset into a string pool that was dropped from the file. The Timeline Search list is driven by the PFX word wheel instead. Nothing to implement.
 
 ## 6. Unknowns (need decompiler analysis or VM observation)
 
-1. Descriptor field 5 (always 1).
-2. Term entry field 0 ("offset A"): which string pool it addresses. Not visible in the UI (VM 2026-10-15: the
-   timeline search lists event titles; "charities" finds the `charity` events, so the strings may be the searchable
-   word forms of each term, e.g. A advances by 9 characters for `charity`); decoding `$WWTimelineWW` would tell.
+1. ~~Descriptor field 5 (always 1)~~: the wide-title flag (§1).
+2. ~~Term entry field 0 ("offset A")~~: unused by the shipped viewer (§5), so its meaning cannot be recovered from code;
+   it is not visible in the UI. Left as an unexplained build-time value.
 3. ~~Inferred labels~~: confirmed in the VM (§3.2): 0x01 = period bar, 0x02/0x08 = circa ("?"), kind 3 =
    essay, importance 1 = largest title. Still open: importance 0 on 4 records, and how importance maps
    to zoom levels.

@@ -15,10 +15,10 @@ it: its article(s), the flag and anthem, "Facts and Figures", music clips and "M
 ## Layout
 
 ```
-header   u32 a = 8          (meaning unknown; constant)
-         u32 b = 1          (meaning unknown; probably a version)
-         7 × { u32 blockOffset, u32 keyLimit }
-         u32 0              (terminator)
+header   u32 entryCount = 8  (number of directory entries below, the end sentinel included)
+         8 × { u32 firstPlaceId, u32 blockOffset }
+                            entry 0 = { 1, 0x44 }; entries 1–6 give the first id and offset of blocks 2–7;
+                            entry 7 = { last id + 1, 0 } is the end sentinel (its offset is 0)
 blocks   7 × block, contiguous from 0x44 to end of file
 block    u32 blockLength     (bytes, including these 8 header bytes)
          u32 placeCount
@@ -28,14 +28,17 @@ place    u32 placeId
          linkCount × { u32 kind, u32 contentId }
 ```
 
-- The block directory is a one-level B-tree index: `keyLimit` is the **first place id of the next block** (exclusive
-  upper bound); for the last block it is the last id + 1. Blocks are ≤ 0x8000 bytes (32 KB pages that are not padded).
+- The block directory is a one-level B-tree index. The header words are explained by the original reader (`ATCONT.DLL`,
+  `CP2MObject`, 2026-10-15): it reads the first u32, `entryCount * 8 + 4` header bytes in all, then looks a place up by scanning
+  the entries for the first one whose key is greater than the id and taking the block before it. So `8` is the entry count
+  and the old "b = 1" is the first key (the lowest place id, 1) of entry 0. Seen as pairs (offset, limit) as in the earlier
+  reading, the limit of a block is the **first place id of the next block** (exclusive upper bound); for the last block it is
+  the last id + 1. Inside a block the reader walks the places one by one (a place with no links would still take 16 bytes). Blocks are ≤ 0x8000 bytes (32 KB pages that are not padded).
 - Block offsets: 0x44, 0x802C, 0x10024, 0x18024, 0x2001C, 0x28014, 0x3000C. Each block ends exactly where the next
   begins, and the last ends at the file size.
 - Place ids ascend strictly across the whole file. Totals: **12,253 places, 16,122 links**, no duplicate links.
   Links within a place are not sorted by kind.
-- The number of directory entries is derived from the first block offset ((0x44 − 12) / 8 = 7). The header word `8` may
-  be a capacity (7 entries + terminator); this is unconfirmed and does not affect parsing.
+- The number of blocks is the entry count minus one (the sentinel); also derivable from the first block offset.
 
 ## Place ids
 
@@ -73,7 +76,7 @@ appear here), which supplies their credit lines and file names.
 - Every block parses to exactly its length; `keyLimit` matches; ids ascend.
 - Kind 8: 7,445 of 9,436 ids are in `content.ecn` (the rest are 631/174 items that live in `data.ecn` or not at all).
 - Kinds 13–16 were identified from the DATA records (`docs/vm-findings.md`). The photo themes (5 + 32·n) have no
-  on-screen labels in 2009 (not shown by the atlas). The header words `8` and `1` stay unexplained (no UI).
+  on-screen labels in 2009 (not shown by the atlas). The header words `8` and `1` are the directory entry count and the first key (above).
 
 ## Modern target
 SQLite `place_link(place_id, kind, content_id)` plus a kind-label table.

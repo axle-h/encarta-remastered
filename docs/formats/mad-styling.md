@@ -238,6 +238,40 @@ uses the HYPSO water mask (atlas-output.md "Hit sides").
 Labels are hit too: at 8,000 km a click on the drawn "ITALY" or "GREECE" over the sea lists the country with the
 Mediterranean Sea; on the Time Zones map, which draws no country names, the same point does not list Italy.
 
+### 4.5 Click menu order (code: FUN_635281c0, FUN_63527e50; checked against the VM menus)
+
+MOBB sorts the hit list before ENCARTA.EXE sees it; ENCARTA.EXE builds the menu in that order (FUN_00431630
+walks the list once, only skipping pen group 134, §16). One entry per object: hits of the same GeoObj (record
+key, entry) are merged, and the entry remembers whether the object was hit through its **drawn label** (text
+or shield box) and whether through its symbol or geometry. Routable-road hits (PDCAttribute byte 6) are never
+merged. Sort keys, in order:
+
+1. **Rank**, ascending: 0 a routable road hit through its label; 1 any other object hit through its label;
+   2 a point (symbol); 3 a routable road (geometry); 4 a line; 5 an area or a radius point. The rank of the
+   geometry kind comes from a 4-entry table indexed by PDCAttribute byte 3 (point 2, radius point 5, line 4,
+   area 5).
+2. Two routable roads: a 16-bit value from their street record (not on this disc).
+3. **PDCAttribute scale / 1000** of the hit class (offset 7), ascending: landmarks 30, cities 200, Admin 2 200,
+   Admin 1 and statistical regions 250, islands, lakes, regions, ranges and water labels 400, countries and
+   basins 420, continents 425, oceans 430, World 30,000.
+4. **GeoObj record key**, descending, then **entry**, descending.
+
+After sorting, only the first four routable-road entries are kept (FUN_635287e0). Every VM menu agrees:
+
+| menu (VM) | check |
+|---|---|
+| Limoges, Auvergne, Western Europe, West Central Europe, Massif central, Loire Basin, France (V11) | point; 250 Auvergne (key 208) before the regions (key 8; entries 25, 24); 400; 420 Loire Basin (key 60) before France (key 0) |
+| Vevey, Vaud, Lake Geneva, Rhône, Alps, Switzerland | point; 250; 400 by key 64, 60, 24; 420 |
+| Allaman, N1, Vaud, Switzerland | point, road line (rank 4), 250, 420 |
+| Italy, Southern Europe, Western Europe, Mediterranean Sea (8,000 km, over the sea) | Italy through its drawn label (rank 1); regions by entry 26, 25; sea 400 |
+| Southern Europe, Western Europe, Italy, Europe (on land) | 250, 250, 420, 425 |
+| Vilnius, Klaipėda, Eastern Europe, Lithuania, Europe | Vilnius through its label, Klaipėda through its symbol |
+| Jersey (U.K.), Channel Islands, British Isles; Great Barrier Reef Marine Park, Great Barrier Reef, Coral Sea; North American Plate, Atlantic Ocean; Pacific Ocean, World | 250 / 400 by key; 5 / 400 by key; 400 / 430; 430 / 30,000 |
+
+Client: the menu sorts by these keys, with the class scales and routable rows from the style metadata and the
+GeoObj order from the tiles (atlas-output.md); a point counts as hit through its label when the click is off
+its icon.
+
 ## 5. GeoPenDef: pens and brushes
 
 1231 records × 38 bytes. In the shipped data every record is its own chain head (`head = own index`,
@@ -453,24 +487,50 @@ the name, at 0.6 em per character, is wider than the area at the current zoom (*
 ### 7.4 Placement and priority
 
 What is established (code and renders):
-- Labels and point symbols go through one collision test. A point feature whose label cannot be placed is not
-  drawn at all. Without this rule, every town of band 5 appears as a black square at 3000 km (render §14).
+- A point's symbol and label go together: a point feature whose label cannot be placed is not drawn at all. Without this rule, every town of band 5 appears as a black square at 3000 km (render §14).
+- Point labels (FUN_63541930, candidates FUN_6356f1e0): MOBB builds every candidate, rejects some outright and
+  keeps the one with the **lowest cost**; ties go to the earlier candidate. A label with no candidate left is
+  not drawn (nor its symbol). Area labels are placed by FUN_63535290 instead: centred on horizontal spans of
+  the polygon, the widest span first. Line labels follow the line, and MOBB rotates the font (`lfEscapement`
+  from the segment angle).
+- **Candidate positions** (code, matching the VM): the text box diagonally off the symbol (`r` = half the
+  symbol size), each with a fixed added cost:
+
+  | order | position | box | added cost |
+  |---|---|---|---|
+  | 1 | centred on the point, only when the point has **no symbol** | | 0 |
+  | 2 | above right | bottom at the point's y, left edge at `x + r + 1` | 250 |
+  | 3 | below right | top at `y + r + 1`, left edge at `x + r + 1` | 500 |
+  | 4 | above left | bottom at the point's y, right edge at `x − r − 1` | 750 |
+  | 5 | below left | top at `y + r`, right edge at `x − r` | 1000 |
+
+  Each position is tried for every text layout of the name (with or without the alternative-name line, §7.3;
+  each layout adds its own cost).
+- **Rejected outright** (FUN_63533cf0): a box not wholly inside the map pane (on the globe: inside the disc),
+  and a box that intersects any label or shield already placed. Labels never overlap each other.
+- **Cost** of a candidate = added cost + background cost + neighbour cost:
+  - background (FUN_6353bb10, pixel counts by class FUN_6356b282, classes of §5.2 under the box): 0 when more
+    than 97 % of the pixels are water class (1, 2, 3); 251 when more than 97 % are land class (4) or 90–97 %
+    water; otherwise 1000 (up to 10 % or 50–90 % water) or 2000 (10–50 %, i.e. across a coast), plus 1000 when
+    any pixel is of class 0, 6 or 8 (unassigned, label colours and `b14 = 3` rules), 2000 when more than 1 %,
+    3000 when more than 10 %;
+  - neighbours (FUN_635093fd, list built per frame by FUN_63554fdb): every labelled point feature reserves a
+    box centred on itself, four "X" widths of its label font wide and twice its symbol size high; a candidate
+    pays the weight of every reserved box it overlaps. Weights go by priority: 4750 for the points of the
+    first b13 group in priority order, 250 less for each later group, at least 251. A 20 × 20 px box at the
+    pane centre weighs 5000.
+- So the order decides only between candidates of equal cost: an isolated label goes above right (all 7
+  isolated places of the outback view, `fixtures/atlas/labels/`), and any difference in what lies under the
+  box (a coast, a neighbour's reserved box, a road) outweighs the 250 steps. In dense areas (Morbihan, 300 km)
+  about 18 of 30 labels are above left, 5 below right, 5 below left: the costs, not the order. Lambina, with
+  "SOUTH AUSTRALIA" above it, is below right (presumably the above candidates intersect that placed label).
 - Priority: `PDCAttribute.b13` (mad.md §8.1, 1…255) orders the candidates. Lower values win: million+ cities
   have 23, sovereign capital towns 35, towns 80, villages 100. (**Hypothesis**, consistent with the renders.)
-- Point labels are placed beside the symbol. MOBB tries several positions (FUN_63535290 loops over candidate
-  boxes and keeps the one with the fewest overlaps). Line labels follow the line, and MOBB rotates the font
-  (`lfEscapement` from the segment angle).
-- **Candidate positions (VM, 2026-10-14):** a point label sits diagonally off its symbol, the text box's corner
-  at the symbol's corner (about 1 px apart), never centred beside, above or below it. With nothing in the way it
-  is **above right**: all 7 isolated places of the outback view (Finke, Erldunda, Kulgera, Marla, Indulkana, two
-  two-line roadhouses; `fixtures/atlas/labels/`). In dense areas (Morbihan, 300 km) the other corners occur:
-  above left most often (about 18 of 30 labels), then below right and below left (about 5 each). Lambina, with
-  "SOUTH AUSTRALIA" above it, is below right. The order after above right is not determined; the counts suggest
-  above left next. How the overlap count weighs against this order is not read (open, §17).
 
 MapLibre: `symbol-sort-key = b13` within a layer, and symbol layers stacked by descending b13 (MapLibre places
-the top layer's symbols first). Use `text-variable-anchor` [bottom-left, bottom-right, top-left, top-right]
-(above right first) with a small `text-radial-offset` for points,
+the top layer's symbols first). MapLibre has no costs, only "first candidate that does not collide": use
+`text-variable-anchor` [bottom-left, top-left, bottom-right, top-right] (MOBB's order) with a small
+`text-radial-offset` for points with a symbol, and [center, …the same] with offset 0 for points without one,
 `symbol-placement: line` for line classes, and `text-allow-overlap: false` with `icon-optional: false` so that
 symbol and label appear together.
 
@@ -513,12 +573,18 @@ object, type code or number field:
   GeoLabel bytes 1–3 (text), 13–15 (outline, width byte 16), 17–19 and 20–22 (fills). The shield is drawn upright, not along
   the line (FUN_6357cc5f sizes, FUN_6357ce42 and FUN_6357c949 draw; the outlines of shapes 7–10 are in MOBB's
   data at 0x636072b8).
-- **Placement** (FUN_63540fe0, candidates FUN_63506f3f): for each on-screen run of the road (pixel length `L`),
-  MOBB takes `min(16, L / 10)` points evenly spaced from one shield width after the start to one shield width
-  before the end; a run not longer than two shield widths gets no shield. Each point costs
-  `4000 · |d − L/2| / (L/2)` (`d` = distance along the run) plus the overlap cost of the shield box; the cheapest
-  box that does not collide is kept. A shield is dropped when one with the same text is already placed within `√((W/6)² + (H/6)²)`
-  px (`W × H` = the map pane). The shield then enters the label collision list and the hit-test list.
+- **Placement** (FUN_63540fe0, candidates FUN_63506f3f, centre cost FUN_63506c04): for each on-screen run of the
+  road (pixel length `L`), MOBB takes `min(16, L / 10)` points evenly spaced from one shield width after the
+  start to one shield width before the end; a run not longer than two shield widths gets no shield. A candidate
+  box that is not inside the pane or intersects a placed label or shield is rejected outright (the same test as
+  point labels, §7.4). The others cost `4000 · |d − L/2| / (L/2)` (`d` = distance along the run) **plus the
+  neighbour cost** of §7.4 (the reserved boxes of labelled points, 251–4750 each, and the 5000 pane-centre
+  box); there is no background cost and no position step. The cheapest candidate wins, ties going to the one
+  nearer the run's start. So a shield sits in the middle of its run unless that spot touches a point's
+  reserved box, when it moves along the run as far as the saving allows (a 4750 box outweighs any offset).
+  **One shield per run at most.** Then, for the winner only: when a shield with the same text is already placed
+  within `√((W/6)² + (H/6)²)` px (`W × H` = the map pane; about 160 px for 812 × 518), the run gets no shield
+  (the next-cheapest candidate is not tried). The shield then enters the label collision list and the hit list.
 - **Altitudes:** the label is on (`b3 = 1`) from 1,999 km down in every style that has the class (14 styles;
   tunnels from 149 km), but the line parts exist only in GeoGem bands 7–9, so shields appear from **799 km** down
   (210, 213 and the tunnels: from 149 km, band 8).
@@ -529,7 +595,11 @@ object, type code or number field:
   78 (class 207, Interstate) and 3 (class 206, blue rectangle); the Netherlands A1, A2, A4, A12, A16, A27, A50,
   E25, E30, E31 (class 206, blue rectangles, as V8 shows for both A- and E-roads).
 
-MapLibre: one symbol layer per shield road class with `symbol-placement: line`, `text-field` = name,
+MapLibre has no costs and no "one per run near the middle" (`line-center` gives the middle but no
+alternative when it collides, and no same-text test): one symbol layer per shield road class with
+`symbol-placement: line`, whose anchors repeat at `symbol-spacing` from near the line's start and which drops
+an anchor whose text repeats within half the spacing in the tile (400 → 200 px, against MOBB's 160 px for the
+reference pane), `text-field` = name,
 `icon-image` = a sprite per GeoLabel shape and colours stretched with `icon-text-fit: both`, `text-rotation-alignment`
 and `icon-rotation-alignment: viewport`, `symbol-spacing` large and `text-allow-overlap: false`.
 
@@ -844,7 +914,7 @@ opened with the URL form of §2.3. If `alt` turns out not to be km, adjust the n
   of group 214 (the 17 "Thematic Trek" point classes) or 223 (row 303 "Landmark - point of interest - content") with a content
   link of the matching kind opens that content directly, without the menu (unless the hit list also holds one of
   the internal groups 0xFFFB/0xFFFC, which are not map data). The page title (FUN_00430310) shows a
-  time zone only on the Time Zones map.
+  time zone only on the Time Zones map. The menu keeps MOBB's order (§4.5).
 - V12: the flat view is Miller (§12.3). V13: zoom is limited over open ocean and Aruba, Venice zooms to street
   level (MinRect, §13.2). V14: statistical classes pale peach to dark red-brown, water pale grey-blue, no data
   light grey.
@@ -866,11 +936,15 @@ Open, in priority order:
    the VM's click menus; the code that applies it is not read. ~~When `w6` is used~~: alternative-name line (§4.1, §7.3),
    confirmed in the VM (V15, 2026-10-14), with a rule between the lines.
 3. ~~The road shield source~~: shields are labels of road lines whose `w5` GeoLabel has a shape in byte 12 (§8.1),
-   checked against V8. Open: how the overlap cost weighs against the centre cost (exact choice among candidates).
+   checked against V8. ~~How the overlap cost weighs against the centre cost~~: centre cost plus the neighbour
+   cost of §7.4, cheapest wins, one per run (§8.1, code).
 3a. ~~Why V11's click menu leaves out time zones~~: ENCARTA.EXE drops pen group 134 (§16 V11 result); V16 to
     confirm on the Time Zones map.
-4. Whether areas are always drawn before lines (§9). Label candidates (§7.4): the four diagonal corners, above
-   right first (VM); the order of the other three and the overlap cost need the code or a debugger.
+4. Whether areas are always drawn before lines (§9). ~~Label candidates~~ (§7.4, code): above right, below
+   right, above left, below left (centred first without a symbol), each with a fixed added cost, cheapest total
+   wins. Open: the text layouts' own costs (FUN_6356ea10, offset 0x498 of a layout) and which label kinds
+   (points, lines, areas, shields) are placed first.
+4a. ~~The click menu's order~~ (§4.5, code, checked against every VM menu).
 5. The Miller `y0` at levels 2–3 (§12.3), and the flat-view scale relation (§2.1).
 6. The meaning of MapStyle colour 1/2 and flags (§3); LegendGrid (§13.1).
 7. TESS triangle codes, Find Data detail tables, GeoPenDef bytes 14, 23 and 25–29 (all 0 or nearly).
@@ -891,7 +965,8 @@ Provenance (MOBB200.DLL, same build as mad.md §10):
 | GeoTrans ramps | parser FUN_6355e946, tint table FUN_6355e990, FUN_6356b734 |
 | GeoLabel record | FUN_63555675, FUN_63522439; sizes FUN_63533560, FUN_63533810; font spec FUN_6353d379 |
 | Fonts | Label Font parser FUN_6353d098; LOGFONT FUN_635429f0, FUN_63542b70, FUN_63543f1c; text and halo FUN_6353b940, FUN_63542752, FUN_635426ff |
-| Label placement | FUN_63535290, colour accessor FUN_63535230 |
+| Label placement | point labels FUN_63541930, candidates and their added costs FUN_6356f1e0; area labels (horizontal spans) FUN_63535290; colour accessor FUN_63535230 |
+| Label costs | outright rejection (pane, disc, placed labels) FUN_63533cf0 → FUN_635091d8; background cost FUN_6353bb10 with pixel counts by class FUN_6356b282; neighbour cost FUN_6353bd20 → FUN_635093fd; reserved point boxes and pane-centre box FUN_63554fdb; weighted box lists FUN_635092e6, FUN_63509388 |
 | Draw lists and z-order | FUN_6351da30 (runs by kind and b12), sort key FUN_6351cda0, line pass FUN_6351fc90, object sort FUN_6351ce2a |
 | Icons from w23/w24 | FUN_63519a2d, FUN_63519add |
 | GeoObj "go to" point | FUN_635226dc (reader), FUN_6351bb2f, FUN_6351bcf6 |
@@ -901,7 +976,7 @@ Provenance (MOBB200.DLL, same build as mad.md §10):
 | Line-label dispatch (byte 11 high nibble, shield) | FUN_6353c390 → FUN_6353dc50, FUN_6353de50, FUN_63540fe0, FUN_63540710 |
 | Shield shapes | shape object FUN_6357c8f3, FUN_6357c73b, colours FUN_6353bc40; size FUN_6357cc5f; draw FUN_6357ce42, FUN_6357c949; outline table 0x636072b8 (codes 7–10), init FUN_6357cbfe |
 | Shield placement | FUN_63540fe0; candidates FUN_63506f3f, centre cost FUN_63506c04, run length FUN_63506efb |
-| Hit test (MOBB) | API FUN_6352e53f (flags, optional pen-group filter, −2 = byte-6 flag); point query FUN_635627d0; screen list FUN_63560af8; geometry FUN_63561810; entry FUN_63527fe0, merge FUN_635280f0; sort FUN_635281c0, rank FUN_63527e50; keep 4 byte-6 hits FUN_635287e0; PDCAttribute in memory FUN_6356ca26 |
+| Hit test (MOBB) | API FUN_6352e53f (flags, optional pen-group filter, −2 = byte-6 flag); point query FUN_635627d0; screen list FUN_63560af8; geometry FUN_63561810; label and symbol boxes FUN_635462e0, FUN_63546380, collected by FUN_63545f30; entry FUN_63527fe0, merge FUN_635280f0; sort FUN_635281c0 (§4.5), rank FUN_63527e50 with its kind table at 0x63527e90; street-name dedup of routable hits FUN_63528390; sort and keep 4 byte-6 hits FUN_635287e0; PDCAttribute in memory FUN_6356ca26 (offset 0 = scale / 1000, 0x3a kind, 0x3d b13, 0x3e byte 6) |
 | Click menu (ENCARTA.EXE) | timer FUN_00432140; trek/content shortcut FUN_00431f70; menu items, skips pen group 134 FUN_00431630; hit op CSyncMapOpHitDetect FUN_005a36a0, queue FUN_0058d210; hit item FUN_005900a0; page title FUN_00430310, group table FUN_0042fe00 |
 | MinRect | FUN_6355f45e, FUN_6355f377 |
 | Font Conv, Unicode Attributes | FUN_63518367 / FUN_63518302; FUN_63583434 |
