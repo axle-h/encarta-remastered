@@ -4,7 +4,7 @@ import { captionWidth, systemTextWidth } from "./hud/caption";
 import { Layer2D } from "./hud/layer";
 import { Interpreter, type Handlers } from "./script/interp";
 import { atof, atoi, foldCase, parseCommand } from "./script/parse";
-import { cursorZone, followGround, mouseVector, newCamera, stepMove, stepPitch, timeFactor, NO_INPUT } from "./sim/camera";
+import { cursorZone, followGround, lookPitch, mouseVector, newCamera, setPitch, stepMove, stepPitch, timeFactor, NO_INPUT } from "./sim/camera";
 import { collide, slideMove } from "./sim/collision";
 import { chunkVisible, cloudPhi, Filmstrip, flickerColour, flickerFactor, FlickerLight, lcg, rasteriseCloud, Ripple } from "./sim/effects";
 import { WalkMap, WalkMapSet, type Segment } from "./sim/walkmap";
@@ -254,7 +254,7 @@ describe("camera step and tick (§6.8–§6.9)", () => {
     const c = newCamera();
     c.pitchSpeed = 6;
     for (let i = 0; i < 20; i++) stepPitch(c, { ...NO_INPUT, pitchUp: true });
-    expect(c.pitchDeg).toBe(42);
+    expect(c.pitchDeg).toBeCloseTo(42, 4);
     stepPitch(c, { ...NO_INPUT, level: true });
     expect(c.pitchDeg).toBe(0);
   });
@@ -275,6 +275,47 @@ describe("camera step and tick (§6.8–§6.9)", () => {
     for (let i = 0; i < 50; i++) followGround(c, set, "gravity", 0.01);
     expect(c.y).toBeCloseTo(0.1);
     expect(c.vfall).toBe(0);
+  });
+
+  it("falls like the VM trace: vfall grows by GRAVITY per tick and lands on the ground", () => {
+    // Debugger trace (Acropolis, GRAVITY .003): an eye raised 0.6 drops 0.003, 0.006, … and lands on tick 20.
+    const set = new WalkMapSet(() => map("g.3wm", [{ index: 0, kind: "ground", polygons: [square(-5, -5, 5, 5)], plane: [0, 1, 0, 0.485825] }]));
+    set.load("g.3wm", { x: 0, z: 0 });
+    set.on = 1;
+    const c = newCamera();
+    c.x = 0; c.z = 0; c.height = 0.1; c.y = Math.fround(-0.385825);
+    setPitch(c, 21.000036);
+    followGround(c, set, "gravity", 0.003);
+    const ground = c.y;
+    c.y = Math.fround(ground + 0.6);
+    const drops: number[] = [];
+    for (let i = 0; i < 25 && c.y > ground; i++) {
+      const before = c.y;
+      followGround(c, set, "gravity", 0.003);
+      drops.push(before - c.y);
+    }
+    expect(drops.length).toBe(20);
+    expect(drops[0]).toBeCloseTo(0.003, 6);
+    expect(drops[18]).toBeCloseTo(0.057, 5);
+    expect(c.y).toBe(ground);
+    expect(c.vfall).toBe(0);
+  });
+
+  it("tests the pitch keys on the drifted look vector, reports the stored pitch", () => {
+    // VM: the Acropolis start pitch 21.000036 is stored, while the look vector drifts below it as each tick's
+    // fall and landing round eye and target to float32; so 21 + 4 × 6 is accepted at about 44.9994.
+    const set = new WalkMapSet(() => map("g.3wm", [{ index: 0, kind: "ground", polygons: [square(-5, -5, 5, 5)], plane: [0, 1, 0, 0.485825] }]));
+    set.load("g.3wm", { x: 0, z: 0 });
+    set.on = 1;
+    const c = newCamera();
+    c.x = 0; c.z = 0; c.height = 0.1; c.y = Math.fround(-0.385825); c.pitchSpeed = 6;
+    setPitch(c, 21.000036);
+    for (let i = 0; i < 3000; i++) followGround(c, set, "gravity", 0.003);
+    expect(c.pitchDeg).toBeCloseTo(21.000036, 6);
+    expect(lookPitch(c)).toBeLessThan(21);
+    for (let i = 0; i < 6; i++) stepPitch(c, { ...NO_INPUT, pitchUp: true });
+    expect(c.pitchDeg).toBeGreaterThan(44.99);
+    expect(c.pitchDeg).toBeLessThan(45);
   });
 
   it("mouse vector has dead zones and a v·|v|^0.5 curve; cursor zones", () => {

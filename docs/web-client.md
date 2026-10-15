@@ -223,10 +223,10 @@ the yaw.
 | angular width | `part` (360 on all 167) | 360 *(ours; the records have no field, and the pictures wrap seamlessly)* |
 | field of view | `fov`: the horizontal field of view of the `displaywidth` view, in degrees (80 on 150 scenes, 85/90/100 on 6). `AUTO` (11 scenes) = the fill limit. A value that would show past the picture opens at the fill limit | from the picture width: f ≈ W/2π px on a 624-px view (about 94° for W = 1824) *(VM: vm-findings.md › UI parity pass, Panoramas)* |
 | view size | `displaywidth` × `displayheight` (544 × 320–380; equal to the slide's `imagewidth`/`imageheight`), scaled to fit the page | 624 × 289, horizon on the middle row *(VM: vm-findings.md › UI parity pass, Panoramas)* |
-| opening yaw | `initangle`: degrees from the picture's left edge to the view centre (180 = the picture's middle, 103 of 167) | x = 0 at the view centre for every scene; `default/@panangle` only orients the site-map view wedge *(VM: vm-findings.md › UI parity pass, Panoramas)*. `lightangle` (always `panangle`/10) is unused |
+| opening yaw | `initangle`: degrees from the picture's **middle** to the view centre, positive to the right (180, on 103 of 167, opens on the seam at x = 0); clamped to ±(part/2 − fov/2) for a partial picture *(VM, Flash 10.3: five scenes, vm-findings.md › Flash and debugger pass)* | x = 0 at the view centre for every scene; `default/@panangle` only orients the site-map view wedge *(VM: vm-findings.md › UI parity pass, Panoramas)*. `lightangle` (always `panangle`/10) is unused |
 | zoom-in limit | `maxzoom` % of the opening view (200; one scene has 50, read as "no zoom-in") | 200 % *(ours)* |
 | vertical look | `tilt` (`on` everywhere) | on *(ours)* |
-| auto-pan | `auto` (3 everywhere), read as degrees per second *(ours: constant on the disc, so its unit cannot be derived)*. It runs when the panorama opens and stops at the first drag, key or button | on at open, 18.3 s per turn in 7.5 jumps a second; a click pauses it and it resumes after 9.5 s; Tour Settings toggles it and the labels and hot spots *(VM: vm-findings.md › UI parity pass, Panoramas)* |
+| auto-pan | `auto` (3 everywhere): view pixels per tick of FlashVR's interval timer, about 52 ticks/s in the VM, taken as an angle at the opening field of view (about 26 °/s on the 544-px view; VM 22–31 °/s) *(VM, Flash 10.3)*. It runs to the right when the panorama opens and stops at the first drag, key or button | on at open, 18.3 s per turn in 7.5 jumps a second; a click pauses it and it resumes after 9.5 s; Tour Settings toggles it and the labels and hot spots *(VM: vm-findings.md › UI parity pass, Panoramas)* |
 | keyboard pan speed | `maxspeed` (50 everywhere), read as degrees per second at the opening zoom *(ours)* | 50 *(ours)* |
 | unused | `quality`, `interlace` (45; FlashVR's own rendering), `hsvisibility` (0; vrslides have no hotspots), `src`, `name`, and `flashvr.xml` (player chrome only: preloader, menu, pan/stop quality; no geometry) | `coord3d`, `refid` |
 
@@ -305,11 +305,14 @@ decoded size and horizon match an independent survey of all 167.
   from the capture CSS); the Quick Facts and atlas panels are unchanged.
 - Interactives under Ruffle 0.7.1: see the test pass below. `MatchGame` exhausts Ruffle's memory (games.md) and is
   native. In the `BGAControl` boards, picture answers drew blank until the server patched the skin (games.md). Trebuchet MS, the players' main font,
-  is approximated by the disc's Tahoma; Lucida Console and Impact by Arial. No VM
-  ground truth: Flash is not installed in the guest (vm-findings.md).
+  is approximated by the disc's Tahoma; Lucida Console and Impact by Arial. Compared with Flash Player 10.3 in the VM
+  (seven items, one per control type; vm-findings.md › Flash and debugger pass): drawing matches, and Tahoma sets
+  Trebuchet text a little narrower, so a few paragraphs wrap a line earlier or later; nothing is clipped that Flash
+  does not clip.
 - Vasco da Gama's missing ocean fill was seen once (the first headless run against a cold server: the full-frame
   ocean rectangle and the graticule absent, land drawn) and not again in 30 runs (wgpu-webgl, webgl, canvas,
-  WebGPU; sizes 460–700 px; throttled network; in the app). Unexplained; watch for it on real GPUs.
+  WebGPU; sizes 460–700 px; throttled network; in the app). Unexplained; watch for it on real GPUs. Flash draws it (VM),
+  and so did the 2026-10-15 Ruffle comparison.
 - Double-clicking a word in article text or the Map Trek stop text opens the dictionary on it (`app/wordLookup.ts`, installed by both shells; links and buttons excluded).
 - Parental Controls of the dictionary window are dropped by choice (PLAN.md).
 - Item kinds, menus, Favorites, print and the panoramic tours added by the parity audit: see [parity.md](parity.md).

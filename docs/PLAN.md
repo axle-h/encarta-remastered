@@ -27,9 +27,19 @@ Dropped by choice: parental controls (the dictionary's offensive-word filter); l
 
 ## Next (priority order)
 
-Found in the second VM pass, not built yet:
-1. **VM with Flash Player and a debugger** (approved by Alex 2026-10-14): install both in the guest (download on the
-   host, move in through the exchange disk), then settle the Flash- and debugger-blocked items under "Needs the VM".
+Nothing queued; the open questions are under "Needs the VM" below.
+
+Done 2026-10-15 (VM with Flash Player and a debugger): Flash Player 10.3.181.16 ActiveX and cdb (Debugging Tools 6.12)
+installed in the guest, live snapshot `flash-ready`, `vm/dbg.sh` (vm.md). **Panoramas**: single panoramas open with the
+view centre `initangle` degrees right of the picture's *middle* (180 = the seam), not of its left edge, and auto-pan at
+`auto` view px per Flash timer tick (≈ 52/s, ≈ 26 °/s, was 3 °/s); fov 80 and the horizon row confirmed
+(`panorama/params.ts` `openingYaw`, `measured.ts` `SINGLE`; web-client.md). **Tours**: Encarta's software device runs
+gravity mode (walker flag set; the eye falls `vfall += GRAVITY` per tick), now the default for both devices; the
+pitch keys' 45° test is on the pitch derived from the float32 look vector, which each tick's fall and landing make
+drift below the stored `PITCH?` value, now modelled (`sim/camera.ts` `lookY`/`lookPitch`; tours-3d.md §6.8, §6.9,
+tour-runtime.md). **Interactives**: seven control types compared with Ruffle: drawing matches, Tahoma for Trebuchet
+MS rewraps a few paragraphs, nothing extra clipped (vm-findings "Flash and debugger pass"). Unit tests updated and
+added (web 348 pass); not run in a browser.
 
 Done 2026-10-15 (Geography Quiz fanfare): a right pick plays a 2 s fanfare of our own, synthesised in the browser with
 Web Audio (C-major arpeggio of sawtooth voices into a held chord; `games/geoquiz/fanfare.ts`, games.md). Played whatever
@@ -100,18 +110,17 @@ sprites), area-pen draw-over masks, flat-view tiles in Web Workers, time zones o
 
 ### Needs the VM
 - Atlas: the order of the three fallback label corners, how overlap cost weighs against it, and the shield
-  centre-vs-overlap cost (mad-styling.md §8.1); the click menu's order in places. Needs the code or a debugger.
+  centre-vs-overlap cost (mad-styling.md §8.1); the click menu's order in places. Needs the code or the debugger
+  (`vm/dbg.sh`, not tried yet).
 - Sounds: where the unheard ENCARTAR.DLL sounds play (578, 579, 682/31972/31978, 702/31909, 31906-31908, 31910/31911,
   31912, 31913). Not tried yet: Geography Quiz score dialog, Read Aloud, Print and Copy dialogs, Organize Favorites,
-  Help windows; 578 and 579 are nearly silent and may never play (media.md §9).
-- Panoramas: single panoramas' `initangle` (their viewer is Flash).
-- Tours: the pitch-limit arithmetic (debugger); gravity mode, the hardware cloud step and MaxView (3D device); the
-  water ripple's step rate; what `3D.TOGGLEHIDDEN` does to the picture; ITS-mode loading ([tours-3d.md](formats/tours-3d.md) §10).
+  Help windows, and (now that Flash is installed) Kids Read Aloud and the Kids games; 578 and 579 are nearly silent
+  and may never play (media.md §9).
+- Tours: the hardware cloud step and MaxView (3D device); the water ripple's step rate; what `3D.TOGGLEHIDDEN` does
+  to the picture; ITS-mode loading ([tours-3d.md](formats/tours-3d.md) §10). The ripple rate and `TOGGLEHIDDEN` can now be traced
+  with the debugger.
 - Data: the media-placement residue: an empty item slot (`Child_s<n>`) in four sections that no record we read
-  explains (debugger; content-schema §11); MSWORLD.SDB column B, TIMELINE.DAT field 5 and offset A, the P2MTBL and LEX
+  explains (debugger, not tried yet; content-schema §11); MSWORLD.SDB column B, TIMELINE.DAT field 5 and offset A, the P2MTBL and LEX
   header words (no screen shows them).
-- Interactives: Flash is not installed in the guest, so nothing to compare the Ruffle rendering with (fonts: the
-  disc lacks Trebuchet MS; Vasco da Gama's ocean fill went missing once and was not reproduced).
 - Music: a reference recording with pitch bends, controllers, drums and several channels; how Encarta loops
   MindMaze music.
-- VM tooling: a debugger workflow.

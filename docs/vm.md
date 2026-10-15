@@ -10,7 +10,8 @@ into setup straight from the user's own media and is never stored (see [CLEAN_RO
   pinned to 2009-03-01 at every boot, so keep the `-rtc` option.
 - Encarta: full "Copy To Hard Drive" install (all content local), Encarta Kids included. No product key was needed.
 - Snapshots in `vm/xp.qcow2`: `xp-base` (disk), `clean-install` (disk), `encarta-home` (live, Encarta on its home page),
-  `tours-ready` (live: home page, the 7 tours extracted to `C:\tours\<id>\`, our tour host built in `C:\tools`).
+  `tours-ready` (live: home page, the 7 tours extracted to `C:\tours\<id>\`, our tour host built in `C:\tools`),
+  `flash-ready` (live: `tours-ready` plus Flash Player 10.3 and cdb; use this one).
 - Helpers: `vm/start.sh`, `vm/stop.sh`, `vm/savevm.sh`, `vm/vmctl.py` (QMP: screenshots, keys, mouse),
   `vm/agent.py` + `vm/guest/encagent.cs` (our own small agent: run commands, move files, dump the rendered
   DOM of Encarta's HTML view), `vm/xchg.sh` (FAT32 exchange disk via mtools). Only one QMP client can
@@ -28,5 +29,13 @@ into setup straight from the user's own media and is never stored (see [CLEAN_RO
 - Sound: `vm/start.sh --loadvm encarta-home --wav out.wav` hot-plugs a USB audio device (XP's own usbaudio.sys, ~20 s to
   install) and QEMU records everything the guest plays to the WAV (it only grows while sound plays). usb-audio cannot be
   migrated, so no live snapshot holds it; `vm/scratch/sndmatch.py` matches a slice against the ENCARTAR.DLL sounds.
-- Not yet available: Flash (no official installer any more); 3D hardware (the Cirrus card forces
-  the tours' software renderer, so gravity mode can't be observed); a debugger workflow (OllyDbg 1.10 is installed, unused).
+- Flash: Adobe Flash Player 10.3.181.16 ActiveX (Adobe's archive zip, via the Internet Archive; downloaded on the host
+  into `target/dl-flash/`, moved in through the exchange disk). Restart Encarta once after installing it.
+- Debugger: Debugging Tools for Windows 6.12 (`dbg_x86.msi` from download.microsoft.com, `target/dl-debugger/`),
+  installed at `C:\Program Files\Debugging Tools for Windows (x86)\`. `vm/dbg.sh peek <image> "<cdb commands>"`
+  reads memory without stopping the process; `vm/dbg.sh attach <image> <script.cdb>` attaches cdb with a script of
+  breakpoints that log to `C:\inst\*.log` (`vm/dbg.sh log`). Killing cdb also ends the debuggee. Module bases
+  differ per process (the tour control sits at 10000000 in tourhost, relocated in ENCARTA.EXE). Breakpoint addresses
+  come from `analysis/decompiled/` and stay there or in docs as provenance pointers only (CLEAN_ROOM.md).
+- Not available: 3D hardware (the Cirrus card forces the tours' software renderer, so the hardware cloud step and
+  MaxView can't be observed). OllyDbg 1.10 is also installed, unused.

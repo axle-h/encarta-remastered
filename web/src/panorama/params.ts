@@ -11,12 +11,12 @@
  */
 import type { Interactive } from "../api/types";
 import { tourHfov } from "./geometry";
-import { TOUR, TOUR_AUTO_PAN } from "./measured";
+import { SINGLE, TOUR, TOUR_AUTO_PAN } from "./measured";
 
 export interface PanoParams {
   /** Horizontal field of view of the opening view in degrees, or "fit" (picture height fills the view). */
   fov: number | "fit";
-  /** Opening yaw: degrees from the picture's left edge to the view centre. */
+  /** Opening yaw: degrees from the picture's left edge to the view centre (single panoramas: see openingYaw). */
   yaw: number;
   /** Largest magnification relative to the opening view, in percent. */
   maxZoom: number;
@@ -24,7 +24,7 @@ export interface PanoParams {
   part: number;
   /** Vertical look (image-plane shift) allowed. */
   tilt: boolean;
-  /** Auto-pan speed in degrees per second. */
+  /** Auto-pan speed in degrees per second (single panoramas: from `auto` px per Flash timer tick). */
   autoPan: number;
   /** Auto-pan runs when the panorama opens. */
   autoStart: boolean;
@@ -83,19 +83,36 @@ export const DEFAULTS = {
   maxSpeed: 50,
 };
 
+/**
+ * Opening yaw (degrees from the picture's left edge) for an `initangle`: FlashVR measures it from the
+ * picture's middle, positive to the right, and keeps a partial picture's view inside it (VM, Flash pass:
+ * five scenes, 44 → 224°, 62 → 242°, 180 → 0°, 252 → 72°, 305 → 125°).
+ */
+export function openingYaw(initangle: number, part: number, fov: number): number {
+  if (part >= 360) return (((180 + initangle) % 360) + 360) % 360;
+  const edge = part / 2 - fov / 2;
+  return part / 2 + Math.max(-edge, Math.min(edge, initangle));
+}
+
 export function singleParams(vr: VrSlide): PanoParams {
   const s = vr.scene;
   const fovRaw = (s.fov ?? "").trim().toUpperCase();
+  const fov = fovRaw === "AUTO" ? "fit" : num(s.fov, DEFAULTS.fov);
+  const part = Math.min(360, Math.max(1, num(s.part, 360)));
+  const viewWidth = num(s.displaywidth, vr.imageWidth);
+  const auto = Math.max(0, num(s.auto, DEFAULTS.autoPan)) || DEFAULTS.autoPan;
+  // Auto-pan: `auto` view pixels per timer tick; as an angle at the opening field of view.
+  const focal = viewWidth / 2 / Math.tan(((fov === "fit" ? DEFAULTS.fov : fov) * Math.PI) / 360);
   return {
-    fov: fovRaw === "AUTO" ? "fit" : num(s.fov, DEFAULTS.fov),
-    yaw: num(s.initangle, 180),
+    fov,
+    yaw: openingYaw(num(s.initangle, 0), part, fov === "fit" ? DEFAULTS.fov : fov),
     maxZoom: num(s.maxzoom, DEFAULTS.maxZoom),
-    part: Math.min(360, Math.max(1, num(s.part, 360))),
+    part,
     tilt: (s.tilt ?? "on").toLowerCase() !== "off",
-    autoPan: Math.max(0, num(s.auto, DEFAULTS.autoPan)) || DEFAULTS.autoPan,
+    autoPan: (Math.atan((auto * SINGLE.autoTicksPerSecond) / focal) * 180) / Math.PI,
     autoStart: num(s.auto, DEFAULTS.autoPan) > 0,
     maxSpeed: Math.max(1, num(s.maxspeed, DEFAULTS.maxSpeed)),
-    viewWidth: num(s.displaywidth, vr.imageWidth),
+    viewWidth,
     viewHeight: num(s.displayheight, vr.imageHeight),
   };
 }

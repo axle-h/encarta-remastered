@@ -118,8 +118,13 @@ All world state is in glTF space; queries convert back to the disc's coordinates
   vertex-shader term: `min(255, COLOR_0 + Σ trunc(current[slot]·w))` over the
   `_FLICKER_*` sets, with one `vec3` uniform per flicker slot. `LIGHTS.OFF` and full-bright
   objects are shader switches.
-- **Ground mode** is snap (software device), as in the VM (§6.8); the `device: "hardware"` or
-  `groundMode: "gravity"` options switch to gravity, which the VM could not show.
+- **Ground mode** is gravity on both devices, as the VM runs it (debugger: walker +0x54 = 1 on the software
+  device, §6.8): the eye falls `vfall += GRAVITY` per tick and lands on the ground; `groundMode: "snap"` remains
+  for experiments.
+- **Pitch** follows the original's two values (§6.9): `pitchDeg` is the stored pitch (`PITCH?`, rendering) and
+  `lookY`/`lookH` the float32 look vector. Ground following moves eye and target in float32 (`Math.fround`), so the
+  derived pitch drifts as in the VM, and the ±45° test of the pitch keys uses it. The target's X/Z rounding and the
+  rotation matrix's float error are not modelled (well under 10⁻⁵°).
 - **FOV** is horizontal (measured, §6.10): projection scale `K = (W/2)/tan(fov/2)`, shared by the
   renderer and caption anchoring. `fovAxis` remains as a switch for experiments.
 - **Control size.** The app mounts the control at 616×420, Encarta's size, and scales it to the
@@ -200,19 +205,13 @@ All world state is in glTF space; queries convert back to the disc's coordinates
 
 ## Known gaps
 
-- VM items still open (tours-3d.md §10): gravity mode and the hardware 5° cloud step (no 3D device
-  in the VM), the pitch-limit arithmetic, the water ripple's step rate (here at most 40 steps/s),
-  `3D.TOGGLEHIDDEN`'s effect on drawing. Faces are single-sided as converted (VM: back faces are
+- VM items still open (tours-3d.md §10): the hardware 5° cloud step (no 3D device in the VM), the
+  water ripple's step rate (here at most 40 steps/s), `3D.TOGGLEHIDDEN`'s effect on drawing. Faces are single-sided as converted (VM: back faces are
   culled; `doubleSided` remains for experiments).
 - The app's menu offers "Labels and Hot Spots" (`2D.ON`/`2D.OFF`), but Encarta 2009 has no such
   item (VM: only its strings remain in ENCARTAR.DLL).
 - Textures are mipmapped and filtered; the VM's software rasteriser samples without mipmaps, so its
   distant surfaces look sharper and noisier.
-- The 45° pitch test uses the exact pitch, where the original tests a value derived from its float
-  look vector: from the Acropolis start pitch 21.000036 the fourth 6° step is refused here
-  (45.000036) but was accepted in the VM (44.998962). How that value is computed is not specified,
-  and float32 look-vector arithmetic does not reproduce the −0.001074° error (tours-3d.md §6.9), so
-  it is not emulated.
 - The VM's loading takes 1.6–2.3 s depending on the tour; the data does not explain the spread
   (tours-3d.md §8.4.3), so the runtime keeps one minimum (2 s).
 - Site map: the highlighted-location look (§4.2 step 5) and the original marker icon are not
@@ -235,8 +234,8 @@ All world state is in glTF space; queries convert back to the disc's coordinates
 
 ## Verification
 
-`npm test`: 91 tour tests (logic 38, vm 24, disc 29 with `out/tours`). `logic.test.ts` covers the parser, interpreter, macros and alarms, walk-map
-lookup and gap closing, hotspot enter/exit, collision, time factor, step, pitch, snap and gravity,
+`npm test`: 93 tour tests (logic 40, vm 24, disc 29 with `out/tours`). `logic.test.ts` covers the parser, interpreter, macros and alarms, walk-map
+lookup and gap closing, hotspot enter/exit, collision, time factor, step, pitch (the drifted look vector), snap and gravity (the VM's fall trace),
 mouse vector and cursor zones, flicker, film strip, water, the cloud rasteriser, caption widths,
 NEXTFRAME, hit testing and macros, anchoring and the cone test, and the site map. `vm.test.ts`
 checks each VM measurement on synthetic scenes: walk and turn rates at 64 and 47 ticks/s, display

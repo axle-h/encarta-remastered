@@ -102,7 +102,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 | Captions under audio (SAMI → WebVTT) | done | | — |
 | Video with captions (414) | done | 50/50; VM `461546454` | — |
 | MIDI music (236) | done | own SMF reader and soundfont synth over Fluid R3 GM (media.md §8); offline renders of 20 disc songs follow FluidSynth's loudness envelope within about 1 dB (web-client.md) | no VM comparison: the guest has no sound device |
-| Interactives (860, Flash IAF player under Ruffle) | done | 50/50 open a player; Ruffle test pass: 46 of every control type and both editions draw and respond, disc fonts as device fonts (web-client.md) | Trebuchet MS approximated by Tahoma; Vasco da Gama's ocean fill missing once, not reproduced |
+| Interactives (860, Flash IAF player under Ruffle) | done | 50/50 open a player; Ruffle test pass: 46 of every control type and both editions draw and respond, disc fonts as device fonts (web-client.md) | Trebuchet MS approximated by Tahoma (VM, Flash 10.3, seven items: drawing matches, some paragraphs wrap one line differently, nothing extra clipped); Vasco da Gama's ocean fill missing once in an early headless run, drawn by Flash and in every run since |
 | Match games natively | done | games.md | — |
 | Panoramas (151, `surround`) | done | native cylinder player (`web/src/panorama/`) in place of the Flash `vrslide` viewer, which is blank under Ruffle | — |
 | Maps as pictures (99,707) → "Open in the World Atlas" at the place | done | links to `/atlas/place/{geocode}` (this audit; was `/atlas`) | — |
@@ -166,7 +166,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| 7 tours: walking, collision, snap, lights, statues, captions | done | 47 views match the VM read-back (tour-runtime.md) | pitch-limit arithmetic |
+| 7 tours: walking, collision, ground following (gravity mode), lights, statues, captions | done | 47 views match the VM read-back (tour-runtime.md); gravity fall and the drifted pitch limit as traced with the debugger (2026-10-15) | hardware cloud step, ripple step rate |
 | Tour page layout, site map, Tour Stops menu | done | VM `701504257/stops` | rotated maps unverified |
 | Labels and Hot Spots toggle | done | | — |
 | Hotspot → media page, Back restores pose | done | VM | — |
@@ -180,7 +180,7 @@ priority order, are the "Next" list in [PLAN.md](PLAN.md).
 
 | Feature | Status | Evidence | Gap |
 |---|---|---|---|
-| 16 tours (Westminster Abbey, Alcatraz, USS Missouri …): 65 scenes, labels, hotspots, site maps, scene pictures | done | `PanoramaTour` (this audit; before it no page showed them): wrapping panorama strip, labels at their `x`,`y`, hotspots (`shed`) to scenes or pictures, site map with scene points, scene text | the tour viewer has no zoom and no keyboard control in the VM (wheel, +/−, arrows, Page Up/Down tried, 2026-10-14); ours keeps them as extras *(ours)*; single panoramas' `initangle` not measurable (Flash viewer) |
+| 16 tours (Westminster Abbey, Alcatraz, USS Missouri …): 65 scenes, labels, hotspots, site maps, scene pictures | done | `PanoramaTour` (this audit; before it no page showed them): wrapping panorama strip, labels at their `x`,`y`, hotspots (`shed`) to scenes or pictures, site map with scene points, scene text | the tour viewer has no zoom and no keyboard control in the VM (wheel, +/−, arrows, Page Up/Down tried, 2026-10-14); ours keeps them as extras *(ours)*; single panoramas open `initangle` degrees right of the picture's middle and auto-pan at about 26 °/s, as Flash 10.3 does in the VM (2026-10-15) |
 
 ## Games and quizzes
 

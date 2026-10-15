@@ -6,6 +6,7 @@
 import { Layer2D } from "./hud/layer";
 import { Interpreter, type Handlers } from "./script/interp";
 import {
+  aimLook,
   CAMERA_DEFAULTS,
   cursorZone,
   followGround,
@@ -14,6 +15,7 @@ import {
   newCamera,
   normYaw,
   PITCH_CLAMP,
+  setPitch,
   stepMove,
   stepPitch,
   timeFactor,
@@ -29,9 +31,9 @@ export type FovAxis = "horizontal" | "vertical";
 
 export interface ControlOptions {
   /**
-   * Device the original would run on. Software (what Encarta uses on a machine without a D3D
-   * device, and what the reference VM showed: snap mode, §6.8) snaps the eye to the ground;
-   * hardware applies `SCENE.GRAVITY` and re-renders clouds only every ~5° (§7.3.4).
+   * Device the original would run on. Software is what Encarta uses on a machine without a D3D device
+   * (the reference VM); hardware re-renders clouds only every ~5° (§7.3.4). Both follow the ground in
+   * gravity mode (§6.8; VM, debugger).
    */
   device?: "software" | "hardware";
   /** Overrides the ground mode the device implies. */
@@ -180,7 +182,7 @@ export class TourControl implements Handlers {
     const device = options.device ?? "software";
     this.options = {
       device,
-      groundMode: options.groundMode ?? (device === "hardware" ? "gravity" : "snap"),
+      groundMode: options.groundMode ?? "gravity",
       tickHz: options.tickHz ?? 64,
       fovAxis: options.fovAxis ?? "horizontal",
       walkmapSwitch: options.walkmapSwitch ?? "settle",
@@ -620,15 +622,17 @@ export class TourControl implements Handlers {
     switch (step.prop) {
       case "pos":
       case "moveTo":
-        c.x = n(0); c.y = n(1); c.z = n(2);
+        c.x = n(0); c.y = Math.fround(n(1)); c.z = n(2);
         if (v.length > 3) c.yawDeg = n(3);
+        aimLook(c, c.pitchDeg); // keeps the look vector, then reapplies the stored pitch (§6.10)
         this.hotspotCheck();
         break;
       case "move":
-        c.x += n(0); c.y += n(1); c.z += n(2);
+        c.x += n(0); c.z += n(2);
+        c.y = Math.fround(c.y + n(1)); c.lookY = Math.fround(c.lookY + n(1));
         break;
       case "pitch":
-        c.pitchDeg = Math.max(-PITCH_CLAMP, Math.min(PITCH_CLAMP, n(0)));
+        setPitch(c, Math.max(-PITCH_CLAMP, Math.min(PITCH_CLAMP, n(0))));
         break;
       case "fov": c.fovDeg = n(0); break;
       case "height": c.height = n(0); break;
@@ -650,7 +654,7 @@ export class TourControl implements Handlers {
     const c = this.camera;
     if (command === "home" || command === "homePov") {
       c.x = this.home.x; c.y = this.home.y; c.z = this.home.z;
-      c.yawDeg = this.home.yawDeg; c.pitchDeg = this.home.pitchDeg;
+      c.yawDeg = this.home.yawDeg; setPitch(c, this.home.pitchDeg);
       c.height = CAMERA_DEFAULTS.height;
       this.hotspotCheck();
       return SUCCESS;

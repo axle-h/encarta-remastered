@@ -80,6 +80,8 @@ path as Encarta's `_3DVTContent` development override), see "Unresolved" for ITS
   with the steps (no falling or lag). `fixtures/tours/701505285-stairs-walk.txt`. Gravity mode could not be observed:
   this VM has no D3D hardware device. Recommendation for a port: implement snap mode (what any user without a 3D card,
   and this reference VM, sees).
+- **Superseded (2026-10-15, debugger):** the software device runs **gravity mode**; the "next sample" was simply
+  more than 20 ticks later. See "Flash and debugger pass" below.
 
 ### §6.4 / §4 Floors (checklist "Floors")
 - Roman Forum, MOVETO to (11.05, -, 2.6) and walking north up stair 1: the walk-map cell 657 enter macro fired
@@ -608,7 +610,8 @@ Measured on Westminster Abbey (461545486), Mont-Saint-Michel (461549315) and Alc
   (view centre matched at x = W−4 in all cases), whatever `panangle` is: Nave and Sanctuary (panangle 0), Alcatraz
   Broadway (0), Mont-Saint-Michel On the Island (250) and Cloister (30). So `panangle` is not the opening yaw. It gives
   the map orientation instead (see (e)). Singles: the `.svj` ActiveX viewer (REFSV.DLL, CLSID 8399E3C5-…) stays black in
-  this VM, and the Panoramas feature list opens the Flash versions (Flash missing), so `initangle` could not be measured.
+  this VM, and the Panoramas feature list opens the Flash versions (Flash missing then); `initangle` was measured later
+  with Flash installed: "Flash and debugger pass" below.
 - **(b) Projection, FOV, horizon.** Planar perspective from a cylinder: the horizontal shift between frames grows from
   26 px at the view centre to 44 px at the edges, fitting `dx = A + B·x²` with f ≈ 297 px (Westminster, W = 1824). The
   scale at the view centre is 1:1 with the picture (cylinder radius = focal length = W/2π: 290 px for W 1824, 229 for
@@ -983,3 +986,46 @@ was used for the Geography Quiz, the atlas media question, the timeline search a
 - MSWORLD.SDB column B and the qualifier list: no view shows them (statistics hover, table, Details checked earlier).
 - TIMELINE.DAT descriptor field 5 and term offset A; P2MTBL header words; LEX header words: internal, no UI.
 - MindMaze: not reachable in 2009 (earlier pass), so nothing to observe.
+
+## Flash and debugger pass (2026-10-15)
+
+Installed in the guest (approved by Alex 2026-10-14): Adobe Flash Player 10.3.181.16 ActiveX (Adobe's own archive
+zip `fp_10.3.181.16_archive.zip`, from the Internet Archive copy, sha256 0baeefc1…), and Debugging Tools for Windows
+6.12 (`dbg_x86.msi` from download.microsoft.com). Both are in the live snapshot `flash-ready` (vm.md). Encarta must be
+restarted once after Flash is installed; after that every interactive opens in Flash.
+
+### Single panoramas (`target/agent-flash/seq*`, five scenes, view centre matched to the image SWF's JPEG)
+- **Opening yaw.** The first frame shows the view centre `initangle` degrees **right of the picture's middle**: picture
+  x = W/2 + initangle·W/360 (mod W). Mosque of Sidi Sahab (305, W 1947): predicted x 675.9, seen 675.5; Fatehpur Sikri (180,
+  W 3138): 0, seen 3137.5 (the seam); Organ Pipe Cactus (44, W 1606): 999.3, seen 998.5; Tivoli Gardens (252, W 1844):
+  368.8, seen 367; Rievaulx Abbey (62, W 1995): 1341.1, seen 1340.5. FlashVR's script clamps `initangle` to
+  ±(part/2 − fov/2) when `part` < 360, which also reads it as an angle from the middle.
+- **Field of view and horizon.** At the view centre the picture shows at f/r = 1.05 (Mosque), so f = 325 px on the
+  544-px view: fov 80 as written. The view's middle row is picture row 272.5, the horizon our image-SWF reader gives.
+- **Auto-pan** runs at open, to the right (picture x increasing), after a fade-in. Its speed is `auto` (3) view pixels
+  per tick of a 5 ms interval timer that Flash ran 42–58 times a second here: 125–175 view px/s, 22–31 °/s (five
+  scenes; a full turn is 2πf ≈ 2,044 view px, about 13 s).
+
+### Interactives: Flash 10.3 vs Ruffle 0.7.1 (`fixtures/interactives/<id>/screen.png`; montages in `target/agent-ruffle/compare/`)
+Seven items, one per control type (Vasco da Gama, Propylaea, Venus, Periodic Table, Castle, Counterpoint, See the Sights
+of Europe), our client in headless Chromium against the real server. Propylaea, Venus, Periodic Table and the DragDrop
+board match (DragDrop's photo order is random in both). Vasco da Gama's ocean fill is there in Flash, as in our runs. The
+only differences are text: Trebuchet MS (XP has it, the disc does not; we use Tahoma) sets narrower in ours, so some
+paragraphs wrap differently (Vasco's second paragraph 6 lines instead of 5, Castle's description 3 lines instead of 2,
+Castle's title 116 px instead of 128 px), and Counterpoint's intro line is about 5 % wider. No text is clipped in ours
+that is not clipped in Flash. Flash's land fills in Vasco show a fine dither, which is the guest's 16-bit display.
+
+### Tours under the debugger (cdb attached to tourhost and to ENCARTA.EXE; `vm/dbg.sh`)
+- **Gravity mode on the software device.** Walker +0x54 is 1 in ENCARTA.EXE's control at the Acropolis start (and in
+  tourhost); GRAVITY 0.003 is at the control's static +0x11b0c8. A write breakpoint on the eye's Y shows each tick fall
+  by `vfall` and land in the same tick. An eye raised 0.6 units fell 0.003, 0.006, …, 0.057 and landed on tick 20. This
+  supersedes "§6.8 Gravity vs snap" above (tours-3d.md §6.8).
+- **Pitch limit.** A breakpoint on the pitch step (FUN_10010f80) logging eye, target and stored pitch: the step tests
+  the pitch derived from the look vector, which drifts below the stored pitch (`PITCH?`) because each tick's fall and
+  landing round eye and target to float32 (20.999359 vs 21.000036 after about a minute; four 6° steps accepted, the last
+  at 44.999359). A float32 model of the fall and landing matched 1,133 logged ticks bit for bit (tours-3d.md §6.9).
+
+### Still open
+The atlas label-corner order and click-menu order, the media-placement residue (`Child_s<n>`) and the other
+debugger-only data questions were not taken up in this pass; the debugger workflow is now there for them. Not tried
+with Flash yet: the unheard sounds in Kids Read Aloud and the Kids games, which are Flash.

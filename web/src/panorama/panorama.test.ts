@@ -4,7 +4,7 @@ import { quadrantRect } from "../pages/panorama";
 import { yawParam } from "../pages/PanoramaTour";
 import { clampView, deltaDeg, focalFromFov, fovFromFocal, minFocal, project, projectRect, radius, shiftRange, tourHfov, unproject, wedgeAngle, wrapDeg, yawRange, type PanoGeometry } from "./geometry";
 import { initialView } from "./PanoramaView";
-import { singleParams, slideImageUrl, tourParams, vrSlide } from "./params";
+import { openingYaw, singleParams, slideImageUrl, tourParams, vrSlide } from "./params";
 import { jpegSize, readPanoramaSwf } from "./swf";
 import { fakeJpeg, imageSwf } from "./syntheticSwf";
 
@@ -108,12 +108,22 @@ describe("panorama parameters", () => {
     const vr = vrSlide(definition)!;
     expect(vr.image).toBe("PANO.swf");
     const p = singleParams(vr);
-    expect(p).toMatchObject({ fov: "fit", yaw: 157, maxZoom: 200, part: 360, tilt: true, autoPan: 3, autoStart: true, maxSpeed: 50, viewWidth: 544, viewHeight: 340 });
+    expect(p).toMatchObject({ fov: "fit", yaw: 337, maxZoom: 200, part: 360, tilt: true, autoStart: true, maxSpeed: 50, viewWidth: 544, viewHeight: 340 });
+    // VM: 3 px per Flash timer tick at about 52 ticks a second on a 544-px view at fov 80: about 26 °/s.
+    expect(p.autoPan).toBeGreaterThan(22);
+    expect(p.autoPan).toBeLessThan(31);
     const fixed = singleParams({ ...vr, scene: { ...vr.scene, fov: "80", tilt: "off" } });
     expect(fixed.fov).toBe(80);
     expect(fixed.tilt).toBe(false);
     expect(vrSlide({ slides: { slide: [{ standardslide: { "@vrslide": "0", image: "a.jpg" } }] } })).toBeNull();
     expect(vrSlide(undefined)).toBeNull();
+  });
+
+  it("opens single panoramas initangle degrees right of the picture's middle (VM, Flash Player 10.3)", () => {
+    for (const [initangle, yaw] of [[44, 224], [62, 242], [180, 0], [252, 72], [305, 125]] as const) expect(openingYaw(initangle, 360, 80)).toBe(yaw);
+    expect(openingYaw(100, 180, 80)).toBe(140);
+    expect(openingYaw(-100, 180, 80)).toBe(40);
+    expect(openingYaw(10, 180, 80)).toBe(100);
   });
 
   it("finds the image SWF from the resolved refs or the IAF folder", () => {
@@ -158,7 +168,7 @@ describe("panorama parameters", () => {
     const p = singleParams({ ...vrSlide(definition)!, scene: { fov: "80", initangle: "180", maxzoom: "200", displaywidth: "544", displayheight: "380" } });
     const { view, limits } = initialView(geo, p, null);
     expect(view.f).toBeCloseTo(focalFromFov(80, 544), 6);
-    expect(view.yaw).toBe(180);
+    expect(view.yaw).toBe(0); // initangle 180: the seam (VM)
     expect(limits.maxF).toBeCloseTo(view.f * 2, 6);
     expect(limits.minF).toBeCloseTo(minFocal(geo, 380), 6);
     // A short picture cannot be shown 80° wide: the view opens at the fill limit.

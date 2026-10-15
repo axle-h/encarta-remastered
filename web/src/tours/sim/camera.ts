@@ -36,6 +36,14 @@ export interface CameraState {
   pitchDeg: number;
   /** Fall speed (gravity mode). */
   vfall: number;
+  /**
+   * The look vector as the original keeps it (§6.9): the target point's Y as a float32 (eye Y plus the
+   * unit look vector's rise) and the vector's horizontal length. Ground following moves both eye and
+   * target in float32, so the pitch derived from them drifts away from `pitchDeg`; the ±45° test of
+   * the pitch keys uses the derived value.
+   */
+  lookY: number;
+  lookH: number;
   height: number;
   speedFly: number;
   speedTurn: number;
@@ -57,6 +65,8 @@ export function newCamera(): CameraState {
     yawDeg: 0,
     pitchDeg: 0,
     vfall: 0,
+    lookY: Math.fround(CAMERA_DEFAULTS.y),
+    lookH: 1,
     height: CAMERA_DEFAULTS.height,
     speedFly: CAMERA_DEFAULTS.speedFly,
     speedTurn: CAMERA_DEFAULTS.speedTurn,
@@ -101,16 +111,45 @@ export interface StepInput {
 
 export const NO_INPUT: StepInput = { move: 0, turn: 0, pitchUp: false, pitchDown: false, level: false };
 
-/** How the eye follows the ground (§6.8): snap (software device) or gravity (hardware device). */
+/** How the eye follows the ground (§6.8): gravity (what Encarta runs on both devices) or snap (an experiment). */
 export type GroundMode = "snap" | "gravity";
 
-/** Pitch keys: per tick, not time-scaled, refused when |pitch| would reach the limit. */
+/** Points the look vector at `deg` (`CAMERA.PITCH=`, POS/MOVETO, Home): target = eye + unit vector, stored as float32. */
+export function aimLook(cam: CameraState, deg: number): void {
+  const r = (deg * Math.PI) / 180;
+  cam.lookY = Math.fround(cam.y + Math.sin(r));
+  cam.lookH = Math.cos(r);
+}
+
+/** Sets the pitch as `CAMERA.PITCH=` does: the stored value (what `PITCH?` reports) and the look vector. */
+export function setPitch(cam: CameraState, deg: number): void {
+  cam.pitchDeg = Math.fround(deg);
+  aimLook(cam, deg);
+}
+
+/** The pitch derived from the eye and the float32 target (what the original tests against the limit). */
+export function lookPitch(cam: CameraState): number {
+  return (Math.atan2(cam.lookY - cam.y, cam.lookH) * 180) / Math.PI;
+}
+
+/**
+ * Pitch keys: per tick, not time-scaled. Each step starts from the pitch derived from the look vector,
+ * not from the stored value, and is refused when |derived + step| would reach the limit (§6.9).
+ */
 export function stepPitch(cam: CameraState, input: StepInput): void {
-  if (input.level) cam.pitchDeg = 0;
-  let p = cam.pitchDeg;
-  if (input.pitchUp) p += cam.pitchSpeed;
-  if (input.pitchDown) p -= cam.pitchSpeed;
-  if (Math.abs(p) < PITCH_LIMIT) cam.pitchDeg = p;
+  if (input.level) setPitch(cam, 0);
+  const step = (delta: number) => {
+    const p = lookPitch(cam) + delta;
+    if (Math.abs(p) < PITCH_LIMIT) setPitch(cam, p);
+  };
+  if (input.pitchUp) step(cam.pitchSpeed);
+  if (input.pitchDown) step(-cam.pitchSpeed);
+}
+
+/** Moves the eye vertically by `dy` with the target, both rounded to float32 as the original stores them. */
+function liftEye(cam: CameraState, dy: number): void {
+  cam.y = Math.fround(cam.y + dy);
+  cam.lookY = Math.fround(cam.lookY + dy);
 }
 
 /**
@@ -136,24 +175,28 @@ export function stepMove(cam: CameraState, input: StepInput, k: number, walk: Wa
   return true;
 }
 
-/** Ground following, every tick (§6.8). */
+/**
+ * Ground following, every tick (§6.8). Gravity mode is what Encarta runs, software device included (VM,
+ * debugger: walker flag set, the eye falls `vfall += GRAVITY` per tick and lands on the ground). Each fall
+ * and each landing moves eye and target in float32, which is what makes the derived pitch drift.
+ */
 export function followGround(cam: CameraState, walk: WalkMapSet | null, mode: GroundMode, gravity: number): void {
   const map = walk?.enabled ? walk.active : null;
   if (!map) return;
   const gy = map.groundY(cam.x, cam.y, cam.z);
   if (gy === null) return;
-  const target = gy + cam.height;
+  const target = Math.fround(gy + cam.height);
   if (mode === "gravity") {
     if (cam.y >= target) {
-      cam.vfall += gravity;
-      cam.y -= cam.vfall;
+      cam.vfall = Math.fround(cam.vfall + gravity);
+      liftEye(cam, -cam.vfall);
     }
     if (cam.y < target) {
       cam.vfall = 0;
-      cam.y = target;
+      liftEye(cam, target - cam.y);
     }
   } else {
-    cam.y = target;
+    liftEye(cam, target - cam.y);
   }
 }
 

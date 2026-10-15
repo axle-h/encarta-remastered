@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { TourControl } from "./control";
 import { decodePose, encodePose, hotspotDestination, playHostStart, poseCommand } from "./host";
 import { parseCommand } from "./script/parse";
-import { stepPitch, newCamera, NO_INPUT } from "./sim/camera";
+import { newCamera, setPitch, stepPitch, NO_INPUT } from "./sim/camera";
 import { FixedTicker } from "./sim/clock";
 import { Filmstrip, FlickerLight, lcg } from "./sim/effects";
 import { captionWidth } from "./hud/caption";
@@ -158,7 +158,7 @@ describe("pitch keys (VM: exactly PITCHSPEED per tick, a step reaching |pitch| â
   const run = (from: number, up: boolean, ticks: number) => {
     const c = newCamera();
     c.pitchSpeed = 6;
-    c.pitchDeg = from;
+    setPitch(c, from);
     const seen: number[] = [];
     for (let i = 0; i < ticks; i++) {
       stepPitch(c, { ...NO_INPUT, pitchUp: up, pitchDown: !up });
@@ -169,14 +169,14 @@ describe("pitch keys (VM: exactly PITCHSPEED per tick, a step reaching |pitch| â
 
   it("from âˆ’40 holding Page Up: âˆ’34, âˆ’28, â€¦, 38, 44, then stops", () => {
     const seen = run(-40, true, 40);
-    expect(seen[0]).toBe(-34);
-    expect(seen.at(-1)).toBe(44);
+    expect(seen[0]).toBeCloseTo(-34, 4);
+    expect(seen.at(-1)).toBeCloseTo(44, 4);
     expect(seen.length).toBe(14);
-    expect(seen.every((p, i) => i === 0 || Math.abs(p - (seen[i - 1] ?? 0) - 6) < 1e-9)).toBe(true);
+    expect(seen.every((p, i) => i === 0 || Math.abs(p - (seen[i - 1] ?? 0) - 6) < 1e-4)).toBe(true);
   });
 
   it("from 44.998962 holding Page Down it stops at âˆ’39.001038", () => {
-    expect(run(44.998962, false, 40).at(-1)).toBeCloseTo(-39.001038, 6);
+    expect(run(44.998962, false, 40).at(-1)).toBeCloseTo(-39.001038, 4);
   });
 
   it("is per tick, not time-scaled, and Home sets pitch 0", () => {
@@ -184,7 +184,7 @@ describe("pitch keys (VM: exactly PITCHSPEED per tick, a step reaching |pitch| â
       const { c } = loaded(scene(), hz);
       c.do("CAMERA.PITCH=0");
       holding(c, "PageUp", 3 / hz); // three ticks
-      expect(c.camera.pitchDeg).toBe(18);
+      expect(c.camera.pitchDeg).toBeCloseTo(18, 4);
       holding(c, "Home", 1 / hz);
       expect(c.camera.pitchDeg).toBe(0);
     }

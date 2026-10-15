@@ -1090,20 +1090,25 @@ After the move, FUN_10026320 runs **every tick, even when not moving**:
 * The ground point is the projection of the eye onto the cell plane along the plane normal
   (`g = E − (n·E + d)·n`). For the near-horizontal planes in the data this equals solving the plane for Y.
   `targetY = g.y + HEIGHT`.
-* **Gravity mode** (only when the D3D hardware device or the second device flag is active; walker state +0x54,
-  set in FUN_10022000):
+* **Gravity mode** (walker state +0x54, set in FUN_10022000; **(VM, debugger)** it is 1 in Encarta's own control
+  and in our host on the software device, so this is the mode every user saw):
   * If `E.y ≥ targetY`: `vfall += GRAVITY; E.y −= vfall; T.y −= vfall` (per tick, not time-scaled).
   * If `E.y < targetY` (also after the step above): `vfall = 0`, and the eye and target are raised to `targetY`
     (instant step-up).
-* **Snap mode** (software rendering, the default): `E.y = targetY` and T is shifted by the same amount every tick,
-  so stepping down is instant too.
-* **Consequence:** `SCENE.GRAVITY` matters only in hardware mode. Encarta's Colosseum script has a `LARGE`
-  macro that calls `SCENE.TRYHARDWARE`.
+* **Snap mode** (walker +0x54 = 0; not seen in the VM): `E.y = targetY` and T is shifted by the same amount every
+  tick, so stepping down is instant too.
+* Each fall and each landing writes E.y and T.y as float32 (the landing adds `targetY − E.y` to both). The rounding
+  differs between the two values, so T.y − E.y, and with it the pitch derived from the look vector, drifts a little
+  every tick even when standing still (§6.9, pitch keys).
+* Encarta's Colosseum script has a `LARGE` macro that calls `SCENE.TRYHARDWARE`.
   **(VM)** `SCENE.TRYHARDWARE` and `Try3DHardware` return `Failed` in the VM (no D3D device), so Encarta runs the
-  software device and **snap mode**: an eye raised 0.6 units with `CAMERA.POS` is back at ground + HEIGHT on the
-  next sample, and walking up the Roman Forum stair follows the steps with no lag. Gravity mode (hardware) could
-  not be observed. A port implements snap mode, which is what every user without a 3D card saw. The unused
-  function FUN_10024940 implements the same ground rule without the mode switch.
+  software device, **in gravity mode** (2026-10-15, cdb in the guest: walker +0x54 = 1 in ENCARTA.EXE's copy of the
+  control at the Acropolis start, and a write breakpoint on the eye's Y shows every tick falling by
+  `vfall = GRAVITY` = 0.003 and landing back in the same tick). An eye raised 0.6 units with `CAMERA.POS` falls
+  0.003, 0.006, … 0.057 units on successive ticks and lands on tick 20 (about 0.4 s); the earlier reading "back on
+  the ground at the next sample" came from samples too far apart. Walking down a stair therefore drops with
+  `vfall` growing per tick, though steps shallower than a few ticks' fall look instant. The unused function
+  FUN_10024940 implements the same ground rule without the mode switch.
 
 ### 6.9 Input, camera step and timing
 
@@ -1144,15 +1149,24 @@ nominal step per tick and at most five.
   **(VM)** Confirmed. **Walking is 100 × `SPEED.FLY` units/s and turning 200 × `SPEED.TURN` °/s, independent of the
   tick rate**: Acropolis 0.203 units/s and 101–103 °/s at ~47 ticks/s, Roman Forum (`.0035`) 0.347 units/s; the
   right arrow increases yaw and turning does not move the eye. The `k ≥ 1` floor never applied (dt was always
-  > 10 ms). Pitch steps exactly `PITCHSPEED` per tick. The 45° test is made on the pitch *derived from the look
-  vector*: from 21.000036, four 6° steps reached 44.998962 (float error), so a step that lands on 45 exactly in
-  real arithmetic may be accepted. Home sets pitch 0.
-  **Not specified:** how that value is derived. Rotating a float32 look vector by 6° (stored as a unit vector, or as
-  eye and target points at the Acropolis start position) and taking `asin` or `atan2` of it gives 45.000036 ± 1·10⁻⁵,
-  not 44.998962; the observed −0.001074° is a hundred times larger. Only this one step was logged to six decimals
-  (the other sequences in vm-findings.md are given as integers), so the mechanism cannot be fitted from the data.
-  A VM log of `PITCH?` after each tick from several starts near the limit (e.g. 39.0, 39.0001, 39.001, 39.01, and
-  the same at other yaws) would pin it down.
+  > 10 ms). Pitch steps exactly `PITCHSPEED` per tick. Home sets pitch 0.
+  **Pitch arithmetic (VM, debugger, 2026-10-15).** The camera keeps two pitches. The *stored* pitch (camera +0x264)
+  is what `PITCH?` reports. The *look vector* is the eye (+0x114) and the target (+0x120), each three float32, with
+  the target one unit from the eye. A pitch key step (FUN_10010f80, argument ±PITCHSPEED):
+  1. derives the current pitch from the look vector: asin of the normalised eye→target rise, in degrees (FUN_10016840);
+  2. refuses the step unless |derived + step| < the limit (+0x260, 45.0);
+  3. stores derived + step as the new stored pitch, and rotates the normalised look vector by step × 0.017453292
+     rad about the horizontal axis perpendicular to it; target = eye + rotated unit vector (float32).
+  `CAMERA.PITCH=` (clamped to ±44.9) stores its value and levels the look vector, then rotates it by the full angle.
+  The two pitches part because ground following moves eye and target in float32 every tick (§6.8). At the Acropolis
+  start (eye Y −0.385825, GRAVITY 0.003) the derived pitch falls about 4.5·10⁻⁷° a tick: logged by a breakpoint on
+  FUN_10010f80 after about a minute idle, the stored pitch was 21.000036 and the derived one 20.999359, and four
+  6° steps were all accepted, the fourth at derived 38.999359 + 6 = 44.999359. The earlier log's 44.998962 is the
+  same thing after a longer idle (about 2,200 ticks). A model of just the per-tick fall and landing in float32 (T.y
+  and E.y each rounded after subtracting `vfall`, then after adding `targetY − E.y` computed in higher precision)
+  reproduced 1,133 consecutive logged ticks bit for bit, and the drift rate (−1.5·10⁻⁵° over 31 ticks) to within
+  10 %. So a step that lands on 45 in real arithmetic is accepted when the look vector has drifted below the stored
+  value, which at the Acropolis start is always after the first tick.
 * While the mouse is pressed on an active 2D item, no camera step happens (it is a HUD interaction).
 
 **Cursors** (when `SCENE.CURSORS=TRUE`): over a 2D hotspot item the cursor is index 5 (`vthot360.cur`).
@@ -1176,7 +1190,7 @@ does not set the property:
 | `CAMERA.HEIGHT` | eye height above the ground plane | 0.05 (`HOME` resets HEIGHT to this) |
 | `CAMERA.COLLISIONRADIUS` | wall clearance R | 0.05 |
 | `CAMERA.CLIMBRATE` | rise per tick on climbable walls (none ship) | 0.01 |
-| `SCENE.GRAVITY` | fall acceleration per tick² (hardware mode only) | 0.01 |
+| `SCENE.GRAVITY` | fall acceleration per tick² (gravity mode, which Encarta runs on the software device too, §6.8) | 0.01 |
 | `CAMERA.FOV` | **horizontal** field of view in degrees (VM: a 5° yaw step moves the image centre 32 px, f = 366 px, so FOV 80 spans the 616-px width; vertical 59.7° at 420 px) | not determined; every tour sets 80 |
 | `CAMERA.NEAR` | near clip | set by every tour (0.01–0.09) |
 | `CAMERA.FAR` | far clip. **Negative means automatic: 2 × the largest extent of the scene's bounding box** (FUN_10065570). Every tour except Azuchi sets −1 | — |
@@ -1219,7 +1233,7 @@ Walk maps → JSON (or compact binary) per file: bbox; ground cells (XZ polygons
 polygons plus cleaned enter/exit statement lists); collision cells (XZ region polygons plus 2-D wall segments);
 visibility cells (XZ polygons plus mesh/face lists remapped to the converter's glTF primitive/triangle ranges).
 The three.js runtime should then implement §6.3–§6.9 as written: tick-based input with the k-factor, collision as
-in §6.7, ground following/gravity as in §6.8 (pick snap or gravity mode to match the VM finding), hotspot enter/exit
+in §6.7, ground following in gravity mode as in §6.8 (what the VM runs), hotspot enter/exit
 as in §6.5, PVS as in §6.6.
 
 ### 6.13 VM confirmation checklist (this section)
@@ -1227,7 +1241,7 @@ as in §6.5, PVS as in §6.6.
 - [x] Tick rate of the control inside Encarta (ticks/s while walking); verify `k = clamp(100·dt,1,5)` by timing a walk over a known distance (`CAMERA.POS?` before/after). (VM: ~64 idle, ~47 walking; speeds time-scaled.)
 - [x] Walk speed, turn speed and pitch rate for one tour against the numbers in §6.9.
 - [x] Pitch sign (positive = up) and the 45° limit; Home levels the view.
-- [x] Software (snap) vs hardware (gravity) mode in Encarta: software/snap (no D3D device in the VM). Hardware gravity and the maximised view remain unobserved.
+- [x] Ground mode in Encarta: the software device (no D3D device in the VM) runs gravity mode, walker +0x54 = 1 (debugger, §6.8). The maximised view remains unobserved.
 - [x] Wall sliding and corners. [x] Open edges: leaving the collision coverage does not block the move (§6.7).
 - [x] Hotspot enter/exit order when a macro switches walk maps: one switch per crossing, no switch back (§6.5).
 - [x] PVS: the same with `WALKMAP.DELETE.VISIBILITY` except the per-cell LOD choice; unlisted sprites draw (§6.6).
@@ -2236,7 +2250,8 @@ Resolved:
 
 - [x] **Tick rate and speeds.** ~64 ticks/s idle, ~47 walking; walk 100 × `SPEED.FLY` units/s and turn 200 × `SPEED.TURN` °/s whatever the tick rate (§2.3, §6.9).
 - [x] **Pitch.** Positive looks up; exactly `PITCHSPEED` per tick; a step reaching |pitch| ≥ 45 is refused (tested on the look-vector value); Home sets 0 (§6.1, §6.9).
-- [x] **Gravity vs snap.** Software device and snap mode in Encarta on a machine without D3D (§6.8).
+- [x] **Pitch limit arithmetic** (debugger): the test is on the pitch derived from the float32 look vector, which ground following's per-tick fall and landing make drift away from the stored pitch `PITCH?` reports (§6.8, §6.9).
+- [x] **Gravity mode** on the software device: walker +0x54 = 1 in Encarta; falls grow by GRAVITY per tick (§6.8).
 - [x] **Collision.** Wall sliding by projection, full stop in corners (§6.7).
 - [x] **FOV.** Horizontal: FOV 80 spans the 616-px control width (§6.10).
 - [x] **Hotspot click.** `destmedia` of the hotspot record replaces the main view; Back returns at the same pose; events arrive upper-cased (§4, §4.3, §3.6).
@@ -2265,16 +2280,13 @@ Resolved:
 
 Still open:
 
-- [ ] **Pitch limit arithmetic.** How the look-vector value tested against 45° is computed: from 21.000036 the fourth
-  6° step was accepted at 44.998962, an error of −0.001074° that float32 look-vector arithmetic does not produce (§6.9).
-  Needs a debugger.
-- [ ] **Gravity mode** on a hardware device, the hardware 5° cloud re-render step, and the maximised (MaxView) window
-  (§6.8, §7.3.4): no 3D device in the VM.
+- [ ] The hardware 5° cloud re-render step and the maximised (MaxView) window (§7.3.4): no 3D device in the VM.
 - [ ] **Water ripple step rate** (§7.4.6) and **`3D.TOGGLEHIDDEN`**'s effect on drawing (§7.4.3).
 - [ ] **ITS-mode loading** in the harness.
 
 How to capture: a debugger breakpoint on the control's `Do` method (`FUN_1000d0f0`) and on the event fire
-(`FUN_1000e720`) logs every command and event. Alternatively, the control's own `STARTMACROLOG` writes
+(`FUN_1000e720`) logs every command and event (cdb is in the VM's `flash-ready` snapshot; `vm/dbg.sh`, docs/vm.md;
+the control is `ACTIVEX3DX3`, at 10000000 in tourhost and relocated in ENCARTA.EXE). Alternatively, the control's own `STARTMACROLOG` writes
 `macro.log`, but it must be issued through `Do`.
 
 ---

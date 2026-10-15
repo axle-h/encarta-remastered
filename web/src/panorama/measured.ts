@@ -29,3 +29,14 @@ export const TOUR = {
 
 /** (c) Auto-pan speed in degrees per second. */
 export const TOUR_AUTO_PAN = 360 / TOUR.secondsPerTurn;
+
+/**
+ * Single panoramas in Flash Player 10.3 (docs/vm-findings.md, "Flash pass"): the FlashVR player opens with
+ * the view centre `initangle` degrees right of the picture's middle (180 = the seam at x = 0), and its auto-pan
+ * moves `auto` view pixels per timer tick of a 5 ms interval that Flash runs 42 to 58 times a second in the VM
+ * (five scenes: 22 to 31 °/s on the 544-px view at fov 80).
+ */
+export const SINGLE = {
+  /** Mean auto-pan timer rate measured over five scenes (ticks per second). */
+  autoTicksPerSecond: 52,
+} as const;
